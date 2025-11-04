@@ -1,0 +1,8 @@
+source,target,type,label
+person-alex-morgan,person-jules-meyer,manager,
+person-alex-morgan,person-sophia-ng,manager,
+person-alex-morgan,person-amelia-park,manager,
+person-amelia-park,person-joelle-carter,manager,
+person-sophia-ng,person-ava-cho,manager,
+person-sophia-ng,person-amelia-park,sponsor,Product development alignment
+person-amelia-park,person-ava-cho,dotted,Design + GTM sync

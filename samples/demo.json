@@ -1,0 +1,246 @@
+{
+  "schema_version": "2024.10.01",
+  "metadata": {
+    "name": "Sonance Matrix Organization",
+    "description": "Sample export showcasing managers, sponsors, and dotted-line relationships across lenses.",
+    "createdAt": "2024-10-01T00:00:00.000Z",
+    "updatedAt": "2024-10-01T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "person-alex-morgan",
+      "kind": "person",
+      "name": "Alex Morgan",
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z",
+      "attributes": {
+        "title": "Chief Executive Officer",
+        "departments": ["Executive Leadership"],
+        "primaryDepartment": "Executive Leadership",
+        "brands": ["Sonance", "iPort", "James Cloud Speaker", "Blaze Audio"],
+        "primaryBrand": "Sonance",
+        "channels": [
+          "Residential Retail",
+          "Residential Mid-Market",
+          "Residential Luxury",
+          "Professional Enterprise",
+          "Professional Audio"
+        ],
+        "primaryChannel": "Professional Enterprise",
+        "tags": [],
+        "tier": "c-suite"
+      }
+    },
+    {
+      "id": "person-jules-meyer",
+      "kind": "person",
+      "name": "Jules Meyer",
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z",
+      "attributes": {
+        "title": "Chief Financial Officer",
+        "departments": ["Executive Leadership", "Finance"],
+        "primaryDepartment": "Finance",
+        "brands": ["Sonance", "Blaze Audio"],
+        "primaryBrand": "Blaze Audio",
+        "channels": ["Professional Enterprise", "Professional Audio"],
+        "primaryChannel": "Professional Enterprise",
+        "tags": [],
+        "tier": "c-suite"
+      }
+    },
+    {
+      "id": "person-sophia-ng",
+      "kind": "person",
+      "name": "Sophia Ng",
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z",
+      "attributes": {
+        "title": "Chief Product Officer",
+        "departments": ["Executive Leadership", "Product Development"],
+        "primaryDepartment": "Product Development",
+        "brands": ["Sonance", "James Cloud Speaker", "iPort"],
+        "primaryBrand": "Sonance",
+        "channels": ["Residential Luxury", "Residential Mid-Market", "Professional Audio"],
+        "primaryChannel": "Residential Luxury",
+        "tags": [],
+        "tier": "c-suite"
+      }
+    },
+    {
+      "id": "person-amelia-park",
+      "kind": "person",
+      "name": "Amelia Park",
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z",
+      "attributes": {
+        "title": "General Manager, iPort",
+        "departments": ["Product Development", "Marketing"],
+        "primaryDepartment": "Product Development",
+        "brands": ["iPort"],
+        "primaryBrand": "iPort",
+        "channels": ["Residential Mid-Market", "Professional Enterprise"],
+        "primaryChannel": "Professional Enterprise",
+        "tags": [],
+        "tier": "vp"
+      }
+    },
+    {
+      "id": "person-joelle-carter",
+      "kind": "person",
+      "name": "Joelle Carter",
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z",
+      "attributes": {
+        "title": "Director, Integrated Systems",
+        "departments": ["Product Development"],
+        "primaryDepartment": "Product Development",
+        "brands": ["iPort", "Sonance"],
+        "primaryBrand": "iPort",
+        "channels": ["Residential Mid-Market", "Professional Enterprise"],
+        "primaryChannel": "Residential Mid-Market",
+        "tags": [],
+        "tier": "director"
+      }
+    },
+    {
+      "id": "person-ava-cho",
+      "kind": "person",
+      "name": "Ava Cho",
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z",
+      "attributes": {
+        "title": "Director, Experience Design",
+        "departments": ["Product Development", "Marketing"],
+        "primaryDepartment": "Product Development",
+        "brands": ["James Cloud Speaker", "Sonance"],
+        "primaryBrand": "James Cloud Speaker",
+        "channels": ["Residential Luxury", "Professional Audio"],
+        "primaryChannel": "Residential Luxury",
+        "tags": [],
+        "tier": "director"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-manager-0001",
+      "source": "person-alex-morgan",
+      "target": "person-jules-meyer",
+      "metadata": {
+        "type": "manager"
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "edge-manager-0002",
+      "source": "person-alex-morgan",
+      "target": "person-sophia-ng",
+      "metadata": {
+        "type": "manager"
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "edge-manager-0003",
+      "source": "person-alex-morgan",
+      "target": "person-amelia-park",
+      "metadata": {
+        "type": "manager"
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "edge-manager-0004",
+      "source": "person-amelia-park",
+      "target": "person-joelle-carter",
+      "metadata": {
+        "type": "manager"
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "edge-manager-0005",
+      "source": "person-sophia-ng",
+      "target": "person-ava-cho",
+      "metadata": {
+        "type": "manager"
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "edge-sponsor-0006",
+      "source": "person-sophia-ng",
+      "target": "person-amelia-park",
+      "metadata": {
+        "type": "sponsor",
+        "lenses": ["department"]
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "edge-dotted-0007",
+      "source": "person-amelia-park",
+      "target": "person-ava-cho",
+      "metadata": {
+        "type": "dotted",
+        "label": "Design + GTM sync"
+      },
+      "createdAt": "2024-10-01T00:00:00.000Z",
+      "updatedAt": "2024-10-01T00:00:00.000Z"
+    }
+  ],
+  "lens": "hierarchy",
+  "lens_state": {
+    "hierarchy": {
+      "layout": {
+        "id": "hierarchy",
+        "positions": {},
+        "viewport": { "x": 0, "y": 0, "zoom": 1 },
+        "snapToGrid": false,
+        "showGrid": true,
+        "lastUpdated": "2024-10-01T00:00:00.000Z"
+      },
+      "filters": { "activeTokens": [], "focusIds": [], "hiddenIds": [] }
+    },
+    "brand": {
+      "layout": {
+        "id": "brand",
+        "positions": {},
+        "viewport": { "x": 0, "y": 0, "zoom": 1 },
+        "snapToGrid": false,
+        "showGrid": true,
+        "lastUpdated": "2024-10-01T00:00:00.000Z"
+      },
+      "filters": { "activeTokens": [], "focusIds": [], "hiddenIds": [] }
+    },
+    "channel": {
+      "layout": {
+        "id": "channel",
+        "positions": {},
+        "viewport": { "x": 0, "y": 0, "zoom": 1 },
+        "snapToGrid": false,
+        "showGrid": true,
+        "lastUpdated": "2024-10-01T00:00:00.000Z"
+      },
+      "filters": { "activeTokens": [], "focusIds": [], "hiddenIds": [] }
+    },
+    "department": {
+      "layout": {
+        "id": "department",
+        "positions": {},
+        "viewport": { "x": 0, "y": 0, "zoom": 1 },
+        "snapToGrid": false,
+        "showGrid": true,
+        "lastUpdated": "2024-10-01T00:00:00.000Z"
+      },
+      "filters": { "activeTokens": [], "focusIds": [], "hiddenIds": [] }
+    }
+  }
+}

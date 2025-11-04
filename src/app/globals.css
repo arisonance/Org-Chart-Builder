@@ -20,7 +20,90 @@
 }
 
 body {
-  background: var(--background);
+  background: radial-gradient(circle at 20% 20%, #eef2ff 0%, transparent 50%),
+    radial-gradient(circle at 80% 0%, rgba(125, 211, 252, 0.5) 0%, transparent 45%),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Connection mode visual feedback */
+.react-flow__node.connection-source {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.react-flow__node.connection-target {
+  position: relative;
+  cursor: pointer !important;
+}
+
+.react-flow__node.connection-target::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 1rem;
+  border: 3px solid #0ea5e9;
+  animation: pulse-border 1.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes pulse-ring {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+/* Handle hover effects */
+.react-flow__handle {
+  transition: all 0.2s ease-in-out;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Enhanced edge selection */
+.react-flow__edge.selected path {
+  stroke-width: 3.5 !important;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* Smooth transitions for all react-flow elements */
+.react-flow__node {
+  transition: transform 0.2s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+.react-flow__edge path {
+  transition: stroke-width 0.2s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+/* Command palette animations */
+@keyframes command-palette-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.command-palette-container {
+  animation: command-palette-fade-in 0.15s ease-out;
 }

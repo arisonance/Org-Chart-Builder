@@ -1,0 +1,7 @@
+id,name,title,brands,channels,departments,primary_brand,primary_channel,primary_department
+person-alex-morgan,Alex Morgan,Chief Executive Officer,"Sonance|iPort|James Cloud Speaker|Blaze Audio","Residential Retail|Residential Mid-Market|Residential Luxury|Professional Enterprise|Professional Audio","Executive Leadership","Sonance","Professional Enterprise","Executive Leadership"
+person-jules-meyer,Jules Meyer,Chief Financial Officer,"Sonance|Blaze Audio","Professional Enterprise|Professional Audio","Executive Leadership|Finance","Blaze Audio","Professional Enterprise","Finance"
+person-sophia-ng,Sophia Ng,Chief Product Officer,"Sonance|James Cloud Speaker|iPort","Residential Luxury|Residential Mid-Market|Professional Audio","Executive Leadership|Product Development","Sonance","Residential Luxury","Product Development"
+person-amelia-park,Amelia Park,"General Manager, iPort","iPort","Residential Mid-Market|Professional Enterprise","Product Development|Marketing","iPort","Professional Enterprise","Product Development"
+person-joelle-carter,Joelle Carter,"Director, Integrated Systems","iPort|Sonance","Residential Mid-Market|Professional Enterprise","Product Development","iPort","Residential Mid-Market","Product Development"
+person-ava-cho,Ava Cho,"Director, Experience Design","James Cloud Speaker|Sonance","Residential Luxury|Professional Audio","Product Development|Marketing","James Cloud Speaker","Residential Luxury","Product Development"
