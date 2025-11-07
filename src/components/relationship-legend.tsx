@@ -13,7 +13,7 @@ export function RelationshipLegend() {
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex w-full items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/50"
+          className="flex w-full items-center justify-between border-b border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800/50"
         >
           <span>Relationship Types</span>
           {isExpanded ? (
@@ -24,7 +24,7 @@ export function RelationshipLegend() {
         </button>
 
         {isExpanded && (
-          <div className="space-y-3 border-t border-slate-200 px-4 py-3 dark:border-white/10">
+          <div className="space-y-3 px-4 py-3">
             {/* Manager */}
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-12 items-center justify-center">

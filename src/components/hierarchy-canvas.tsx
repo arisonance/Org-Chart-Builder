@@ -112,6 +112,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(1);
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string>>(new Set());
+  const isRestoringViewport = useRef(false);
   
   // Debounce position updates
   const positionUpdateQueue = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -504,7 +505,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   // Track viewport changes and update visible nodes
   useEffect(() => {
-    if (!rfInstance) return;
+    if (!rfInstance || isRestoringViewport.current) return;
     
     const updateVisibleNodes = () => {
       const viewport = rfInstance.getViewport();
@@ -550,6 +551,33 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }
     };
   }, [rfInstance, lens, updateViewport]);
+
+  // Restore viewport when lens layout changes (e.g., from pin view restoration)
+  useEffect(() => {
+    if (!rfInstance || !lensLayout?.viewport) return;
+    
+    const currentViewport = rfInstance.getViewport();
+    const targetViewport = lensLayout.viewport;
+    
+    // Only restore if viewport is significantly different (to avoid conflicts with user interactions)
+    const threshold = 10;
+    const isDifferent = 
+      Math.abs(currentViewport.x - targetViewport.x) > threshold ||
+      Math.abs(currentViewport.y - targetViewport.y) > threshold ||
+      Math.abs(currentViewport.zoom - targetViewport.zoom) > 0.1;
+    
+    if (isDifferent) {
+      isRestoringViewport.current = true;
+      rfInstance.setViewport(
+        { x: targetViewport.x, y: targetViewport.y, zoom: targetViewport.zoom },
+        { duration: 500 }
+      );
+      // Reset flag after animation completes
+      setTimeout(() => {
+        isRestoringViewport.current = false;
+      }, 600);
+    }
+  }, [rfInstance, lensLayout?.viewport?.x, lensLayout?.viewport?.y, lensLayout?.viewport?.zoom]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -736,21 +764,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             <Controls className="!left-6 !bottom-6 rounded-full bg-white/90 text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10" />
             {/* Cleanup Canvas Button */}
             {personNodes.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  cleanupCanvas(lens);
+              <CleanupButton
+                onCleanup={(mode) => {
+                  cleanupCanvas(lens, mode);
                   // Fit view after cleanup
                   setTimeout(() => {
                     rfInstance?.fitView({ padding: 0.2, duration: 500 });
                   }, 100);
                 }}
-                className="absolute bottom-6 right-[100px] z-10 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-900 dark:focus-visible:ring-slate-500"
-                title="Clean up canvas layout (like macOS desktop cleanup)"
-              >
-                <MixerHorizontalIcon className="h-4 w-4" />
-                Clean Up
-              </button>
+              />
             )}
           </ReactFlow>
           <EdgeContextMenu
@@ -1017,6 +1039,76 @@ const MenuItem = ({
 const MenuSeparator = () => (
   <ContextMenu.Separator className="my-1 h-px w-full bg-slate-200 dark:bg-white/10" />
 );
+
+const CleanupButton = ({
+  onCleanup,
+}: {
+  onCleanup: (mode: "compact" | "spacious") => void;
+}) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="absolute bottom-6 right-[180px] z-30 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-900 dark:focus-visible:ring-slate-500"
+          title="Clean up canvas layout"
+        >
+          <MixerHorizontalIcon className="h-4 w-4" />
+          Clean Up
+        </button>
+      </Popover.Trigger>
+      
+      <Popover.Portal>
+        <Popover.Content
+          className="z-50 w-64 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
+          sideOffset={12}
+          side="top"
+          align="end"
+        >
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => {
+                onCleanup("compact");
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-400 to-purple-600 text-lg">
+                📦
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Compact Layout</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Fit as much as possible on screen</p>
+              </div>
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => {
+                onCleanup("spacious");
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-lg">
+                📐
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Spacious Layout</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">No overlap, requires more space</p>
+              </div>
+            </button>
+          </div>
+          
+          <Popover.Arrow className="fill-white dark:fill-slate-900" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+};
 
 const FloatingActionButton = ({
   onAddPerson,

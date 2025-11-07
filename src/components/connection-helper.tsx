@@ -7,7 +7,7 @@ export function ConnectionHelper() {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="absolute left-6 top-6 z-30 max-w-xs">
+    <div className="absolute left-6 top-[280px] z-30 max-w-xs">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
         <button
           type="button"

@@ -273,11 +273,14 @@ export const calculateClusterLayout = (
 /**
  * Enhanced cleanup layout that optimizes spacing, alignment, and overall aesthetics.
  * Similar to macOS desktop cleanup - reorganizes nodes for a clean, elegant appearance.
+ * 
+ * @param mode - "compact" fits as much as possible on screen (may overlap), "spacious" ensures no overlap (requires more space)
  */
 export const calculateCleanupLayout = (
   nodes: GraphNode[],
   edges: GraphEdge[],
   existingPositions?: Record<string, { x: number; y: number }>,
+  mode: "compact" | "spacious" = "spacious",
 ): Record<string, { x: number; y: number }> => {
   const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
   
@@ -285,11 +288,11 @@ export const calculateCleanupLayout = (
     return {};
   }
 
-  // Enhanced spacing constants for cleaner layout
-  const CLEANUP_NODE_SEPARATION = 180; // Increased horizontal spacing
-  const CLEANUP_RANK_SEPARATION = 240; // Increased vertical spacing
-  const CLEANUP_MARGIN_X = 150;
-  const CLEANUP_MARGIN_Y = 150;
+  // Spacing constants based on mode
+  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 120 : 280; // Compact: tighter spacing (may overlap), Spacious: no overlap (280 > 260 node width)
+  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 160 : 300; // Compact: tighter vertical spacing, Spacious: generous vertical space (300 > 150 node height)
+  const CLEANUP_MARGIN_X = mode === "compact" ? 80 : 180;
+  const CLEANUP_MARGIN_Y = mode === "compact" ? 80 : 180;
 
   // Build hierarchy using dagre with enhanced spacing
   const g = new graphlib.Graph({ directed: true, compound: false, multigraph: false });

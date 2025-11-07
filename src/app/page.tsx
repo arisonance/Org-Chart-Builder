@@ -8,6 +8,7 @@ import { EditorPanel } from '@/components/editor-panel';
 import { LensSwitcher } from '@/components/lens-switcher';
 import { CommandPalette } from '@/components/command-palette';
 import { ScenarioManager } from '@/components/scenario-manager';
+import { PinViewManager } from '@/components/pin-view-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { PathFinderPanel } from '@/components/path-finder-panel';
 import { RelationshipExplorer } from '@/components/relationship-explorer';
@@ -172,6 +173,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-3">
               <LensSwitcher activeLens={lens} onChange={setLens} />
               <ScenarioManager />
+              <PinViewManager />
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <ToolbarButton label="Undo" onClick={undo} />

@@ -127,6 +127,15 @@ export type GraphSnapshot = {
   selection: SelectionState;
 };
 
+export type PinView = {
+  id: string;
+  name: string;
+  lens: LensId;
+  positions: Record<string, XY>;
+  viewport: Viewport;
+  createdAt: string;
+};
+
 export type ImportResult =
   | { ok: true; document: GraphDocument }
   | { ok: false; errors: string[] };

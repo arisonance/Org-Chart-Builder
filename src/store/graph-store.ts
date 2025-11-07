@@ -14,6 +14,7 @@ import type {
   LayoutState,
   LensState,
   PersonAttributes,
+  PinView,
   RelationshipType,
   SelectionState,
   XY,
@@ -45,6 +46,8 @@ type GraphStoreState = {
   scenarios: Record<string, Scenario>;
   activeScenarioId: string | null;
   comparisonScenarioId: string | null;
+  pinViews: Record<string, PinView>;
+  activePinViewId: string | null;
   pathFinderMode: {
     active: boolean;
     sourceId: string | null;
@@ -87,7 +90,7 @@ type GraphStoreActions = {
   toggleGrid: (lens: LensId) => void;
   setLensFilters: (lens: LensId, filters: Partial<LensState["filters"]>) => void;
   autoLayout: (lens?: LensId) => void;
-  cleanupCanvas: (lens?: LensId) => void;
+  cleanupCanvas: (lens?: LensId, mode?: "compact" | "spacious") => void;
   toggleNodeLock: (nodeId: string) => void;
   addTagToNode: (nodeId: string, tag: string) => void;
   copyNodesById: (nodeIds: string[], edgeIds?: string[]) => void;
@@ -105,6 +108,10 @@ type GraphStoreActions = {
   updateScenarioNotes: (id: string, notes: string) => void;
   setComparisonScenario: (id: string | null) => void;
   clearComparison: () => void;
+  createPinView: (name: string, lens?: LensId) => string;
+  restorePinView: (id: string) => void;
+  deletePinView: (id: string) => void;
+  renamePinView: (id: string, name: string) => void;
   enterPathFinderMode: () => void;
   exitPathFinderMode: () => void;
   setPathNodes: (sourceId: string | null, targetId: string | null) => void;
@@ -162,6 +169,8 @@ const initialState: GraphStoreState = {
   scenarios: {},
   activeScenarioId: null,
   comparisonScenarioId: null,
+  pinViews: {},
+  activePinViewId: null,
   pathFinderMode: null,
   explorerMode: null,
   highlightedPath: null,
@@ -566,7 +575,7 @@ export const useGraphStore = create<GraphStore>()(
           state.document.lens_state[targetLens].layout.lastUpdated = now();
         });
       },
-      cleanupCanvas: (lens) => {
+      cleanupCanvas: (lens, mode = "spacious") => {
         withHistory(set, get, (state) => {
           const targetLens = lens ?? state.document.lens;
           ensureLensState(state.document, targetLens);
@@ -578,7 +587,8 @@ export const useGraphStore = create<GraphStore>()(
           const positions = calculateCleanupLayout(
             state.document.nodes,
             state.document.edges,
-            existingPositions
+            existingPositions,
+            mode
           );
           
           Object.entries(positions).forEach(([nodeId, position]) => {
@@ -798,6 +808,75 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
+      createPinView: (name, lens) => {
+        const id = `pin-${nanoid(10)}`;
+        set(
+          produce((state: GraphStoreState) => {
+            const targetLens = lens ?? state.document.lens;
+            ensureLensState(state.document, targetLens);
+            const lensState = state.document.lens_state[targetLens];
+            
+            const pinView: PinView = {
+              id,
+              name,
+              lens: targetLens,
+              positions: cloneDeep(lensState.layout.positions),
+              viewport: cloneDeep(lensState.layout.viewport),
+              createdAt: now(),
+            };
+            
+            state.pinViews[id] = pinView;
+            state.activePinViewId = id;
+          }),
+        );
+        return id;
+      },
+      restorePinView: (id) => {
+        set(
+          produce((state: GraphStoreState) => {
+            const pinView = state.pinViews[id];
+            if (!pinView) return;
+            
+            ensureLensState(state.document, pinView.lens);
+            const lensState = state.document.lens_state[pinView.lens];
+            
+            // Restore positions
+            Object.entries(pinView.positions).forEach(([nodeId, position]) => {
+              lensState.layout.positions[nodeId] = position;
+            });
+            
+            // Restore viewport
+            lensState.layout.viewport = cloneDeep(pinView.viewport);
+            lensState.layout.lastUpdated = now();
+            
+            // Switch to the lens if different
+            if (state.document.lens !== pinView.lens) {
+              state.document.lens = pinView.lens;
+            }
+            
+            state.activePinViewId = id;
+          }),
+        );
+      },
+      deletePinView: (id) => {
+        set(
+          produce((state: GraphStoreState) => {
+            delete state.pinViews[id];
+            if (state.activePinViewId === id) {
+              state.activePinViewId = null;
+            }
+          }),
+        );
+      },
+      renamePinView: (id, name) => {
+        set(
+          produce((state: GraphStoreState) => {
+            if (state.pinViews[id]) {
+              state.pinViews[id].name = name;
+            }
+          }),
+        );
+      },
       enterPathFinderMode: () => {
         set(
           produce((state: GraphStoreState) => {
@@ -872,6 +951,8 @@ export const useGraphStore = create<GraphStore>()(
         clipboard: state.clipboard,
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        pinViews: state.pinViews,
+        activePinViewId: state.activePinViewId,
       }),
       migrate: (persistedState: unknown) => {
         if (!persistedState || typeof persistedState !== "object") {
