@@ -86,6 +86,15 @@ npm run lint    # Run eslint across the project
 npm run build   # Production build (uses Turbopack)
 ```
 
+### Contributing
+
+This project follows a standard GitHub flow:
+1. Create a feature branch from `main`
+2. Make your changes
+3. Commit with clear messages
+4. Push and create a pull request
+5. Review and merge
+
 ### Next steps
 
 - CSV import wizard and schema migrations.
