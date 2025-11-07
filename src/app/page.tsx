@@ -16,6 +16,7 @@ import { AnalyticsSidebar } from '@/components/analytics-sidebar';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import { SearchFilterBar } from '@/components/search-filter-bar';
 import { BulkOperationsPanel } from '@/components/bulk-operations-panel';
+import { ResizablePanel } from '@/components/resizable-panel';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
 import { parseGraphDocument } from '@/lib/schema/validation';
@@ -221,24 +222,29 @@ export default function Home() {
           </div>
         </header>
 
-        <div className={`flex flex-col gap-8 xl:flex-row xl:items-start ${isCanvasFullScreen ? 'pointer-events-none opacity-40 blur-sm' : ''}`} aria-hidden={isCanvasFullScreen}>
-          <div className="flex-1">
-            <div className="relative h-[min(1000px,calc(100vh-260px))] min-h-[620px] w-full">
-              <HierarchyCanvas className="h-full" />
-              <button
-                type="button"
-                onClick={() => {
-                  setShowFullScreenPanel(false);
-                  setCanvasFullScreen(true);
-                }}
-                className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200"
-              >
-                <EnterFullScreenIcon className="h-3.5 w-3.5" />
-                Full canvas
-              </button>
-            </div>
-          </div>
-          <EditorPanel />
+        <div className={`${isCanvasFullScreen ? 'pointer-events-none opacity-40 blur-sm' : ''}`} aria-hidden={isCanvasFullScreen}>
+          <ResizablePanel
+            leftPanel={
+              <div className="relative h-[min(1000px,calc(100vh-260px))] min-h-[620px] w-full">
+                <HierarchyCanvas className="h-full" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFullScreenPanel(false);
+                    setCanvasFullScreen(true);
+                  }}
+                  className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200"
+                >
+                  <EnterFullScreenIcon className="h-3.5 w-3.5" />
+                  Full canvas
+                </button>
+              </div>
+            }
+            rightPanel={<EditorPanel />}
+            defaultLeftWidth={70}
+            minLeftWidth={40}
+            minRightWidth={20}
+          />
         </div>
       </div>
     </main>
