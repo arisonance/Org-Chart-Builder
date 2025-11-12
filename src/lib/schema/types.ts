@@ -31,6 +31,7 @@ export type PersonAttributes = {
   location?: string;
   costCenter?: string;
   notes?: string;
+  jobDescription?: string;
   tier?: NodeRoleTier;
 };
 

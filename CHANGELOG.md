@@ -1,6 +1,70 @@
 # Changelog
 
-## [Unreleased] - 2025-10-21
+## [Unreleased] - 2025-11-12
+
+### 🎯 Major Simplification - v2.0
+
+**Goal:** Dramatically simplified the app to focus on core matrix organization visualization and AI-powered bulk import for large-scale organizations.
+
+#### ✂️ Removed Features (60% complexity reduction)
+- **Deleted 17+ component files** for analytics, suggestions, and advanced UI
+- Removed span-of-control analytics and dashboards
+- Removed path finder and network explorer
+- Removed command palette (Cmd+K)
+- Removed bulk operations panel
+- Removed pin views and saved layouts
+- Removed connection mode overlays and FAB button
+- Removed hover quick-action buttons on nodes
+- Removed matrix assignment wizards
+
+#### ✨ Enhanced Features
+
+**AI Import System** - Now production-ready for bulk org chart ingestion:
+- Multi-file upload support (process multiple org chart images at once)
+- Batch processing with real-time progress indicators
+- Enhanced prompt specifically for matrix organizations
+- Better extraction of brands, channels, and departments from visual cues
+- Confidence scores displayed for each extracted person
+- Improved merge UI with visual badges and conflict detection
+- Retry logic with exponential backoff (up to 3 attempts)
+- Rate limiting (10 requests/minute per IP)
+- Graceful fallback between Claude and OpenAI APIs
+- Better error recovery and partial extraction support
+
+**Simplified Interactions:**
+- Keyboard shortcuts reduced to essentials: 1-4 (lenses), N/R/M (add people), Delete, Esc
+- Mouse-first interactions with streamlined right-click menus
+- Cleaner canvas without overlays and floating buttons
+- Focus on direct manipulation over complex wizards
+
+#### 🎨 Updated Components
+
+All components simplified to focus on core functionality:
+- `page.tsx` - Removed complex mode management, kept essentials
+- `hierarchy-canvas.tsx` - Simplified interaction model
+- `hierarchy-node.tsx` - Clean card design without hover buttons
+- `editor-panel.tsx` - Basic form focused on attributes
+- `graph-store.ts` - Removed unused state (connection mode, pin views, path finder, explorer)
+- `ai-import-wizard.tsx` - Complete rewrite for multi-file batch processing
+- `vision-parser.ts` - Enhanced prompts and retry logic
+- `parse-org-chart/route.ts` - Added rate limiting and better error handling
+
+#### 📦 Files Removed (17 total)
+- `analytics-sidebar.tsx`, `path-finder-panel.tsx`, `relationship-explorer.tsx`, `connection-suggestions.tsx`
+- `command-palette.tsx`, `bulk-operations-panel.tsx`, `matrix-assignment-wizard.tsx`, `matrix-conflict-panel.tsx`
+- `cross-dimensional-context.tsx`, `perspective-switcher.tsx`, `pin-view-manager.tsx`, `view-mode-toggle.tsx`
+- `category-column.tsx`, `org-chart.tsx`
+- `pathfinding.ts`, `network-analysis.ts`, `clustering.ts`, `span-of-control.ts`
+
+#### ⚡ Performance
+- Optimized for large organizations (100+ people)
+- Simplified rendering without complex overlays
+- Reduced bundle size by removing unused features
+- Faster load times and better responsiveness
+
+---
+
+## [Previous] - 2025-10-21
 
 ### Major Features Added
 

@@ -1,32 +1,23 @@
 'use client';
 
-import { BaseEdge, EdgeLabelRenderer, EdgeProps, getBezierPath, getSmoothStepPath } from '@xyflow/react';
+import { BaseEdge, EdgeProps, getSmoothStepPath } from '@xyflow/react';
 import { RELATIONSHIP_COLORS } from '@/lib/theme/palette';
 import type { GraphEdge } from '@/lib/schema/types';
 
-type EnhancedEdgeData = GraphEdge & {
-  sharedDimensions?: {
-    brands: string[];
-    channels: string[];
-    departments: string[];
-  };
-  isCrossDimension?: boolean;
-};
+type EnhancedEdgeData = GraphEdge;
 
 export function ManagerEdge({
-  id,
   sourceX,
   sourceY,
   targetX,
   targetY,
   sourcePosition,
   targetPosition,
-  style = {},
+  style,
   markerEnd,
   selected,
-  data,
 }: EdgeProps<EnhancedEdgeData>) {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -35,47 +26,18 @@ export function ManagerEdge({
     targetPosition,
   });
 
-  const sharedDimensions = data?.sharedDimensions;
-  const isCrossDimension = data?.isCrossDimension;
-  const hasSharedDimensions = sharedDimensions && (
-    sharedDimensions.brands.length > 0 ||
-    sharedDimensions.channels.length > 0 ||
-    sharedDimensions.departments.length > 0
-  );
+  const edgeStyle = {
+    stroke: selected ? RELATIONSHIP_COLORS.manager : RELATIONSHIP_COLORS.manager,
+    strokeWidth: selected ? 3 : 2.5,
+    ...(style || {}),
+  };
 
   return (
-    <>
-      <BaseEdge
-        path={edgePath}
-        markerEnd={markerEnd}
-        style={{
-          ...style,
-          stroke: selected ? RELATIONSHIP_COLORS.manager : style.stroke || RELATIONSHIP_COLORS.manager,
-          strokeWidth: selected ? 3 : style.strokeWidth || 2.5,
-        }}
-      />
-      {hasSharedDimensions && selected && (
-        <EdgeLabelRenderer>
-          <div
-            style={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              fontSize: 10,
-              pointerEvents: 'all',
-            }}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-lg dark:border-white/10 dark:bg-slate-900"
-          >
-            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-              Shared: {[
-                ...(sharedDimensions.brands.length > 0 ? [`${sharedDimensions.brands.length} brand${sharedDimensions.brands.length > 1 ? 's' : ''}`] : []),
-                ...(sharedDimensions.channels.length > 0 ? [`${sharedDimensions.channels.length} channel${sharedDimensions.channels.length > 1 ? 's' : ''}`] : []),
-                ...(sharedDimensions.departments.length > 0 ? [`${sharedDimensions.departments.length} dept${sharedDimensions.departments.length > 1 ? 's' : ''}`] : []),
-              ].join(', ')}
-            </div>
-          </div>
-        </EdgeLabelRenderer>
-      )}
-    </>
+    <BaseEdge
+      path={edgePath}
+      markerEnd={markerEnd}
+      style={edgeStyle}
+    />
   );
 }
 
@@ -87,12 +49,10 @@ export function SponsorEdge({
   targetY,
   sourcePosition,
   targetPosition,
-  style = {},
-  markerEnd,
+  style,
   selected,
-  data,
-}: EdgeProps) {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+}: EdgeProps<EnhancedEdgeData>) {
+  const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -100,6 +60,12 @@ export function SponsorEdge({
     targetY,
     targetPosition,
   });
+
+  const edgeStyle = {
+    stroke: selected ? RELATIONSHIP_COLORS.sponsor : RELATIONSHIP_COLORS.sponsor,
+    strokeWidth: selected ? 3 : 2.5,
+    ...(style || {}),
+  };
 
   return (
     <>
@@ -123,30 +89,24 @@ export function SponsorEdge({
       <BaseEdge
         path={edgePath}
         markerEnd={`url(#diamond-${id})`}
-        style={{
-          ...style,
-          stroke: selected ? RELATIONSHIP_COLORS.sponsor : style.stroke || RELATIONSHIP_COLORS.sponsor,
-          strokeWidth: selected ? 3 : style.strokeWidth || 2.5,
-        }}
+        style={edgeStyle}
       />
     </>
   );
 }
 
 export function DottedEdge({
-  id,
   sourceX,
   sourceY,
   targetX,
   targetY,
   sourcePosition,
   targetPosition,
-  style = {},
+  style,
   markerEnd,
   selected,
-  data,
-}: EdgeProps) {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+}: EdgeProps<EnhancedEdgeData>) {
+  const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -155,19 +115,19 @@ export function DottedEdge({
     targetPosition,
   });
 
+  const edgeStyle = {
+    stroke: selected ? RELATIONSHIP_COLORS.dotted : RELATIONSHIP_COLORS.dotted,
+    strokeWidth: selected ? 3 : 2.5,
+    strokeDasharray: '6 6',
+    ...(style || {}),
+  };
+
   return (
-    <>
-      <BaseEdge
-        path={edgePath}
-        markerEnd={markerEnd}
-        style={{
-          ...style,
-          stroke: selected ? RELATIONSHIP_COLORS.dotted : style.stroke || RELATIONSHIP_COLORS.dotted,
-          strokeWidth: selected ? 3 : style.strokeWidth || 2.5,
-          strokeDasharray: '6 6',
-        }}
-      />
-    </>
+    <BaseEdge
+      path={edgePath}
+      markerEnd={markerEnd}
+      style={edgeStyle}
+    />
   );
 }
 

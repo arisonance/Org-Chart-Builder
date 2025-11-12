@@ -1,21 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, MagnifyingGlassIcon, Component1Icon } from '@radix-ui/react-icons';
+import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, Component1Icon } from '@radix-ui/react-icons';
 import { ZodError } from 'zod';
 import { HierarchyCanvas } from '@/components/hierarchy-canvas';
 import { EditorPanel } from '@/components/editor-panel';
 import { LensSwitcher } from '@/components/lens-switcher';
-import { CommandPalette } from '@/components/command-palette';
 import { ScenarioManager } from '@/components/scenario-manager';
-import { PinViewManager } from '@/components/pin-view-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
-import { PathFinderPanel } from '@/components/path-finder-panel';
-import { RelationshipExplorer } from '@/components/relationship-explorer';
-import { AnalyticsSidebar } from '@/components/analytics-sidebar';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import { SearchFilterBar } from '@/components/search-filter-bar';
-import { BulkOperationsPanel } from '@/components/bulk-operations-panel';
 import { ResizablePanel } from '@/components/resizable-panel';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
@@ -31,13 +25,8 @@ export default function Home() {
   const exportDocument = useGraphStore((state) => state.exportDocument);
   const importDocument = useGraphStore((state) => state.importDocument);
   const resetToDemo = useGraphStore((state) => state.resetToDemo);
-  const toggleCommandPalette = useGraphStore((state) => state.toggleCommandPalette);
   const scenarios = useGraphStore((state) => state.scenarios);
-  const comparisonScenarioId = useGraphStore((state) => state.comparisonScenarioId);
   const setComparisonScenario = useGraphStore((state) => state.setComparisonScenario);
-  const enterPathFinderMode = useGraphStore((state) => state.enterPathFinderMode);
-  const enterExplorerMode = useGraphStore((state) => state.enterExplorerMode);
-  const selection = useGraphStore((state) => state.selection);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCanvasFullScreen, setCanvasFullScreen] = useState(false);
@@ -49,39 +38,33 @@ export default function Home() {
 
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
 
-  // Command palette keyboard shortcut (⌘/Ctrl + K)
+  // Lens switcher keyboard shortcuts (1-4)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        toggleCommandPalette();
+      // Don't trigger if typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
       }
-      // Path finder mode (P key)
-      if (e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+      
+      // Lens switching (1, 2, 3, 4 keys)
+      if (e.key === '1' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        enterPathFinderMode();
-      }
-      // Explorer mode (E key) - only if node is selected
-      if (e.key === 'e' && !e.metaKey && !e.ctrlKey && !e.shiftKey && selection.nodeIds.length === 1) {
+        setLens('hierarchy');
+      } else if (e.key === '2' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        enterExplorerMode(selection.nodeIds[0]);
-      }
-      // Quick dimension switcher (B, C, D keys)
-      if ((e.key === 'b' || e.key === 'c' || e.key === 'd') && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        // Don't trigger if typing in an input
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-          return;
-        }
+        setLens('brand');
+      } else if (e.key === '3' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        if (e.key === 'b') setLens('brand');
-        else if (e.key === 'c') setLens('channel');
-        else if (e.key === 'd') setLens('department');
+        setLens('channel');
+      } else if (e.key === '4' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setLens('department');
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [toggleCommandPalette, enterPathFinderMode, enterExplorerMode, selection.nodeIds, setLens]);
+  }, [setLens]);
 
   useEffect(() => {
     if (isCanvasFullScreen) {
@@ -117,7 +100,7 @@ export default function Home() {
       console.error('Failed to import document', error);
       const message =
         error instanceof ZodError
-          ? error.errors.map((issue) => issue.message).join('\n')
+          ? error.issues.map((issue) => issue.message).join('\n')
           : 'Unable to import file. Please ensure it is a valid export.';
       window.alert(message);
     } finally {
@@ -127,12 +110,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <CommandPalette />
       <ScenarioComparison />
-      <PathFinderPanel />
-      <RelationshipExplorer />
-      <AnalyticsSidebar />
-      <BulkOperationsPanel />
       {showAIImport && <AIImportWizard onClose={() => setShowAIImport(false)} />}
       {showComparisonPicker && (
         <ComparisonPickerDialog
@@ -174,13 +152,11 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-3">
               <LensSwitcher activeLens={lens} onChange={setLens} />
               <ScenarioManager />
-              <PinViewManager />
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <ToolbarButton label="Undo" onClick={undo} />
               <ToolbarButton label="Redo" onClick={redo} />
               <ToolbarButton label="Auto layout" onClick={() => autoLayout(lens)} />
-              <ToolbarButton label="Path Finder" onClick={enterPathFinderMode} icon={<MagnifyingGlassIcon className="h-4 w-4" />} />
               <ToolbarButton 
                 label="Compare Scenarios" 
                 onClick={() => setShowComparisonPicker(true)}
@@ -190,7 +166,7 @@ export default function Home() {
               <ToolbarButton 
                 label="AI Import" 
                 onClick={() => setShowAIImport(true)}
-                icon={<MagnifyingGlassIcon className="h-4 w-4" />}
+                icon={<UploadIcon className="h-4 w-4" />}
               />
               <ToolbarButton label="Export JSON" onClick={handleExport} icon={<DownloadIcon className="h-4 w-4" />} />
               <ToolbarButton

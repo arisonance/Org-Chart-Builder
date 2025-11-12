@@ -4,7 +4,7 @@ import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
 import { DEMO_GRAPH_DOCUMENT } from "@/data/demo-graph";
-import { calculateLayout, autoLayoutDocument, calculateMatrixLayout, calculateSwimLaneLayout, calculateClusterLayout, calculateCleanupLayout } from "@/lib/graph/layout";
+import { calculateLayout, calculateCleanupLayout } from "@/lib/graph/layout";
 import type {
   ClipboardPayload,
   GraphDocument,
@@ -14,7 +14,6 @@ import type {
   LayoutState,
   LensState,
   PersonAttributes,
-  PinView,
   RelationshipType,
   SelectionState,
   XY,
@@ -37,31 +36,9 @@ type GraphStoreState = {
   selection: SelectionState;
   clipboard: ClipboardPayload | null;
   history: HistoryStack;
-  isCommandPaletteOpen: boolean;
-  connectionMode: {
-    active: boolean;
-    nodeId: string | null;
-    type: RelationshipType;
-  } | null;
   scenarios: Record<string, Scenario>;
   activeScenarioId: string | null;
   comparisonScenarioId: string | null;
-  pinViews: Record<string, PinView>;
-  activePinViewId: string | null;
-  pathFinderMode: {
-    active: boolean;
-    sourceId: string | null;
-    targetId: string | null;
-  } | null;
-  explorerMode: {
-    active: boolean;
-    focusNodeId: string | null;
-    depth: number;
-  } | null;
-  highlightedPath: {
-    nodeIds: string[];
-    edgeIds: string[];
-  } | null;
 };
 
 type GraphStoreActions = {
@@ -97,10 +74,6 @@ type GraphStoreActions = {
   undo: () => void;
   redo: () => void;
   pushHistory: () => void;
-  toggleCommandPalette: (open?: boolean) => void;
-  enterConnectionMode: (nodeId: string, type: RelationshipType) => void;
-  exitConnectionMode: () => void;
-  connectInConnectionMode: (targetId: string) => void;
   createScenario: (name: string, description?: string, fromCurrent?: boolean) => string;
   switchScenario: (id: string) => void;
   deleteScenario: (id: string) => void;
@@ -108,17 +81,6 @@ type GraphStoreActions = {
   updateScenarioNotes: (id: string, notes: string) => void;
   setComparisonScenario: (id: string | null) => void;
   clearComparison: () => void;
-  createPinView: (name: string, lens?: LensId) => string;
-  restorePinView: (id: string) => void;
-  deletePinView: (id: string) => void;
-  renamePinView: (id: string, name: string) => void;
-  enterPathFinderMode: () => void;
-  exitPathFinderMode: () => void;
-  setPathNodes: (sourceId: string | null, targetId: string | null) => void;
-  enterExplorerMode: (nodeId: string, depth?: number) => void;
-  exitExplorerMode: () => void;
-  highlightPath: (nodeIds: string[], edgeIds: string[]) => void;
-  clearHighlightedPath: () => void;
 };
 
 export type GraphStore = GraphStoreState & GraphStoreActions;
@@ -135,6 +97,7 @@ type AddPersonPayload = {
   tags?: string[];
   location?: string;
   costCenter?: string;
+  jobDescription?: string;
   tier?: PersonAttributes["tier"];
   position?: XY;
 };
@@ -164,16 +127,9 @@ const initialState: GraphStoreState = {
     past: [],
     future: [],
   },
-  isCommandPaletteOpen: false,
-  connectionMode: null,
   scenarios: {},
   activeScenarioId: null,
   comparisonScenarioId: null,
-  pinViews: {},
-  activePinViewId: null,
-  pathFinderMode: null,
-  explorerMode: null,
-  highlightedPath: null,
 };
 
 const withHistory = (
@@ -332,6 +288,7 @@ export const useGraphStore = create<GraphStore>()(
               tags: payload.tags ?? [],
               location: payload.location,
               costCenter: payload.costCenter,
+              jobDescription: payload.jobDescription,
               tier: payload.tier ?? "manager",
             },
           };
@@ -555,19 +512,8 @@ export const useGraphStore = create<GraphStore>()(
           const targetLens = lens ?? state.document.lens;
           ensureLensState(state.document, targetLens);
           
-          let positions: Record<string, { x: number; y: number }>;
-          
-          // Use matrix-aware layouts for matrix lenses
-          if (targetLens === 'brand') {
-            positions = calculateMatrixLayout(state.document.nodes, state.document.edges, targetLens, 'brand');
-          } else if (targetLens === 'channel') {
-            positions = calculateMatrixLayout(state.document.nodes, state.document.edges, targetLens, 'channel');
-          } else if (targetLens === 'department') {
-            positions = calculateMatrixLayout(state.document.nodes, state.document.edges, targetLens, 'department');
-          } else {
-            // Default hierarchy layout
-            positions = calculateLayout(state.document.nodes, state.document.edges);
-          }
+          // Use basic hierarchical layout for all lenses
+          const positions = calculateLayout(state.document.nodes, state.document.edges);
           
           Object.entries(positions).forEach(([nodeId, position]) => {
             state.document.lens_state[targetLens].layout.positions[nodeId] = position;
@@ -671,58 +617,6 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
-      toggleCommandPalette: (open) => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.isCommandPaletteOpen =
-              typeof open === "boolean" ? open : !state.isCommandPaletteOpen;
-          }),
-        );
-      },
-      enterConnectionMode: (nodeId, type) => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.connectionMode = {
-              active: true,
-              nodeId,
-              type,
-            };
-          }),
-        );
-      },
-      exitConnectionMode: () => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.connectionMode = null;
-          }),
-        );
-      },
-      connectInConnectionMode: (targetId) => {
-        const state = get();
-        if (!state.connectionMode?.active || !state.connectionMode.nodeId) return;
-        
-        const { nodeId, type } = state.connectionMode;
-        
-        // Determine source and target based on relationship type
-        let sourceId: string;
-        let destId: string;
-        
-        if (type === "manager") {
-          // For manager relationships: target reports to the clicked node
-          sourceId = targetId;
-          destId = nodeId;
-        } else {
-          // For sponsor/dotted: the new node connects to the clicked node
-          sourceId = nodeId;
-          destId = targetId;
-        }
-        
-        // Create the relationship
-        state.addRelationship(sourceId, destId, type);
-        
-        // Exit connection mode
-        state.exitConnectionMode();
-      },
       createScenario: (name, description, fromCurrent = true) => {
         const id = `scenario-${nanoid(10)}`;
         set(
@@ -808,139 +702,6 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
-      createPinView: (name, lens) => {
-        const id = `pin-${nanoid(10)}`;
-        set(
-          produce((state: GraphStoreState) => {
-            const targetLens = lens ?? state.document.lens;
-            ensureLensState(state.document, targetLens);
-            const lensState = state.document.lens_state[targetLens];
-            
-            const pinView: PinView = {
-              id,
-              name,
-              lens: targetLens,
-              positions: cloneDeep(lensState.layout.positions),
-              viewport: cloneDeep(lensState.layout.viewport),
-              createdAt: now(),
-            };
-            
-            state.pinViews[id] = pinView;
-            state.activePinViewId = id;
-          }),
-        );
-        return id;
-      },
-      restorePinView: (id) => {
-        set(
-          produce((state: GraphStoreState) => {
-            const pinView = state.pinViews[id];
-            if (!pinView) return;
-            
-            ensureLensState(state.document, pinView.lens);
-            const lensState = state.document.lens_state[pinView.lens];
-            
-            // Restore positions
-            Object.entries(pinView.positions).forEach(([nodeId, position]) => {
-              lensState.layout.positions[nodeId] = position;
-            });
-            
-            // Restore viewport
-            lensState.layout.viewport = cloneDeep(pinView.viewport);
-            lensState.layout.lastUpdated = now();
-            
-            // Switch to the lens if different
-            if (state.document.lens !== pinView.lens) {
-              state.document.lens = pinView.lens;
-            }
-            
-            state.activePinViewId = id;
-          }),
-        );
-      },
-      deletePinView: (id) => {
-        set(
-          produce((state: GraphStoreState) => {
-            delete state.pinViews[id];
-            if (state.activePinViewId === id) {
-              state.activePinViewId = null;
-            }
-          }),
-        );
-      },
-      renamePinView: (id, name) => {
-        set(
-          produce((state: GraphStoreState) => {
-            if (state.pinViews[id]) {
-              state.pinViews[id].name = name;
-            }
-          }),
-        );
-      },
-      enterPathFinderMode: () => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.pathFinderMode = {
-              active: true,
-              sourceId: null,
-              targetId: null,
-            };
-            state.explorerMode = null;
-          }),
-        );
-      },
-      exitPathFinderMode: () => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.pathFinderMode = null;
-            state.highlightedPath = null;
-          }),
-        );
-      },
-      setPathNodes: (sourceId, targetId) => {
-        set(
-          produce((state: GraphStoreState) => {
-            if (state.pathFinderMode) {
-              state.pathFinderMode.sourceId = sourceId;
-              state.pathFinderMode.targetId = targetId;
-            }
-          }),
-        );
-      },
-      enterExplorerMode: (nodeId, depth = 2) => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.explorerMode = {
-              active: true,
-              focusNodeId: nodeId,
-              depth,
-            };
-            state.pathFinderMode = null;
-          }),
-        );
-      },
-      exitExplorerMode: () => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.explorerMode = null;
-            state.highlightedPath = null;
-          }),
-        );
-      },
-      highlightPath: (nodeIds, edgeIds) => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.highlightedPath = { nodeIds, edgeIds };
-          }),
-        );
-      },
-      clearHighlightedPath: () => {
-        set(
-          produce((state: GraphStoreState) => {
-            state.highlightedPath = null;
-          }),
-        );
-      },
     })),
     {
       name: "org-chart-graph-state",
@@ -951,8 +712,6 @@ export const useGraphStore = create<GraphStore>()(
         clipboard: state.clipboard,
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
-        pinViews: state.pinViews,
-        activePinViewId: state.activePinViewId,
       }),
       migrate: (persistedState: unknown) => {
         if (!persistedState || typeof persistedState !== "object") {

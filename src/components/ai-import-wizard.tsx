@@ -4,16 +4,24 @@ import { useState, useCallback } from 'react';
 import { Cross2Icon, UploadIcon, CheckIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { useGraphStore } from '@/store/graph-store';
 import { parseOrgChartImage, fileToBase64, validateExtraction, type ParsedOrgChart, type ParsedPerson } from '@/lib/ai/vision-parser';
-import { findDuplicates, suggestMergeStrategies, type MergeDecision, type DuplicateMatch } from '@/lib/ai/duplicate-detection';
-import type { PersonNode } from '@/lib/schema/types';
+import { suggestMergeStrategies, type MergeDecision } from '@/lib/ai/duplicate-detection';
+import type { GraphNode, PersonAttributes } from '@/lib/schema/types';
 
 type WizardStep = 'upload' | 'processing' | 'review' | 'complete';
 
+type FileWithStatus = {
+  file: File;
+  status: 'pending' | 'processing' | 'success' | 'error';
+  extractedData?: ParsedOrgChart;
+  error?: string;
+  previewUrl: string;
+};
+
 export function AIImportWizard({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<WizardStep>('upload');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [extractedData, setExtractedData] = useState<ParsedOrgChart | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<FileWithStatus[]>([]);
+  const [currentProcessingIndex, setCurrentProcessingIndex] = useState(0);
+  const [allExtractedData, setAllExtractedData] = useState<ParsedOrgChart[]>([]);
   const [mergeDecisions, setMergeDecisions] = useState<MergeDecision[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,66 +30,136 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
   const updatePerson = useGraphStore((state) => state.updatePerson);
   const addRelationship = useGraphStore((state) => state.addRelationship);
 
-  const handleFileSelect = useCallback((file: File) => {
-    setSelectedFile(file);
+  const handleFilesSelect = useCallback((files: FileList) => {
     setError(null);
-
-    // Create preview URL
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    const newFiles: FileWithStatus[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+        newFiles.push({
+          file,
+          status: 'pending',
+          previewUrl: URL.createObjectURL(file),
+        });
+      }
+    }
+    
+    if (newFiles.length === 0) {
+      setError('Please upload valid image (PNG, JPG) or PDF files');
+      return;
+    }
+    
+    setSelectedFiles(prev => [...prev, ...newFiles]);
   }, []);
 
   const handleFileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
-      handleFileSelect(file);
-    } else {
-      setError('Please upload an image (PNG, JPG) or PDF file');
+    if (e.dataTransfer.files.length > 0) {
+      handleFilesSelect(e.dataTransfer.files);
     }
-  }, [handleFileSelect]);
+  }, [handleFilesSelect]);
+
+  const removeFile = useCallback((index: number) => {
+    setSelectedFiles(prev => {
+      const newFiles = [...prev];
+      URL.revokeObjectURL(newFiles[index].previewUrl);
+      newFiles.splice(index, 1);
+      return newFiles;
+    });
+  }, []);
 
   const handleProcess = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     setStep('processing');
     setError(null);
+    setCurrentProcessingIndex(0);
 
-    try {
-      // Convert file to base64
-      const base64 = await fileToBase64(selectedFile);
+    const extractedResults: ParsedOrgChart[] = [];
 
-      // Call AI vision parser
-      const parsed = await parseOrgChartImage(base64, selectedFile.type);
+    // Process each file sequentially
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const fileStatus = selectedFiles[i];
+      setCurrentProcessingIndex(i);
+      
+      // Update status to processing
+      setSelectedFiles(prev => {
+        const updated = [...prev];
+        updated[i].status = 'processing';
+        return updated;
+      });
 
-      // Validate extraction
-      const validation = validateExtraction(parsed);
-      if (!validation.isValid) {
-        setError(`Extraction failed: ${validation.errors.join(', ')}`);
-        setStep('upload');
-        return;
+      try {
+        // Convert file to base64
+        const base64 = await fileToBase64(fileStatus.file);
+
+        // Call AI vision parser
+        const parsed = await parseOrgChartImage(base64, fileStatus.file.type);
+
+        // Validate extraction
+        const validation = validateExtraction(parsed);
+        if (!validation.isValid) {
+          throw new Error(validation.errors.join(', '));
+        }
+
+        if (validation.warnings.length > 0) {
+          console.warn('Extraction warnings:', validation.warnings);
+        }
+
+        extractedResults.push(parsed);
+
+        // Update status to success
+        setSelectedFiles(prev => {
+          const updated = [...prev];
+          updated[i].status = 'success';
+          updated[i].extractedData = parsed;
+          return updated;
+        });
+      } catch (err) {
+        console.error('Processing error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to process file';
+        
+        // Update status to error
+        setSelectedFiles(prev => {
+          const updated = [...prev];
+          updated[i].status = 'error';
+          updated[i].error = errorMessage;
+          return updated;
+        });
       }
-
-      if (validation.warnings.length > 0) {
-        console.warn('Extraction warnings:', validation.warnings);
-      }
-
-      setExtractedData(parsed);
-
-      // Generate merge suggestions
-      const decisions = suggestMergeStrategies(parsed.people, nodes);
-      setMergeDecisions(decisions);
-
-      setStep('review');
-    } catch (err) {
-      console.error('Processing error:', err);
-      setError('Failed to process file. Please try again.');
-      setStep('upload');
     }
+
+    // Combine all extracted people and relationships
+    const allPeople: ParsedPerson[] = [];
+    const allRelationships: ParsedOrgChart['relationships'] = [];
+    
+    for (const data of extractedResults) {
+      allPeople.push(...data.people);
+      allRelationships.push(...data.relationships);
+    }
+
+    const combinedData: ParsedOrgChart = {
+      people: allPeople,
+      relationships: allRelationships,
+      metadata: {
+        source: `${extractedResults.length} files`,
+        extractedAt: new Date().toISOString(),
+        modelUsed: extractedResults[0]?.metadata.modelUsed || 'unknown',
+      },
+    };
+
+    setAllExtractedData(extractedResults);
+
+    // Generate merge suggestions for all people
+    const decisions = suggestMergeStrategies(combinedData.people, nodes);
+    setMergeDecisions(decisions);
+
+    setStep('review');
   };
 
   const handleApplyChanges = async () => {
-    if (!extractedData) return;
+    if (allExtractedData.length === 0) return;
 
     const nodeIdMap = new Map<string, string>(); // parsed name -> created node ID
 
@@ -95,16 +173,18 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
       } else if (decision.strategy === 'update') {
         // Update existing node
         if (decision.existingNodeId) {
-          updatePerson(decision.existingNodeId, {
+          const updates: Partial<GraphNode> = {
             name: decision.parsedPerson.name,
             attributes: {
               title: decision.parsedPerson.title,
               brands: decision.parsedPerson.brands || [],
               channels: decision.parsedPerson.channels || [],
               departments: decision.parsedPerson.departments || [],
+              tags: [],
               location: decision.parsedPerson.location,
-            } as any,
-          });
+            } as PersonAttributes,
+          };
+          updatePerson(decision.existingNodeId, updates);
           nodeIdMap.set(decision.parsedPerson.name, decision.existingNodeId);
         }
       } else {
@@ -121,13 +201,15 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
       }
     }
 
-    // Create relationships
-    for (const rel of extractedData.relationships) {
-      const sourceId = nodeIdMap.get(rel.from);
-      const targetId = nodeIdMap.get(rel.to);
+    // Create relationships from all extracted data
+    for (const data of allExtractedData) {
+      for (const rel of data.relationships) {
+        const sourceId = nodeIdMap.get(rel.from);
+        const targetId = nodeIdMap.get(rel.to);
 
-      if (sourceId && targetId) {
-        addRelationship(sourceId, targetId, rel.type);
+        if (sourceId && targetId) {
+          addRelationship(sourceId, targetId, rel.type);
+        }
       }
     }
 
@@ -166,20 +248,24 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
         <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 140px)' }}>
           {step === 'upload' && (
             <UploadStep
-              selectedFile={selectedFile}
-              previewUrl={previewUrl}
+              selectedFiles={selectedFiles}
               error={error}
-              onFileSelect={handleFileSelect}
+              onFilesSelect={handleFilesSelect}
               onFileDrop={handleFileDrop}
+              onRemoveFile={removeFile}
               onProcess={handleProcess}
             />
           )}
 
-          {step === 'processing' && <ProcessingStep />}
+          {step === 'processing' && (
+            <ProcessingStep 
+              files={selectedFiles}
+              currentIndex={currentProcessingIndex}
+            />
+          )}
 
-          {step === 'review' && extractedData && (
+          {step === 'review' && (
             <ReviewStep
-              extractedData={extractedData}
               mergeDecisions={mergeDecisions}
               nodes={nodes}
               onDecisionChange={handleDecisionChange}
@@ -200,18 +286,18 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
 }
 
 function UploadStep({
-  selectedFile,
-  previewUrl,
+  selectedFiles,
   error,
-  onFileSelect,
+  onFilesSelect,
   onFileDrop,
+  onRemoveFile,
   onProcess,
 }: {
-  selectedFile: File | null;
-  previewUrl: string | null;
+  selectedFiles: FileWithStatus[];
   error: string | null;
-  onFileSelect: (file: File) => void;
+  onFilesSelect: (files: FileList) => void;
   onFileDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onRemoveFile: (index: number) => void;
   onProcess: () => void;
 }) {
   return (
@@ -220,47 +306,68 @@ function UploadStep({
       <div
         onDrop={onFileDrop}
         onDragOver={(e) => e.preventDefault()}
-        className="group relative flex min-h-[300px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 transition hover:border-sky-400 hover:bg-sky-50 dark:border-white/20 dark:bg-slate-800/50 dark:hover:border-sky-600 dark:hover:bg-sky-950/20"
+        className="group relative flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 transition hover:border-sky-400 hover:bg-sky-50 dark:border-white/20 dark:bg-slate-800/50 dark:hover:border-sky-600 dark:hover:bg-sky-950/20"
       >
         <input
           type="file"
           accept="image/*,application/pdf"
+          multiple
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onFileSelect(file);
+            if (e.target.files && e.target.files.length > 0) {
+              onFilesSelect(e.target.files);
+            }
           }}
           className="absolute inset-0 cursor-pointer opacity-0"
         />
 
-        {previewUrl ? (
-          <div className="text-center">
-            <img
-              src={previewUrl}
-              alt="Preview"
-              className="mx-auto max-h-64 rounded-lg shadow-lg"
-            />
-            <p className="mt-4 text-sm font-medium text-slate-900 dark:text-white">
-              {selectedFile?.name}
-            </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Click to change file
-            </p>
-          </div>
-        ) : (
-          <div className="text-center">
-            <UploadIcon className="mx-auto h-12 w-12 text-slate-400 group-hover:text-sky-600" />
-            <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">
-              Drop org chart here
-            </p>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              or click to browse
-            </p>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Supports PNG, JPG, PDF
-            </p>
-          </div>
-        )}
+        <div className="text-center">
+          <UploadIcon className="mx-auto h-12 w-12 text-slate-400 group-hover:text-sky-600" />
+          <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">
+            Drop org charts here
+          </p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            or click to browse (multiple files supported)
+          </p>
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Supports PNG, JPG, PDF
+          </p>
+        </div>
       </div>
+
+      {/* Selected Files */}
+      {selectedFiles.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="font-semibold text-slate-900 dark:text-white">
+            Selected Files ({selectedFiles.length})
+          </h4>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {selectedFiles.map((fileStatus, index) => (
+              <div
+                key={index}
+                className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-800"
+              >
+                <img
+                  src={fileStatus.previewUrl}
+                  alt={fileStatus.file.name}
+                  className="aspect-video w-full object-cover"
+                />
+                <button
+                  onClick={() => onRemoveFile(index)}
+                  className="absolute right-1 top-1 rounded-full bg-rose-600 p-1 text-white opacity-0 transition hover:bg-rose-700 group-hover:opacity-100"
+                  type="button"
+                >
+                  <Cross2Icon className="h-3 w-3" />
+                </button>
+                <div className="p-2">
+                  <p className="truncate text-xs text-slate-600 dark:text-slate-300">
+                    {fileStatus.file.name}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-rose-50 p-4 dark:bg-rose-900/20">
@@ -288,41 +395,99 @@ function UploadStep({
       <button
         type="button"
         onClick={onProcess}
-        disabled={!selectedFile}
+        disabled={selectedFiles.length === 0}
         className="w-full rounded-xl bg-sky-600 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Process with AI
+        Process {selectedFiles.length} {selectedFiles.length === 1 ? 'File' : 'Files'} with AI
       </button>
     </div>
   );
 }
 
-function ProcessingStep() {
+function ProcessingStep({
+  files,
+  currentIndex,
+}: {
+  files: FileWithStatus[];
+  currentIndex: number;
+}) {
+  const completedCount = files.filter(f => f.status === 'success').length;
+  const progressPercent = (completedCount / files.length) * 100;
+
   return (
-    <div className="flex min-h-[300px] flex-col items-center justify-center space-y-6">
-      <div className="h-16 w-16 animate-spin rounded-full border-4 border-slate-200 border-t-sky-600 dark:border-slate-700 dark:border-t-sky-400"></div>
-      <div className="text-center">
-        <p className="text-lg font-semibold text-slate-900 dark:text-white">
-          AI is analyzing your org chart...
-        </p>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          Extracting people, roles, and relationships
-        </p>
+    <div className="space-y-6">
+      <div className="flex min-h-[200px] flex-col items-center justify-center space-y-6">
+        <div className="h-16 w-16 animate-spin rounded-full border-4 border-slate-200 border-t-sky-600 dark:border-slate-700 dark:border-t-sky-400"></div>
+        <div className="text-center">
+          <p className="text-lg font-semibold text-slate-900 dark:text-white">
+            AI is analyzing your org charts...
+          </p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Processing file {currentIndex + 1} of {files.length}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div>
+        <div className="mb-2 flex items-center justify-between text-sm">
+          <span className="font-medium text-slate-900 dark:text-white">Progress</span>
+          <span className="text-slate-600 dark:text-slate-300">
+            {completedCount} / {files.length} complete
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div
+            className="h-full bg-sky-600 transition-all duration-500"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+
+      {/* File Status List */}
+      <div className="max-h-60 space-y-2 overflow-y-auto">
+        {files.map((file, index) => (
+          <div
+            key={index}
+            className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-slate-800"
+          >
+            <div className="flex-shrink-0">
+              {file.status === 'success' && (
+                <CheckIcon className="h-5 w-5 text-emerald-600" />
+              )}
+              {file.status === 'error' && (
+                <ExclamationTriangleIcon className="h-5 w-5 text-rose-600" />
+              )}
+              {file.status === 'processing' && (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600" />
+              )}
+              {file.status === 'pending' && (
+                <div className="h-5 w-5 rounded-full border-2 border-slate-300" />
+              )}
+            </div>
+            <div className="flex-1 truncate">
+              <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+                {file.file.name}
+              </p>
+              {file.error && (
+                <p className="truncate text-xs text-rose-600 dark:text-rose-400">{file.error}</p>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 function ReviewStep({
-  extractedData,
   mergeDecisions,
   nodes,
   onDecisionChange,
   onApply,
 }: {
-  extractedData: ParsedOrgChart;
   mergeDecisions: MergeDecision[];
-  nodes: any[];
+  nodes: GraphNode[];
   onDecisionChange: (index: number, strategy: MergeDecision['strategy']) => void;
   onApply: () => void;
 }) {
@@ -387,23 +552,61 @@ function PersonDecisionCard({
   onChange,
 }: {
   decision: MergeDecision;
-  nodes: any[];
+  nodes: GraphNode[];
   onChange: (strategy: MergeDecision['strategy']) => void;
 }) {
   const existingNode = decision.existingNodeId
     ? nodes.find((n) => n.id === decision.existingNodeId)
     : null;
 
+  const confidence = decision.parsedPerson.confidence;
+  const confidenceBadge = confidence < 0.6 ? (
+    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+      Low Confidence ({Math.round(confidence * 100)}%)
+    </span>
+  ) : confidence < 0.8 ? (
+    <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-400">
+      Medium ({Math.round(confidence * 100)}%)
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+      High ({Math.round(confidence * 100)}%)
+    </span>
+  );
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-800">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="font-medium text-slate-900 dark:text-white">
-            {decision.parsedPerson.name}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="font-medium text-slate-900 dark:text-white">
+              {decision.parsedPerson.name}
+            </div>
+            {confidenceBadge}
           </div>
           <div className="text-sm text-slate-600 dark:text-slate-300">
             {decision.parsedPerson.title}
           </div>
+          {(decision.parsedPerson.brands?.length || decision.parsedPerson.departments?.length) && (
+            <div className="flex flex-wrap gap-1">
+              {decision.parsedPerson.brands?.map((brand) => (
+                <span
+                  key={brand}
+                  className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
+                >
+                  {brand}
+                </span>
+              ))}
+              {decision.parsedPerson.departments?.map((dept) => (
+                <span
+                  key={dept}
+                  className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
+                >
+                  {dept}
+                </span>
+              ))}
+            </div>
+          )}
           {existingNode && (
             <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Matches: {existingNode.name}
@@ -422,7 +625,7 @@ function PersonDecisionCard({
         <select
           value={decision.strategy}
           onChange={(e) => onChange(e.target.value as MergeDecision['strategy'])}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-slate-700"
+          className="flex-shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-slate-700"
         >
           <option value="create-new">Create New</option>
           <option value="update">Update Existing</option>
