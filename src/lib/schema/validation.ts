@@ -7,7 +7,6 @@ import type {
   GraphEdge,
   GraphNode,
   LensFilterState,
-  LensId,
   LensState,
   LayoutState,
   NodeRoleTier,
@@ -17,7 +16,7 @@ import type {
   Viewport,
   XY,
 } from "./types";
-import { LENSES } from "./lenses";
+import { LENSES, type LensId } from "./lenses";
 import { SCHEMA_VERSION } from "./types";
 
 const now = () => new Date().toISOString();
@@ -57,6 +56,7 @@ const personAttributesSchema: z.ZodType<PersonAttributes> = z.object({
   location: z.string().optional(),
   costCenter: z.string().optional(),
   notes: z.string().optional(),
+  jobDescription: z.string().optional(),
   tier: nodeRoleTierSchema.optional(),
 });
 

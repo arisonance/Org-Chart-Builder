@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useMemo, useState, type ReactNode } from "react";
-import { Handle, Position, useReactFlow } from "@xyflow/react";
+import { Handle, Position } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
 import { InlineCardEditor } from "@/components/inline-card-editor";
@@ -29,12 +29,6 @@ export type HierarchyNodeData = {
   emphasisLabel?: string;
   isSelected: boolean;
   highlightTokens: string[];
-  spanMetrics?: {
-    directReports: number;
-    totalTeamSize: number;
-    depth: number;
-    status: "healthy" | "high" | "critical" | "none";
-  };
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
 };
@@ -54,11 +48,10 @@ const handleClass =
   "h-3 w-3 rounded-full border border-white shadow-sm transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-sky-400";
 
 function Component({ data }: { data: HierarchyNodeData }) {
-  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, spanMetrics, actions, onSelect } = data;
+  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect } = data;
   
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [editorPosition, setEditorPosition] = useState({ x: 0, y: 0 });
-  const reactFlowInstance = useReactFlow();
 
   const initials = useMemo(
     () =>
@@ -102,22 +95,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div className="group relative flex flex-col items-center">
-          {/* Quick action button - Add Manager (top) */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              actions.addManager(node.id);
-            }}
-            className="absolute -top-10 left-1/2 z-10 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-hover:-top-12"
-            title="Add Manager"
-          >
-            <div className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-lg hover:border-slate-400 hover:shadow-xl dark:border-white/20 dark:bg-slate-800 dark:text-slate-200">
-              <span>+</span>
-              <span>Manager</span>
-            </div>
-          </button>
-
           <Handle
             type="target"
             position={Position.Top}
@@ -142,26 +119,17 @@ function Component({ data }: { data: HierarchyNodeData }) {
             />
             <div className="relative mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900/90 text-sm font-semibold uppercase tracking-tight text-white shadow-md dark:bg-slate-200/50 dark:text-white">
               {initials}
-              {spanMetrics && spanMetrics.directReports > 0 && (
-                <div
-                  className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ${
-                    spanMetrics.status === "critical"
-                      ? "bg-rose-600"
-                      : spanMetrics.status === "high"
-                      ? "bg-amber-600"
-                      : "bg-emerald-600"
-                  }`}
-                  title={`${spanMetrics.directReports} direct reports (${spanMetrics.status})`}
-                >
-                  {spanMetrics.directReports}
-                </div>
-              )}
             </div>
             <div className="flex flex-col gap-1">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{node.name}</p>
               <p className="text-xs leading-snug text-slate-500 dark:text-slate-300">
                 {node.attributes.title}
               </p>
+              {node.attributes.jobDescription && (
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-400 dark:text-slate-400 line-clamp-2">
+                  {node.attributes.jobDescription}
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-1">
               {tierBadge ? (
@@ -182,22 +150,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
             </div>
           </button>
           <div className="pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1">
-            {/* Quick action button - Add Dotted Line (left) */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                actions.addDotted(node.id);
-              }}
-              className="pointer-events-auto absolute -left-24 top-1/2 z-10 -translate-y-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-hover:-left-28"
-              title="Add Dotted Line"
-            >
-              <div className="flex items-center gap-1.5 rounded-full border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-lg hover:border-indigo-400 hover:shadow-xl dark:border-indigo-500/30 dark:bg-slate-800 dark:text-indigo-300">
-                <span>+</span>
-                <span>Dotted</span>
-              </div>
-            </button>
-            
             <Handle
               type="source"
               position={Position.Left}
@@ -210,22 +162,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
             </span>
           </div>
           <div className="pointer-events-none absolute right-[-18px] top-1/2 flex flex-col items-center gap-1">
-            {/* Quick action button - Add Sponsor (right) */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                actions.addSponsor(node.id);
-              }}
-              className="pointer-events-auto absolute -right-24 top-1/2 z-10 -translate-y-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-hover:-right-28"
-              title="Add Sponsor"
-            >
-              <div className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-lg hover:border-amber-400 hover:shadow-xl dark:border-amber-500/30 dark:bg-slate-800 dark:text-amber-300">
-                <span>+</span>
-                <span>Sponsor</span>
-              </div>
-            </button>
-            
             <Handle
               type="source"
               position={Position.Right}
@@ -237,22 +173,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
               Sponsor
             </span>
           </div>
-          
-          {/* Quick action button - Add Direct Report (bottom) */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              actions.addDirectReport(node.id);
-            }}
-            className="absolute -bottom-10 left-1/2 z-10 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-hover:-bottom-12"
-            title="Add Direct Report"
-          >
-            <div className="flex items-center gap-1.5 rounded-full border border-sky-300 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 shadow-lg hover:border-sky-400 hover:shadow-xl dark:border-sky-500/30 dark:bg-slate-800 dark:text-sky-300">
-              <span>+</span>
-              <span>Report</span>
-            </div>
-          </button>
           
           <Handle
             type="source"

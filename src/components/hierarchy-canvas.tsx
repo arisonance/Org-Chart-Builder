@@ -19,7 +19,7 @@ import {
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { PlusIcon, MixerHorizontalIcon } from "@radix-ui/react-icons";
+import { MixerHorizontalIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { ConnectionHelper } from "@/components/connection-helper";
@@ -29,14 +29,11 @@ import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
 import { buildChildMap, isDescendant } from "@/lib/graph/layout";
-import { calculateSpanMetrics, calculateSpanMetricsForNodes } from "@/lib/analytics/span-of-control";
-import { getSharedDimensions } from "@/lib/graph/pathfinding";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
   DEPARTMENT_COLORS,
   RELATIONSHIP_COLORS,
-  dottedEdgeDash,
 } from "@/lib/theme/palette";
 import { ROLE_TEMPLATES, type RoleTemplate } from "@/lib/schema/templates";
 
@@ -79,7 +76,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (state) => state.document.lens_state[state.document.lens]
   );
   const selection = useGraphStore((state) => state.selection);
-  const connectionMode = useGraphStore((state) => state.connectionMode);
   const addPerson = useGraphStore((state) => state.addPerson);
   const updateNodePosition = useGraphStore((state) => state.updateNodePosition);
   const addRelationship = useGraphStore((state) => state.addRelationship);
@@ -100,9 +96,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const autoLayout = useGraphStore((state) => state.autoLayout);
   const cleanupCanvas = useGraphStore((state) => state.cleanupCanvas);
   const updateViewport = useGraphStore((state) => state.updateViewport);
-  const enterConnectionMode = useGraphStore((state) => state.enterConnectionMode);
-  const exitConnectionMode = useGraphStore((state) => state.exitConnectionMode);
-  const connectInConnectionMode = useGraphStore((state) => state.connectInConnectionMode);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuState | null>(null);
@@ -111,7 +104,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(1);
-  const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string>>(new Set());
   const isRestoringViewport = useRef(false);
   
   // Debounce position updates
@@ -127,30 +119,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
 
   const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
-
-  // Calculate span metrics only for visible and selected nodes (lazy loading)
-  const spanMetrics = useMemo(() => {
-    // Always include selected nodes and nodes in connection mode
-    const targetNodeIds = new Set<string>([
-      ...selection.nodeIds,
-      ...(connectionMode?.nodeId ? [connectionMode.nodeId] : []),
-      ...Array.from(visibleNodeIds),
-    ]);
-    
-    // If we have many nodes, only calculate for visible/selected ones
-    const shouldOptimize = personNodes.length > 50;
-    if (shouldOptimize && targetNodeIds.size > 0) {
-      const metrics = calculateSpanMetricsForNodes(
-        Array.from(targetNodeIds),
-        edgesData
-      );
-      return new Map(metrics.map((m) => [m.nodeId, m]));
-    }
-    
-    // For smaller graphs or when no visible nodes yet, calculate for all
-    const metrics = calculateSpanMetrics(personNodes, edgesData);
-    return new Map(metrics.map((m) => [m.nodeId, m]));
-  }, [personNodes, edgesData, selection.nodeIds, connectionMode?.nodeId, visibleNodeIds]);
 
   // Show onboarding for empty canvas
   useEffect(() => {
@@ -204,17 +172,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return filteredNodes.map((node) => {
       const position = positions[node.id] ?? { x: 0, y: 0 };
       const accent = getAccentColor(node, lens);
-      const isInConnectionMode = !!(connectionMode?.active && connectionMode.nodeId === node.id);
-      const isConnectionTarget = !!(connectionMode?.active && connectionMode.nodeId !== node.id);
       
       const data: HierarchyNodeData = {
         node,
         lens,
         accentColor: accent,
         emphasisLabel: getPrimaryLabel(node, lens),
-        isSelected: selection.nodeIds.includes(node.id) || isInConnectionMode,
+        isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
-        spanMetrics: spanMetrics.get(node.id),
         actions: {
           addDirectReport: (managerId) => {
             const newId = addPerson({
@@ -276,30 +241,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           openEditor: (nodeId) => selectNode(nodeId),
         },
         onSelect: (id, additive) => {
-          // If in connection mode, connect to clicked node
-          if (connectionMode?.active) {
-            connectInConnectionMode(id);
-          } else {
-            selectNode(id, additive);
-          }
+          selectNode(id, additive);
         },
       };
-      
-      // Add CSS classes for connection mode styling
-      const nodeClassName = isConnectionTarget
-        ? "connection-target animate-pulse"
-        : isInConnectionMode
-        ? "connection-source animate-pulse"
-        : "";
       
       return {
         id: node.id,
         type: "hierarchyNode",
         position,
         data,
-        draggable: !node.locked && !connectionMode?.active,
-        selected: selection.nodeIds.includes(node.id) || isInConnectionMode,
-        className: nodeClassName,
+        draggable: !node.locked,
+        selected: selection.nodeIds.includes(node.id),
       };
     });
   }, [
@@ -308,7 +260,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lensLayout?.positions,
     lens,
     highlightTokens,
-    connectionMode,
     addPerson,
     addRelationship,
     duplicateNodes,
@@ -318,8 +269,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addTagToNode,
     selectNode,
     setSelection,
-    connectInConnectionMode,
-    spanMetrics,
     filters?.focusIds,
     filters?.hiddenIds,
   ]);
@@ -333,23 +282,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         activeTokens.length > 0 &&
         !doesEdgeMatchTokens(edge, personNodes, activeTokens, lens);
       
-      // Calculate shared dimensions for matrix relationship clarity
-      const sourceNode = personNodes.find((n) => n.id === edge.source);
-      const targetNode = personNodes.find((n) => n.id === edge.target);
-      const sharedDimensions = sourceNode && targetNode 
-        ? getSharedDimensions(sourceNode, targetNode)
-        : { brands: [], channels: [], departments: [] };
-      
-      // Determine if relationship is within same dimension or cross-dimension
-      const isCrossDimension = lens !== 'hierarchy' && (
-        (lens === 'brand' && (!sharedDimensions.brands.length || 
-          sourceNode?.attributes.primaryBrand !== targetNode?.attributes.primaryBrand)) ||
-        (lens === 'channel' && (!sharedDimensions.channels.length || 
-          sourceNode?.attributes.primaryChannel !== targetNode?.attributes.primaryChannel)) ||
-        (lens === 'department' && (!sharedDimensions.departments.length || 
-          sourceNode?.attributes.primaryDepartment !== targetNode?.attributes.primaryDepartment))
-      );
-      
       // Use custom edge type based on relationship
       const edgeType = edge.metadata.type === 'sponsor' ? 'sponsor' : 
                        edge.metadata.type === 'dotted' ? 'dotted' : 
@@ -362,8 +294,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         type: edgeType,
         data: {
           ...edge,
-          sharedDimensions,
-          isCrossDimension,
         },
         animated: edge.metadata.type === "dotted" && currentZoom > 0.5,
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker
@@ -375,8 +305,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         style: {
           ...baseEdgeStyle,
           stroke: color,
-          opacity: isGhost || edge.metadata.ghost ? 0.3 : isCrossDimension ? 0.7 : 0.9,
-          strokeDasharray: isCrossDimension ? '4 4' : undefined,
+          opacity: isGhost || edge.metadata.ghost ? 0.3 : 0.9,
         },
         selectable: true,
         selected: selection.edgeIds.includes(edge.id),
@@ -503,48 +432,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance],
   );
 
-  // Track viewport changes and update visible nodes
+  // Track viewport changes
   useEffect(() => {
     if (!rfInstance || isRestoringViewport.current) return;
     
-    const updateVisibleNodes = () => {
-      const viewport = rfInstance.getViewport();
-      setCurrentZoom(viewport.zoom);
-      updateViewport(lens, viewport);
-      
-      // Calculate visible node bounds
-      const bounds = rfInstance.getViewport();
-      const visibleSet = new Set<string>();
-      
-      // Get all nodes and check if they're in viewport
-      const allNodes = rfInstance.getNodes();
-      allNodes.forEach((node) => {
-        const nodePosition = node.position;
-        const nodeWidth = 256; // Approximate node width (16rem = 256px)
-        const nodeHeight = 200; // Approximate node height
-        
-        // Transform node position to screen coordinates
-        const screenX = (nodePosition.x - bounds.x) * bounds.zoom;
-        const screenY = (nodePosition.y - bounds.y) * bounds.zoom;
-        
-        // Check if node is visible in viewport (with padding)
-        const padding = 100;
-        if (
-          screenX + nodeWidth + padding >= 0 &&
-          screenX - padding <= window.innerWidth &&
-          screenY + nodeHeight + padding >= 0 &&
-          screenY - padding <= window.innerHeight
-        ) {
-          visibleSet.add(node.id);
-        }
-      });
-      
-      setVisibleNodeIds(visibleSet);
-    };
+    const viewport = rfInstance.getViewport();
+    setCurrentZoom(viewport.zoom);
+    updateViewport(lens, viewport);
     
-    updateVisibleNodes();
-    
-    // Note: React Flow doesn't expose direct event listeners, but we track via onMove
     return () => {
       if (positionUpdateTimeout.current) {
         clearTimeout(positionUpdateTimeout.current);
@@ -581,13 +476,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      // Exit connection mode on Escape
-      if (event.key === "Escape" && connectionMode?.active) {
-        event.preventDefault();
-        exitConnectionMode();
-        return;
-      }
-
       // Cmd/Ctrl + D to duplicate
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
@@ -611,7 +499,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           departments: [],
           position: flowPoint,
         });
-        enterConnectionMode(newId, "manager");
+        setSelection({ nodeIds: [newId], edgeIds: [] });
         return;
       }
 
@@ -660,11 +548,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [
       selection.nodeIds,
       duplicateNodes,
-      connectionMode,
-      exitConnectionMode,
       rfInstance,
       addPerson,
-      enterConnectionMode,
       personNodes,
       lensLayout,
       addRelationship,
@@ -703,31 +588,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               if (rfInstance) {
                 const viewport = rfInstance.getViewport();
                 setCurrentZoom(viewport.zoom);
-                
-                // Update visible nodes on move
-                const bounds = rfInstance.getViewport();
-                const visibleSet = new Set<string>();
-                const allNodes = rfInstance.getNodes();
-                
-                allNodes.forEach((node) => {
-                  const nodePosition = node.position;
-                  const nodeWidth = 256;
-                  const nodeHeight = 200;
-                  const screenX = (nodePosition.x - bounds.x) * bounds.zoom;
-                  const screenY = (nodePosition.y - bounds.y) * bounds.zoom;
-                  const padding = 100;
-                  
-                  if (
-                    screenX + nodeWidth + padding >= 0 &&
-                    screenX - padding <= window.innerWidth &&
-                    screenY + nodeHeight + padding >= 0 &&
-                    screenY - padding <= window.innerHeight
-                  ) {
-                    visibleSet.add(node.id);
-                  }
-                });
-                
-                setVisibleNodeIds(visibleSet);
               }
             }}
             nodesDraggable
@@ -784,58 +644,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
           
-          {/* Connection mode overlay */}
-          {connectionMode?.active && (
-            <div className="pointer-events-none absolute inset-x-0 top-6 z-40 flex justify-center">
-              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-sky-300 bg-sky-50 px-6 py-3 shadow-lg dark:border-sky-700 dark:bg-sky-900/90">
-                <span className="text-sm font-semibold text-sky-900 dark:text-sky-100">
-                  Click a person to connect, or press ESC to cancel
-                </span>
-                <button
-                  type="button"
-                  onClick={exitConnectionMode}
-                  className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-sky-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          
           {/* Connection helper panel */}
-          {personNodes.length > 0 && !connectionMode?.active && <ConnectionHelper />}
+          {personNodes.length > 0 && <ConnectionHelper />}
           
           {/* Relationship legend */}
           {personNodes.length > 0 && <RelationshipLegend />}
-          
-          {/* Floating Action Button */}
-          <FloatingActionButton
-            onAddPerson={(point) => {
-              const flowPoint = flowPositionFromClient(point);
-              const newId = addPerson({
-                name: "New leader",
-                title: "Role",
-                brands: [],
-                channels: [],
-                departments: [],
-                position: flowPoint,
-              });
-              enterConnectionMode(newId, "manager");
-            }}
-            onAddFromTemplate={(template, point) => {
-              const flowPoint = flowPositionFromClient(point);
-              const newId = addPerson({
-                name: template.defaultName,
-                title: template.defaultTitle,
-                brands: template.suggestedBrands ?? [],
-                channels: template.suggestedChannels ?? [],
-                departments: template.suggestedDepartments ?? [],
-                tier: template.tier,
-                position: flowPoint,
-              });
-              enterConnectionMode(newId, "manager");
-            }}
-          />
         </div>
       </ContextMenu.Trigger>
       <CanvasContextMenu
@@ -852,7 +665,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             departments: [],
             position: flowPoint,
           });
-          enterConnectionMode(newId, "manager");
+          setSelection({ nodeIds: [newId], edgeIds: [] });
         }}
         onAddFromTemplate={(template, point) => {
           const flowPoint = flowPositionFromClient(point);
@@ -865,7 +678,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             tier: template.tier,
             position: flowPoint,
           });
-          enterConnectionMode(newId, "manager");
+          setSelection({ nodeIds: [newId], edgeIds: [] });
         }}
         onPaste={() => pasteClipboard()}
         onSelectAll={() =>
@@ -1101,88 +914,6 @@ const CleanupButton = ({
                 <p className="text-xs text-slate-500 dark:text-slate-400">No overlap, requires more space</p>
               </div>
             </button>
-          </div>
-          
-          <Popover.Arrow className="fill-white dark:fill-slate-900" />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-};
-
-const FloatingActionButton = ({
-  onAddPerson,
-  onAddFromTemplate,
-}: {
-  onAddPerson: (point: { x: number; y: number }) => void;
-  onAddFromTemplate: (template: RoleTemplate, point: { x: number; y: number }) => void;
-}) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  return (
-    <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          className="absolute bottom-6 right-24 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-2xl transition hover:scale-110 hover:shadow-3xl focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300"
-          title="Add Person"
-        >
-          <PlusIcon className="h-7 w-7" />
-        </button>
-      </Popover.Trigger>
-      
-      <Popover.Portal>
-        <Popover.Content
-          className="z-50 w-72 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
-          sideOffset={12}
-          side="top"
-          align="end"
-        >
-          <div className="space-y-1">
-            <button
-              type="button"
-              onClick={() => {
-                onAddPerson({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-                setMenuOpen(false);
-              }}
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-sky-600 text-lg">
-                ➕
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Add Person</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Create a new team member</p>
-              </div>
-            </button>
-            
-            <div className="my-2 h-px bg-slate-200 dark:bg-white/10" />
-            
-            <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-              Quick Templates
-            </p>
-            
-            {ROLE_TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => {
-                  onAddFromTemplate(template, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
-                  setMenuOpen(false);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
-              >
-                <div className="text-2xl">{template.icon}</div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    {template.label}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {template.description}
-                  </p>
-                </div>
-              </button>
-            ))}
           </div>
           
           <Popover.Arrow className="fill-white dark:fill-slate-900" />

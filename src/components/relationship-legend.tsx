@@ -8,27 +8,27 @@ export function RelationshipLegend() {
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="absolute left-6 top-6 z-30 w-64">
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+    <div className="absolute left-2 top-2 z-30 w-48 sm:left-4 sm:top-4 sm:w-56 md:left-6 md:top-6 md:w-64">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-lg backdrop-blur sm:rounded-xl dark:border-white/10 dark:bg-slate-900/95">
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex w-full items-center justify-between border-b border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800/50"
+          className="flex w-full items-center justify-between border-b border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 sm:px-3 sm:py-2 sm:text-sm md:px-4 dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800/50"
         >
           <span>Relationship Types</span>
           {isExpanded ? (
-            <ChevronUpIcon className="h-4 w-4" />
+            <ChevronUpIcon className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
           ) : (
-            <ChevronDownIcon className="h-4 w-4" />
+            <ChevronDownIcon className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
           )}
         </button>
 
         {isExpanded && (
-          <div className="space-y-3 px-4 py-3">
+          <div className="space-y-2 px-2 py-2 sm:space-y-2.5 sm:px-3 sm:py-2.5 md:space-y-3 md:px-4 md:py-3">
             {/* Manager */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-12 items-center justify-center">
-                <svg width="48" height="20" viewBox="0 0 48 20" className="overflow-visible">
+            <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
+              <div className="flex h-6 w-8 flex-shrink-0 items-center justify-center sm:h-7 sm:w-10 md:h-8 md:w-12">
+                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible" preserveAspectRatio="xMidYMid meet">
                   <defs>
                     <marker
                       id="arrow-manager-legend"
@@ -56,20 +56,20 @@ export function RelationshipLegend() {
                   />
                 </svg>
               </div>
-              <div className="flex-1">
-                <div className="text-sm font-medium text-slate-900 dark:text-white">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-slate-900 sm:text-sm dark:text-white">
                   Manager
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
+                <div className="truncate text-[10px] text-slate-500 sm:text-xs dark:text-slate-400">
                   Direct reporting line
                 </div>
               </div>
             </div>
 
             {/* Sponsor */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-12 items-center justify-center">
-                <svg width="48" height="20" viewBox="0 0 48 20" className="overflow-visible">
+            <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
+              <div className="flex h-6 w-8 flex-shrink-0 items-center justify-center sm:h-7 sm:w-10 md:h-8 md:w-12">
+                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible" preserveAspectRatio="xMidYMid meet">
                   <defs>
                     <marker
                       id="diamond-sponsor-legend"
@@ -98,20 +98,20 @@ export function RelationshipLegend() {
                   />
                 </svg>
               </div>
-              <div className="flex-1">
-                <div className="text-sm font-medium text-slate-900 dark:text-white">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-slate-900 sm:text-sm dark:text-white">
                   Sponsor
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
+                <div className="truncate text-[10px] text-slate-500 sm:text-xs dark:text-slate-400">
                   Executive sponsorship
                 </div>
               </div>
             </div>
 
             {/* Dotted Line */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-12 items-center justify-center">
-                <svg width="48" height="20" viewBox="0 0 48 20" className="overflow-visible">
+            <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
+              <div className="flex h-6 w-8 flex-shrink-0 items-center justify-center sm:h-7 sm:w-10 md:h-8 md:w-12">
+                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible" preserveAspectRatio="xMidYMid meet">
                   <defs>
                     <marker
                       id="arrow-dotted-legend"
@@ -140,18 +140,18 @@ export function RelationshipLegend() {
                   />
                 </svg>
               </div>
-              <div className="flex-1">
-                <div className="text-sm font-medium text-slate-900 dark:text-white">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-slate-900 sm:text-sm dark:text-white">
                   Dotted Line
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
+                <div className="truncate text-[10px] text-slate-500 sm:text-xs dark:text-slate-400">
                   Collaborative/advisory
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
-              <div className="text-xs text-slate-600 dark:text-slate-300">
+            <div className="mt-2 rounded-md bg-slate-50 px-2 py-1.5 sm:mt-2.5 sm:rounded-lg sm:px-2.5 sm:py-2 md:mt-3 md:px-3 dark:bg-slate-800/50">
+              <div className="text-[10px] leading-tight text-slate-600 sm:text-xs dark:text-slate-300">
                 <strong>Tip:</strong> Hover over an edge to see details. Right-click to change type.
               </div>
             </div>

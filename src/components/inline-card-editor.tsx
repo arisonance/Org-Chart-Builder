@@ -5,8 +5,12 @@ import * as Popover from '@radix-ui/react-popover';
 import { Cross2Icon, CheckIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { useGraphStore } from '@/store/graph-store';
 import { DEMO_LENS_LABELS } from '@/data/demo-graph';
-import type { PersonNode, NodeRoleTier } from '@/lib/schema/types';
-import { getDirectReports } from '@/lib/analytics/span-of-control';
+import type { PersonNode, NodeRoleTier, GraphEdge } from '@/lib/schema/types';
+
+// Simple helper to count direct reports
+function getDirectReports(nodeId: string, edges: GraphEdge[]): GraphEdge[] {
+  return edges.filter(edge => edge.metadata.type === 'manager' && edge.source === nodeId);
+}
 
 const TIER_OPTIONS: Array<{ value: NodeRoleTier; label: string }> = [
   { value: 'c-suite', label: 'C-Suite' },

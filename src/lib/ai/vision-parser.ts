@@ -32,94 +32,155 @@ export type ParsedOrgChart = {
 };
 
 /**
- * System prompt for org chart extraction
+ * System prompt for org chart extraction - Enhanced for matrix organizations
  */
-const ORG_CHART_EXTRACTION_PROMPT = `You are an expert at analyzing organizational charts. Extract the following information from the org chart image:
+const ORG_CHART_EXTRACTION_PROMPT = `You are an expert at analyzing organizational charts, especially MATRIX ORGANIZATIONS with multiple dimensions.
 
-1. **People**: List all people with their:
-   - Full name (exactly as shown)
-   - Job title/role
-   - Who they report to (manager's name, if visible)
-   - Any visible attributes (department, location, etc.)
+**CRITICAL CONTEXT**: This org chart may show people belonging to multiple brands, channels, or departments simultaneously. Look for:
+- Labels/badges on cards indicating brands (e.g., "Sonance", "James", "VIZIO")
+- Channel indicators (e.g., "E-commerce", "Retail", "Custom Install")
+- Department groupings (e.g., "Marketing", "Sales", "Product")
+- Multiple labels on a single person = they work across dimensions
 
-2. **Relationships**: Identify:
-   - Solid lines = direct reporting (manager relationship)
-   - Dotted lines = dotted-line/advisory relationships
-   - Any executive sponsor or special relationships
+**EXTRACTION GUIDELINES**:
 
-3. **Structure**: Note:
-   - Hierarchical levels
-   - Team groupings
-   - Any visible brand/department labels
+1. **People** - For each person visible, extract:
+   - Full name (EXACT spelling as shown - very important!)
+   - Job title/role (exact as shown)
+   - Manager name (who they report to, if visible via reporting line)
+   - ALL brands they're associated with (look for brand badges/labels)
+   - ALL channels they work in (e.g., "E-commerce", "Retail")
+   - ALL departments they belong to (e.g., "Marketing", "Sales")
+   - Location if visible (e.g., "San Diego", "Remote")
+   - Confidence score (0.0-1.0): 
+     * 1.0 = crystal clear
+     * 0.8-0.9 = clear but small text
+     * 0.6-0.7 = somewhat unclear
+     * <0.6 = very uncertain
 
-Return your analysis as a structured JSON object with this exact schema:
+2. **Relationships** - Identify ALL connections:
+   - **Solid line pointing UP** = "manager" (from: person, to: their manager)
+   - **Dotted/dashed line** = "dotted" (advisory/collaborative relationship)
+   - **Diamond marker or special indicator** = "sponsor" (executive sponsor)
+   - For each relationship specify: from (person name), to (person name), type, confidence
+
+3. **Matrix Structure** - Pay special attention to:
+   - People shown in multiple boxes or with multiple labels = cross-functional roles
+   - Swim lanes or columns often indicate brands/channels/departments
+   - Color coding or visual grouping
+   - Reporting lines that cross boundaries = matrix relationships
+
+4. **Error Recovery**:
+   - If name is unclear, include "?" and set confidence < 0.7
+   - If relationship type is ambiguous, default to "manager" with lower confidence
+   - Extract partial data rather than skipping entirely
+   - For incomplete information, set low confidence rather than omitting
+
+**OUTPUT FORMAT** (valid JSON only, no markdown):
 {
   "people": [
     {
-      "name": "Full Name",
+      "name": "Exact Name",
       "title": "Job Title",
-      "reportsTo": "Manager Name" (null if top-level),
-      "departments": ["Department"],
-      "brands": ["Brand"],
-      "channels": ["Channel"],
-      "location": "Location",
+      "reportsTo": "Manager Name",
+      "brands": ["Brand1", "Brand2"],
+      "channels": ["Channel1"],
+      "departments": ["Department1", "Department2"],
+      "location": "City/Remote",
       "confidence": 0.95
     }
   ],
   "relationships": [
     {
       "from": "Person Name",
-      "to": "Person Name",
+      "to": "Manager/Sponsor Name",
       "type": "manager",
       "confidence": 0.9
     }
   ]
 }
 
-**CRITICAL**: 
-- Use exact names as they appear
-- If uncertain about a connection, set lower confidence
-- Include all visible people, even if their relationships are unclear
-- Preserve the hierarchical structure as much as possible`;
+**REMEMBER**: 
+- Use EXACT names and spelling from image
+- Include ALL visible brands/channels/departments per person
+- Set appropriate confidence scores
+- Extract everything visible, even if partial`;
 
 /**
- * Parse an image/PDF using AI vision
+ * Parse an image/PDF using AI vision with retry logic
  * Calls the Next.js API route which handles Claude/OpenAI integration
  */
 export async function parseOrgChartImage(
   imageData: string,
   mimeType: string = 'image/png',
+  retries: number = 2,
 ): Promise<ParsedOrgChart> {
-  try {
-    const response = await fetch('/api/parse-org-chart', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: imageData,
-        mimeType,
-      }),
-    });
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch('/api/parse-org-chart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: imageData,
+          mimeType,
+          prompt: ORG_CHART_EXTRACTION_PROMPT,
+        }),
+        signal: AbortSignal.timeout(120000), // 2 minute timeout
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        
+        // If no API key configured, return mock data for demo
+        if (response.status === 503 && errorData.mockData) {
+          console.warn('No AI API keys configured - using mock data');
+          return errorData.mockData;
+        }
+        
+        // Retry on rate limit or server errors (5xx)
+        if (response.status === 429 || response.status >= 500) {
+          lastError = new Error(errorData.error || `Server error (${response.status})`);
+          if (attempt < retries) {
+            // Exponential backoff: wait 2^attempt seconds
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            continue;
+          }
+        }
+        
+        throw new Error(errorData.error || 'Failed to parse org chart');
+      }
+
+      const data = await response.json();
       
-      // If no API key configured, return mock data for demo
-      if (response.status === 503 && errorData.mockData) {
-        console.warn('No AI API keys configured - using mock data');
-        return errorData.mockData;
+      // Validate we got the expected structure
+      if (!data.people || !Array.isArray(data.people)) {
+        throw new Error('Invalid response format from AI');
       }
       
-      throw new Error(errorData.error || 'Failed to parse org chart');
+      return data as ParsedOrgChart;
+    } catch (error) {
+      lastError = error as Error;
+      
+      // Retry on network errors
+      if (error instanceof TypeError && error.message.includes('fetch') && attempt < retries) {
+        console.warn(`Fetch failed (attempt ${attempt + 1}/${retries + 1}), retrying...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        continue;
+      }
+      
+      // Don't retry on timeout or other non-transient errors
+      if (attempt === retries) {
+        break;
+      }
     }
-
-    const data = await response.json();
-    return data as ParsedOrgChart;
-  } catch (error) {
-    console.error('Vision parsing error:', error);
-    throw error;
   }
+  
+  console.error('Vision parsing error after retries:', lastError);
+  throw lastError || new Error('Failed to parse org chart');
 }
 
 /**
@@ -140,7 +201,7 @@ export async function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Validate extracted data quality
+ * Validate extracted data quality with enhanced error recovery
  */
 export function validateExtraction(data: ParsedOrgChart): {
   isValid: boolean;
@@ -150,8 +211,15 @@ export function validateExtraction(data: ParsedOrgChart): {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  if (data.people.length === 0) {
+  if (!data.people || data.people.length === 0) {
     errors.push("No people extracted from image");
+    return { isValid: false, errors, warnings };
+  }
+
+  // Check for people with missing required fields
+  const incompletePeople = data.people.filter(p => !p.name || !p.title);
+  if (incompletePeople.length > 0) {
+    warnings.push(`${incompletePeople.length} people missing name or title`);
   }
 
   // Check for duplicate names
@@ -164,19 +232,27 @@ export function validateExtraction(data: ParsedOrgChart): {
   // Check confidence scores
   const lowConfidence = data.people.filter(p => p.confidence < 0.6);
   if (lowConfidence.length > 0) {
-    warnings.push(`${lowConfidence.length} people extracted with low confidence`);
+    warnings.push(`${lowConfidence.length} people extracted with low confidence - review carefully`);
   }
 
-  // Validate relationships reference existing people
+  // Validate relationships reference existing people - be lenient and just warn
   const peopleNames = new Set(data.people.map(p => p.name));
-  data.relationships.forEach(rel => {
-    if (!peopleNames.has(rel.from)) {
-      errors.push(`Relationship references unknown person: ${rel.from}`);
-    }
-    if (!peopleNames.has(rel.to)) {
-      errors.push(`Relationship references unknown person: ${rel.to}`);
-    }
-  });
+  const brokenRelationships = data.relationships.filter(
+    rel => !peopleNames.has(rel.from) || !peopleNames.has(rel.to)
+  );
+  
+  if (brokenRelationships.length > 0) {
+    warnings.push(`${brokenRelationships.length} relationships reference unknown people and will be skipped`);
+    // Auto-fix: remove broken relationships instead of failing
+    data.relationships = data.relationships.filter(
+      rel => peopleNames.has(rel.from) && peopleNames.has(rel.to)
+    );
+  }
+
+  // Check for unusual patterns
+  if (data.people.length > 100) {
+    warnings.push(`Large extraction (${data.people.length} people) - may need review`);
+  }
 
   return {
     isValid: errors.length === 0,
@@ -184,4 +260,9 @@ export function validateExtraction(data: ParsedOrgChart): {
     warnings,
   };
 }
+
+/**
+ * Export the prompt so the API route can use it
+ */
+export { ORG_CHART_EXTRACTION_PROMPT };
 

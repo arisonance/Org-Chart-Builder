@@ -2,13 +2,8 @@
 
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Component2Icon } from "@radix-ui/react-icons";
 import { DEMO_LENS_LABELS } from "@/data/demo-graph";
 import { useGraphStore } from "@/store/graph-store";
-import { ConnectionSuggestions } from "@/components/connection-suggestions";
-import { CrossDimensionalContext } from "@/components/cross-dimensional-context";
-import { MatrixConflictPanel } from "@/components/matrix-conflict-panel";
-import { MatrixAssignmentWizard } from "@/components/matrix-assignment-wizard";
 import type { GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
 
 const sectionClass =
@@ -21,7 +16,6 @@ export function EditorPanel() {
   const updatePerson = useGraphStore((state) => state.updatePerson);
   const removeRelationship = useGraphStore((state) => state.removeRelationship);
   const pushHistory = useGraphStore((state) => state.pushHistory);
-  const enterExplorerMode = useGraphStore((state) => state.enterExplorerMode);
 
   const selectedNodes = useMemo<PersonNode[]>(() => {
     return nodes.filter(
@@ -31,7 +25,6 @@ export function EditorPanel() {
   }, [nodes, selection.nodeIds]);
 
   const [activeTab, setActiveTab] = useState<"details" | "relationships">("details");
-  const [showMatrixWizard, setShowMatrixWizard] = useState(false);
   const historySnapshotTakenRef = useRef(false);
 
   useEffect(() => {
@@ -67,7 +60,7 @@ export function EditorPanel() {
           <ul className="list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400">
             <li>Double-click a card to edit inline.</li>
             <li>Drag handles to create manager, sponsor, or dotted-line relationships.</li>
-            <li>Use ⌘/Ctrl + K to open the command palette.</li>
+            <li>Press 1-4 to switch between lenses.</li>
           </ul>
         </div>
       </aside>
@@ -118,36 +111,12 @@ export function EditorPanel() {
 
   return (
     <aside className="w-full max-w-md space-y-4">
-      {showMatrixWizard && <MatrixAssignmentWizard nodeId={node.id} onClose={() => setShowMatrixWizard(false)} />}
-      <ConnectionSuggestions nodeId={node.id} />
-      <CrossDimensionalContext node={node} />
-      <MatrixConflictPanel />
       <div className={sectionClass}>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {node.name}
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{node.attributes.title}</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setShowMatrixWizard(true)}
-              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
-              title="Matrix Assignment Wizard"
-            >
-              Matrix Wizard
-            </button>
-            <button
-              type="button"
-              onClick={() => enterExplorerMode(node.id)}
-              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
-              title="Explore Network"
-            >
-              <Component2Icon className="inline h-4 w-4" /> Network
-            </button>
-          </div>
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            {node.name}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{node.attributes.title}</p>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -202,6 +171,20 @@ export function EditorPanel() {
                       onChange={(event) =>
                         updateAttributes({ title: event.target.value })
                       }
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Job Description
+                    <textarea
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-100"
+                      value={node.attributes.jobDescription ?? ""}
+                      onFocus={ensureHistorySnapshot}
+                      onBlur={resetHistorySnapshotFlag}
+                      onChange={(event) =>
+                        updateAttributes({ jobDescription: event.target.value })
+                      }
+                      rows={4}
+                      placeholder="Describe the role, responsibilities, and key focus areas..."
                     />
                   </label>
                 </fieldset>
