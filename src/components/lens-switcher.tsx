@@ -9,7 +9,7 @@ type LensSwitcherProps = {
 
 export function LensSwitcher({ activeLens, onChange }: LensSwitcherProps) {
   return (
-    <div className="flex w-full flex-wrap gap-2">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-slate-800">
       {LENSES.map((lens) => {
         const isActive = lens.id === activeLens;
         return (
@@ -17,18 +17,15 @@ export function LensSwitcher({ activeLens, onChange }: LensSwitcherProps) {
             key={lens.id}
             type="button"
             onClick={() => onChange(lens.id)}
+            title={lens.description}
             className={[
-              'flex flex-1 min-w-[180px] flex-col items-start gap-1 rounded-2xl border px-4 py-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+              'rounded-md px-3 py-1.5 text-sm font-medium transition',
               isActive
-                ? 'border-transparent bg-slate-900 text-white focus-visible:ring-slate-400'
-                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300',
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
             ].join(' ')}
           >
-            <span className="text-sm font-semibold">{lens.label}</span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">{lens.description}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Shortcut • {lens.shortcut}
-            </span>
+            {lens.label}
           </button>
         );
       })}

@@ -1,12 +1,13 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import { BaseEdge, EdgeProps, getSmoothStepPath } from '@xyflow/react';
 import { RELATIONSHIP_COLORS } from '@/lib/theme/palette';
 import type { GraphEdge } from '@/lib/schema/types';
 
 type EnhancedEdgeData = GraphEdge;
 
-export function ManagerEdge({
+function ManagerEdgeComponent({
   sourceX,
   sourceY,
   targetX,
@@ -17,20 +18,27 @@ export function ManagerEdge({
   markerEnd,
   selected,
 }: EdgeProps<EnhancedEdgeData>) {
-  const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  const [edgePath] = useMemo(
+    () =>
+      getSmoothStepPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      }),
+    [sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+  );
 
-  const edgeStyle = {
-    stroke: selected ? RELATIONSHIP_COLORS.manager : RELATIONSHIP_COLORS.manager,
-    strokeWidth: selected ? 3 : 2.5,
-    ...(style || {}),
-  };
+  const edgeStyle = useMemo(
+    () => ({
+      stroke: RELATIONSHIP_COLORS.manager,
+      strokeWidth: selected ? 3 : 2.5,
+      ...(style || {}),
+    }),
+    [selected, style]
+  );
 
   return (
     <BaseEdge
@@ -41,7 +49,9 @@ export function ManagerEdge({
   );
 }
 
-export function SponsorEdge({
+export const ManagerEdge = memo(ManagerEdgeComponent);
+
+function SponsorEdgeComponent({
   id,
   sourceX,
   sourceY,
@@ -52,26 +62,35 @@ export function SponsorEdge({
   style,
   selected,
 }: EdgeProps<EnhancedEdgeData>) {
-  const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  const [edgePath] = useMemo(
+    () =>
+      getSmoothStepPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      }),
+    [sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+  );
 
-  const edgeStyle = {
-    stroke: selected ? RELATIONSHIP_COLORS.sponsor : RELATIONSHIP_COLORS.sponsor,
-    strokeWidth: selected ? 3 : 2.5,
-    ...(style || {}),
-  };
+  const edgeStyle = useMemo(
+    () => ({
+      stroke: RELATIONSHIP_COLORS.sponsor,
+      strokeWidth: selected ? 3 : 2.5,
+      ...(style || {}),
+    }),
+    [selected, style]
+  );
+
+  const markerId = `diamond-${id}`;
 
   return (
     <>
       <defs>
         <marker
-          id={`diamond-${id}`}
+          id={markerId}
           markerWidth="14"
           markerHeight="14"
           refX="7"
@@ -88,14 +107,16 @@ export function SponsorEdge({
       </defs>
       <BaseEdge
         path={edgePath}
-        markerEnd={`url(#diamond-${id})`}
+        markerEnd={`url(#${markerId})`}
         style={edgeStyle}
       />
     </>
   );
 }
 
-export function DottedEdge({
+export const SponsorEdge = memo(SponsorEdgeComponent);
+
+function DottedEdgeComponent({
   sourceX,
   sourceY,
   targetX,
@@ -106,21 +127,28 @@ export function DottedEdge({
   markerEnd,
   selected,
 }: EdgeProps<EnhancedEdgeData>) {
-  const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  const [edgePath] = useMemo(
+    () =>
+      getSmoothStepPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      }),
+    [sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+  );
 
-  const edgeStyle = {
-    stroke: selected ? RELATIONSHIP_COLORS.dotted : RELATIONSHIP_COLORS.dotted,
-    strokeWidth: selected ? 3 : 2.5,
-    strokeDasharray: '6 6',
-    ...(style || {}),
-  };
+  const edgeStyle = useMemo(
+    () => ({
+      stroke: RELATIONSHIP_COLORS.dotted,
+      strokeWidth: selected ? 3 : 2.5,
+      strokeDasharray: '6 6',
+      ...(style || {}),
+    }),
+    [selected, style]
+  );
 
   return (
     <BaseEdge
@@ -130,6 +158,8 @@ export function DottedEdge({
     />
   );
 }
+
+export const DottedEdge = memo(DottedEdgeComponent);
 
 // Export edge types object for React Flow
 export const customEdgeTypes = {

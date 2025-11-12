@@ -36,8 +36,11 @@ export function InlineCardEditor({ node, isOpen, onClose, position }: InlineCard
   const [title, setTitle] = useState(node.attributes.title);
   const [tier, setTier] = useState<NodeRoleTier>(node.attributes.tier || 'manager');
   const [brands, setBrands] = useState<string[]>(node.attributes.brands);
+  const [primaryBrand, setPrimaryBrand] = useState<string>(node.attributes.primaryBrand || '');
   const [channels, setChannels] = useState<string[]>(node.attributes.channels);
+  const [primaryChannel, setPrimaryChannel] = useState<string>(node.attributes.primaryChannel || '');
   const [departments, setDepartments] = useState<string[]>(node.attributes.departments);
+  const [primaryDepartment, setPrimaryDepartment] = useState<string>(node.attributes.primaryDepartment || '');
   const [location, setLocation] = useState(node.attributes.location || '');
   const [costCenter, setCostCenter] = useState(node.attributes.costCenter || '');
 
@@ -50,8 +53,11 @@ export function InlineCardEditor({ node, isOpen, onClose, position }: InlineCard
     setTitle(node.attributes.title);
     setTier(node.attributes.tier || 'manager');
     setBrands(node.attributes.brands);
+    setPrimaryBrand(node.attributes.primaryBrand || '');
     setChannels(node.attributes.channels);
+    setPrimaryChannel(node.attributes.primaryChannel || '');
     setDepartments(node.attributes.departments);
+    setPrimaryDepartment(node.attributes.primaryDepartment || '');
     setLocation(node.attributes.location || '');
     setCostCenter(node.attributes.costCenter || '');
     hasChanges.current = false;
@@ -79,8 +85,11 @@ export function InlineCardEditor({ node, isOpen, onClose, position }: InlineCard
           title: title.trim(),
           tier,
           brands,
+          primaryBrand: primaryBrand || undefined,
           channels,
+          primaryChannel: primaryChannel || undefined,
           departments,
+          primaryDepartment: primaryDepartment || undefined,
           location: location.trim() || undefined,
           costCenter: costCenter.trim() || undefined,
         },
@@ -94,8 +103,11 @@ export function InlineCardEditor({ node, isOpen, onClose, position }: InlineCard
     title,
     tier,
     brands,
+    primaryBrand,
     channels,
+    primaryChannel,
     departments,
+    primaryDepartment,
     location,
     costCenter,
     node,
@@ -270,69 +282,162 @@ export function InlineCardEditor({ node, isOpen, onClose, position }: InlineCard
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Brands
+                  Primary Department
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {DEMO_LENS_LABELS.brand.map((brand) => (
-                    <button
-                      key={brand}
-                      type="button"
-                      onClick={() => toggleArrayValue(brands, brand, setBrands)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        brands.includes(brand)
-                          ? 'bg-sky-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
-                      }`}
-                    >
-                      {brand}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Channels
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {DEMO_LENS_LABELS.channel.map((channel) => (
-                    <button
-                      key={channel}
-                      type="button"
-                      onClick={() => toggleArrayValue(channels, channel, setChannels)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        channels.includes(channel)
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
-                      }`}
-                    >
-                      {channel}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Departments
-                </label>
-                <div className="flex flex-wrap gap-2">
+                <select
+                  value={primaryDepartment}
+                  onChange={(e) => {
+                    handleFieldChange();
+                    const value = e.target.value;
+                    setPrimaryDepartment(value);
+                    // Auto-add to departments if not present
+                    if (value && !departments.includes(value)) {
+                      setDepartments([value, ...departments]);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="">None</option>
                   {DEMO_LENS_LABELS.department.map((dept) => (
-                    <button
-                      key={dept}
-                      type="button"
-                      onClick={() => toggleArrayValue(departments, dept, setDepartments)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        departments.includes(dept)
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
-                      }`}
-                    >
+                    <option key={dept} value={dept}>
                       {dept}
-                    </button>
+                    </option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Secondary Departments
+                  <span className="ml-2 text-[10px] font-normal text-slate-400">Optional</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {DEMO_LENS_LABELS.department
+                    .filter((d) => d !== primaryDepartment)
+                    .map((dept) => (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => toggleArrayValue(departments, dept, setDepartments)}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                          departments.includes(dept)
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
+                        }`}
+                      >
+                        {dept}
+                      </button>
+                    ))}
                 </div>
               </div>
+
+              {DEMO_LENS_LABELS.brand.length > 0 && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Primary Brand
+                    </label>
+                    <select
+                      value={primaryBrand}
+                      onChange={(e) => {
+                        handleFieldChange();
+                        const value = e.target.value;
+                        setPrimaryBrand(value);
+                        if (value && !brands.includes(value)) {
+                          setBrands([value, ...brands]);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-white/10 dark:bg-slate-800 dark:text-white"
+                    >
+                      <option value="">None</option>
+                      {DEMO_LENS_LABELS.brand.map((brand) => (
+                        <option key={brand} value={brand}>
+                          {brand}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Secondary Brands
+                      <span className="ml-2 text-[10px] font-normal text-slate-400">Optional</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {DEMO_LENS_LABELS.brand
+                        .filter((b) => b !== primaryBrand)
+                        .map((brand) => (
+                          <button
+                            key={brand}
+                            type="button"
+                            onClick={() => toggleArrayValue(brands, brand, setBrands)}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                              brands.includes(brand)
+                                ? 'bg-sky-600 text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
+                            }`}
+                          >
+                            {brand}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {DEMO_LENS_LABELS.channel.length > 0 && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Primary Channel
+                    </label>
+                    <select
+                      value={primaryChannel}
+                      onChange={(e) => {
+                        handleFieldChange();
+                        const value = e.target.value;
+                        setPrimaryChannel(value);
+                        if (value && !channels.includes(value)) {
+                          setChannels([value, ...channels]);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-white/10 dark:bg-slate-800 dark:text-white"
+                    >
+                      <option value="">None</option>
+                      {DEMO_LENS_LABELS.channel.map((channel) => (
+                        <option key={channel} value={channel}>
+                          {channel}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Secondary Channels
+                      <span className="ml-2 text-[10px] font-normal text-slate-400">Optional</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {DEMO_LENS_LABELS.channel
+                        .filter((c) => c !== primaryChannel)
+                        .map((channel) => (
+                          <button
+                            key={channel}
+                            type="button"
+                            onClick={() => toggleArrayValue(channels, channel, setChannels)}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                              channels.includes(channel)
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
+                            }`}
+                          >
+                            {channel}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

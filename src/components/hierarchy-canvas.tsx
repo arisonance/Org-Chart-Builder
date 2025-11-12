@@ -22,9 +22,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
-import { ConnectionHelper } from "@/components/connection-helper";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { customEdgeTypes } from "@/components/custom-edges";
+import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
 import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
@@ -96,6 +96,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const autoLayout = useGraphStore((state) => state.autoLayout);
   const cleanupCanvas = useGraphStore((state) => state.cleanupCanvas);
   const updateViewport = useGraphStore((state) => state.updateViewport);
+  const setCurrentViewport = useGraphStore((state) => state.setCurrentViewport);
+  const currentViewportState = useGraphStore((state) => state.currentViewport);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuState | null>(null);
@@ -105,10 +107,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(1);
   const isRestoringViewport = useRef(false);
-  
-  // Debounce position updates
-  const positionUpdateQueue = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const positionUpdateTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [quickAddDialog, setQuickAddDialog] = useState<{
+    open: boolean;
+    mode: 'direct-report' | 'new-person';
+    managerId?: string;
+    managerName?: string;
+    position?: { x: number; y: number };
+  }>({ open: false, mode: 'new-person' });
 
   const lensLayout = lensState?.layout;
   const filters = lensState?.filters;
@@ -129,17 +134,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     }
   }, [personNodes.length]);
 
+  // Auto-layout on first load with spacious preset
   useEffect(() => {
     if (!personNodes.length) return;
     if (!lensLayout) {
-      autoLayout(lens);
+      cleanupCanvas(lens, 'spacious');
       return;
     }
     const missing = personNodes.some((node) => !lensLayout.positions[node.id]);
     if (missing) {
-      autoLayout(lens);
+      cleanupCanvas(lens, 'spacious');
     }
-  }, [personNodes, lensLayout, autoLayout, lens]);
+  }, [personNodes, lensLayout, cleanupCanvas, lens]);
+
+  // Fit view after layout is ready
+  useEffect(() => {
+    if (!rfInstance || !lensLayout || personNodes.length === 0) return;
+    
+    // Delay slightly to ensure all nodes are rendered
+    const timer = setTimeout(() => {
+      rfInstance.fitView({ padding: 0.2, duration: 300, maxZoom: 1.5 });
+    }, 150);
+    
+    return () => clearTimeout(timer);
+  }, [rfInstance, lensLayout, personNodes.length]);
 
   const highlightTokens = useMemo(() => {
     if (!filters?.activeTokens?.length) return new Map<string, string[]>();
@@ -180,18 +198,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         emphasisLabel: getPrimaryLabel(node, lens),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
+        zoom: currentZoom, // Pass zoom for LOD rendering
         actions: {
           addDirectReport: (managerId) => {
-            const newId = addPerson({
-              name: "New team member",
-              title: "Role",
-              brands: [],
-              channels: [],
-              departments: [],
+            const manager = personNodes.find((n) => n.id === managerId);
+            setQuickAddDialog({
+              open: true,
+              mode: 'direct-report',
+              managerId,
+              managerName: manager?.name,
               position: offsetPosition(position, { x: 120, y: 160 }),
             });
-            addRelationship(managerId, newId, "manager");
-            setSelection({ nodeIds: [newId], edgeIds: [] });
           },
           addManager: (targetId) => {
             const newId = addPerson({
@@ -260,6 +277,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lensLayout?.positions,
     lens,
     highlightTokens,
+    currentZoom,
     addPerson,
     addRelationship,
     duplicateNodes,
@@ -275,6 +293,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
+    
     return edgesData.map((edge) => {
       const marker = markerByType[edge.metadata.type] ?? markerByType.manager;
       const color = RELATIONSHIP_COLORS[edge.metadata.type] ?? "#94a3b8";
@@ -286,6 +305,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const edgeType = edge.metadata.type === 'sponsor' ? 'sponsor' : 
                        edge.metadata.type === 'dotted' ? 'dotted' : 
                        'manager';
+      
+      // Calculate opacity based on ghost state (keep edges visible at all zoom levels)
+      const opacity = isGhost || edge.metadata.ghost ? 0.3 : 0.85;
       
       return {
         id: edge.id,
@@ -305,7 +327,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         style: {
           ...baseEdgeStyle,
           stroke: color,
-          opacity: isGhost || edge.metadata.ghost ? 0.3 : 0.9,
+          opacity,
         },
         selectable: true,
         selected: selection.edgeIds.includes(edge.id),
@@ -313,39 +335,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     });
   }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, currentZoom]);
 
-  // Debounced position update handler
-  const flushPositionUpdates = useCallback(() => {
-    if (positionUpdateQueue.current.size === 0) return;
-    
-    const updates = new Map(positionUpdateQueue.current);
-    positionUpdateQueue.current.clear();
-    
-    // Batch update all positions
-    updates.forEach((position, nodeId) => {
-      updateNodePosition(nodeId, position);
-    });
-  }, [updateNodePosition]);
+  // Handle node drag stop - instant position updates without debouncing
+  const handleNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      updateNodePosition(node.id, node.position);
+    },
+    [updateNodePosition],
+  );
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange[]) => {
-      changes.forEach((change) => {
-        if (change.type === "position" && change.position) {
-          // Queue position update for debouncing
-          positionUpdateQueue.current.set(change.id, change.position);
-          
-          // Clear existing timeout
-          if (positionUpdateTimeout.current) {
-            clearTimeout(positionUpdateTimeout.current);
-          }
-          
-          // Set new timeout to flush updates after 150ms of inactivity
-          positionUpdateTimeout.current = setTimeout(() => {
-            flushPositionUpdates();
-          }, 150);
-        }
-      });
+    (_changes: NodeChange[]) => {
+      // Let React Flow handle visual updates natively for smooth dragging
+      // Position persistence happens only on drag stop via handleNodeDragStop
     },
-    [flushPositionUpdates],
+    [],
   );
 
   const handleEdgesChange = useCallback(() => {
@@ -432,22 +435,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance],
   );
 
-  // Track viewport changes
+  // Track viewport changes (lightweight, no document updates)
   useEffect(() => {
     if (!rfInstance || isRestoringViewport.current) return;
     
     const viewport = rfInstance.getViewport();
     setCurrentZoom(viewport.zoom);
-    updateViewport(lens, viewport);
+    // Use lightweight viewport update to avoid document re-renders
+    setCurrentViewport(viewport);
+  }, [rfInstance, setCurrentViewport]);
+  
+  // Persist viewport to document periodically (debounced)
+  useEffect(() => {
+    if (!rfInstance || !lensLayout?.viewport) return;
     
-    return () => {
-      if (positionUpdateTimeout.current) {
-        clearTimeout(positionUpdateTimeout.current);
-      }
-    };
-  }, [rfInstance, lens, updateViewport]);
+    const timer = setTimeout(() => {
+      const viewport = rfInstance.getViewport();
+      updateViewport(lens, viewport);
+    }, 1000); // Debounce persistence to 1 second
+    
+    return () => clearTimeout(timer);
+  }, [currentViewportState, rfInstance, lens, lensLayout?.viewport, updateViewport]);
 
-  // Restore viewport when lens layout changes (e.g., from pin view restoration)
+  // Restore viewport when lens layout changes (smooth animation)
   useEffect(() => {
     if (!rfInstance || !lensLayout?.viewport) return;
     
@@ -463,16 +473,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     
     if (isDifferent) {
       isRestoringViewport.current = true;
+      // Smooth viewport restore to avoid jank
       rfInstance.setViewport(
         { x: targetViewport.x, y: targetViewport.y, zoom: targetViewport.zoom },
-        { duration: 500 }
+        { duration: 200 }
       );
-      // Reset flag after animation completes
+      // Reset flag after animation
       setTimeout(() => {
         isRestoringViewport.current = false;
-      }, 600);
+      }, 250);
     }
-  }, [rfInstance, lensLayout?.viewport?.x, lensLayout?.viewport?.y, lensLayout?.viewport?.zoom]);
+  }, [rfInstance, lensLayout?.viewport]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -491,15 +502,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         const flowPoint = rfInstance
           ? rfInstance.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
           : { x: 400, y: 300 };
-        const newId = addPerson({
-          name: "New leader",
-          title: "Role",
-          brands: [],
-          channels: [],
-          departments: [],
+        setQuickAddDialog({
+          open: true,
+          mode: 'new-person',
           position: flowPoint,
         });
-        setSelection({ nodeIds: [newId], edgeIds: [] });
         return;
       }
 
@@ -510,16 +517,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         if (selectedNode) {
           const positions = lensLayout?.positions ?? {};
           const position = positions[selectedNode.id] ?? { x: 0, y: 0 };
-          const newId = addPerson({
-            name: "New team member",
-            title: "Role",
-            brands: [],
-            channels: [],
-            departments: [],
+          setQuickAddDialog({
+            open: true,
+            mode: 'direct-report',
+            managerId: selectedNode.id,
+            managerName: selectedNode.name,
             position: offsetPosition(position, { x: 120, y: 160 }),
           });
-          addRelationship(selectedNode.id, newId, "manager");
-          setSelection({ nodeIds: [newId], edgeIds: [] });
         }
         return;
       }
@@ -557,6 +561,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     ],
   );
 
+  const handleQuickAddSave = (data: QuickAddPersonData) => {
+    const newId = addPerson({
+      name: data.name,
+      title: data.title,
+      brands: data.brands,
+      primaryBrand: data.primaryBrand,
+      channels: data.channels,
+      primaryChannel: data.primaryChannel,
+      departments: data.departments,
+      primaryDepartment: data.primaryDepartment,
+      tier: data.tier,
+      location: data.location,
+      position: quickAddDialog.position,
+    });
+
+    // If adding a direct report, create the relationship
+    if (quickAddDialog.mode === 'direct-report' && quickAddDialog.managerId) {
+      addRelationship(quickAddDialog.managerId, newId, 'manager');
+    }
+
+    setSelection({ nodeIds: [newId], edgeIds: [] });
+    setQuickAddDialog({ open: false, mode: 'new-person' });
+  };
+
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
@@ -578,6 +606,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             edgeTypes={edgeTypes as any}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
+            onNodeDragStop={handleNodeDragStop}
             onConnect={handleConnect}
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
@@ -588,15 +617,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               if (rfInstance) {
                 const viewport = rfInstance.getViewport();
                 setCurrentZoom(viewport.zoom);
+                setCurrentViewport(viewport); // Lightweight update
               }
             }}
             nodesDraggable
             nodesConnectable
             elementsSelectable
+            selectNodesOnDrag={false}
+            elevateEdgesOnSelect={false}
             connectionMode={ConnectionMode.Loose}
             fitView
-            fitViewOptions={{ padding: 0.2 }}
+            fitViewOptions={{ padding: 0.2, maxZoom: 1.5, minZoom: 0.5 }}
+            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             panOnScroll
+            panOnDrag={[1, 2]}
             zoomOnPinch
             deleteKeyCode={["Backspace", "Delete"]}
             proOptions={{ hideAttribution: true }}
@@ -605,7 +639,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             defaultEdgeOptions={{ type: "manager" }}
             onInit={setRfInstance}
             className="bg-transparent"
-            onlyRenderVisibleElements={personNodes.length > 50}
+            onlyRenderVisibleElements={personNodes.length > 20}
           >
             <Background
               variant={lensLayout?.showGrid ? BackgroundVariant.Dots : BackgroundVariant.Lines}
@@ -627,9 +661,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               <CleanupButton
                 onCleanup={(mode) => {
                   cleanupCanvas(lens, mode);
-                  // Fit view after cleanup
+                  // Fit view after cleanup with smooth animation
                   setTimeout(() => {
-                    rfInstance?.fitView({ padding: 0.2, duration: 500 });
+                    rfInstance?.fitView({ padding: 0.2, duration: 400, maxZoom: 1.5 });
                   }, 100);
                 }}
               />
@@ -644,28 +678,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
           
-          {/* Connection helper panel */}
-          {personNodes.length > 0 && <ConnectionHelper />}
-          
-          {/* Relationship legend */}
+          {/* Relationship legend - compact button in corner */}
           {personNodes.length > 0 && <RelationshipLegend />}
         </div>
       </ContextMenu.Trigger>
+      
+      {/* Quick Add Dialog */}
+      <QuickAddPersonDialog
+        isOpen={quickAddDialog.open}
+        onClose={() => setQuickAddDialog({ open: false, mode: 'new-person' })}
+        onSave={handleQuickAddSave}
+        mode={quickAddDialog.mode}
+        managerName={quickAddDialog.managerName}
+      />
       <CanvasContextMenu
         open={canvasMenu}
         lens={lens}
         rfInstance={rfInstance}
         onAddPerson={(point) => {
           const flowPoint = flowPositionFromClient(point);
-          const newId = addPerson({
-            name: "New leader",
-            title: "Role",
-            brands: [],
-            channels: [],
-            departments: [],
+          setQuickAddDialog({
+            open: true,
+            mode: 'new-person',
             position: flowPoint,
           });
-          setSelection({ nodeIds: [newId], edgeIds: [] });
         }}
         onAddFromTemplate={(template, point) => {
           const flowPoint = flowPositionFromClient(point);

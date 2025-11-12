@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, Component1Icon } from '@radix-ui/react-icons';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, DotsHorizontalIcon, Cross2Icon } from '@radix-ui/react-icons';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ZodError } from 'zod';
 import { HierarchyCanvas } from '@/components/hierarchy-canvas';
 import { EditorPanel } from '@/components/editor-panel';
@@ -10,7 +11,6 @@ import { ScenarioManager } from '@/components/scenario-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import { SearchFilterBar } from '@/components/search-filter-bar';
-import { ResizablePanel } from '@/components/resizable-panel';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
 import { parseGraphDocument } from '@/lib/schema/validation';
@@ -27,6 +27,8 @@ export default function Home() {
   const resetToDemo = useGraphStore((state) => state.resetToDemo);
   const scenarios = useGraphStore((state) => state.scenarios);
   const setComparisonScenario = useGraphStore((state) => state.setComparisonScenario);
+  const selection = useGraphStore((state) => state.selection);
+  const clearSelection = useGraphStore((state) => state.clearSelection);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCanvasFullScreen, setCanvasFullScreen] = useState(false);
@@ -130,126 +132,155 @@ export default function Home() {
           panelVisible={showFullScreenPanel}
         />
       ) : null}
-      <div className="mx-auto flex w-full max-w-none flex-col gap-10 px-6 sm:px-10 lg:px-16">
-        <header className="relative isolate overflow-hidden rounded-[48px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-10 py-16 shadow-sm ring-1 ring-black/5 dark:border-white/10 dark:from-slate-900/80 dark:via-slate-950 dark:to-slate-900/60 dark:ring-white/10">
-          <div className="absolute inset-0 -z-10 blur-2xl">
-            <div className="absolute left-24 top-6 h-40 w-40 rounded-full bg-indigo-400/50" />
-            <div className="absolute right-0 top-0 h-60 w-60 rounded-full bg-sky-300/40" />
-            <div className="absolute bottom-0 left-10 h-48 w-48 rounded-full bg-amber-200/40" />
+      <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 sm:px-8">
+        {/* Compact Toolbar */}
+        <header className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80">
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
+              {documentMeta.name}
+            </h1>
+            <LensSwitcher activeLens={lens} onChange={setLens} />
+            <ScenarioManager />
           </div>
-          <div className="flex flex-col gap-8">
-            <div className="max-w-3xl space-y-4">
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-500 ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-400">
-                {documentMeta.name}
-              </span>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-                Map Sonance’s matrix organization by brand, channel, and department with a canvas built for modern operators.
-              </h1>
-              <p className="text-lg text-slate-600 dark:text-slate-300">
-                {documentMeta.description}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <LensSwitcher activeLens={lens} onChange={setLens} />
-              <ScenarioManager />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <ToolbarButton label="Undo" onClick={undo} />
-              <ToolbarButton label="Redo" onClick={redo} />
-              <ToolbarButton label="Auto layout" onClick={() => autoLayout(lens)} />
-              <ToolbarButton 
-                label="Compare Scenarios" 
-                onClick={() => setShowComparisonPicker(true)}
-                disabled={scenarioList.length < 2}
-                icon={<Component1Icon className="h-4 w-4" />}
-              />
-              <ToolbarButton 
-                label="AI Import" 
-                onClick={() => setShowAIImport(true)}
-                icon={<UploadIcon className="h-4 w-4" />}
-              />
-              <ToolbarButton label="Export JSON" onClick={handleExport} icon={<DownloadIcon className="h-4 w-4" />} />
-              <ToolbarButton
-                label="Import JSON"
-                onClick={() => fileInputRef.current?.click()}
-                icon={<UploadIcon className="h-4 w-4" />}
-              />
-              <ToolbarButton
-                label="Reset demo"
-                onClick={resetToDemo}
-                icon={<ReloadIcon className="h-4 w-4" />}
-              />
-            </div>
-            <input
-              type="file"
-              accept="application/json"
-              ref={fileInputRef}
-              onChange={handleImport}
-              className="hidden"
-            />
-            {/* Search and Filter Bar */}
-            <SearchFilterBar />
-            <div className="rounded-3xl border border-slate-200 bg-white/80 p-6 ring-1 ring-black/5 backdrop-blur dark:border-white/10 dark:bg-slate-900/60 dark:ring-white/10 sm:max-w-2xl">
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-100">
-                {LENS_BY_ID[lens].label}
-              </p>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">{lensDescription}</p>
-            </div>
-          </div>
-        </header>
-
-        <div className={`${isCanvasFullScreen ? 'pointer-events-none opacity-40 blur-sm' : ''}`} aria-hidden={isCanvasFullScreen}>
-          <ResizablePanel
-            leftPanel={
-              <div className="relative h-[min(1000px,calc(100vh-260px))] min-h-[620px] w-full">
-                <HierarchyCanvas className="h-full" />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAIImport(true)}
+              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+            >
+              <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import
+            </button>
+            
+            {/* More Actions Menu */}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowFullScreenPanel(false);
-                    setCanvasFullScreen(true);
-                  }}
-                  className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  <EnterFullScreenIcon className="h-3.5 w-3.5" />
-                  Full canvas
+                  <DotsHorizontalIcon className="h-4 w-4" />
                 </button>
-              </div>
-            }
-            rightPanel={<EditorPanel />}
-            defaultLeftWidth={70}
-            minLeftWidth={40}
-            minRightWidth={20}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="z-50 min-w-[200px] rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-slate-900"
+                  sideOffset={5}
+                  align="end"
+                >
+                  <DropdownMenu.Item
+                    onSelect={() => autoLayout(lens)}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Auto Layout
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={undo}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Undo
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={redo}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Redo
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
+                  <DropdownMenu.Item
+                    onSelect={handleExport}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <DownloadIcon className="h-4 w-4" /> Export JSON
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => fileInputRef.current?.click()}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <UploadIcon className="h-4 w-4" /> Import JSON
+                  </DropdownMenu.Item>
+                  {scenarioList.length >= 2 && (
+                    <DropdownMenu.Item
+                      onSelect={() => setShowComparisonPicker(true)}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Compare Scenarios
+                    </DropdownMenu.Item>
+                  )}
+                  <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
+                  <DropdownMenu.Item
+                    onSelect={resetToDemo}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 outline-none hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                  >
+                    <ReloadIcon className="h-4 w-4" /> Reset Demo
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
+          <input
+            type="file"
+            accept="application/json"
+            ref={fileInputRef}
+            onChange={handleImport}
+            className="hidden"
           />
+        </header>
+
+        {/* Optional: Search/Filter - Collapsible */}
+        <details className="group">
+          <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200">
+            <span className="inline-flex items-center gap-2">
+              <svg className="h-4 w-4 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              Search & Filter
+            </span>
+          </summary>
+          <div className="mt-2">
+            <SearchFilterBar />
+          </div>
+        </details>
+
+        {/* Full-Width Canvas with Floating Editor Panel */}
+        <div className={`relative ${isCanvasFullScreen ? 'pointer-events-none opacity-40 blur-sm' : ''}`} aria-hidden={isCanvasFullScreen}>
+          <div className="relative h-[calc(100vh-180px)] min-h-[700px] w-full">
+            <HierarchyCanvas className="h-full" />
+            
+            {/* Floating Editor Panel - Only shows when node is selected */}
+            {selection.nodeIds.length > 0 && (
+              <div className="absolute right-4 top-4 bottom-4 z-30 w-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>
+                  <button
+                    onClick={() => clearSelection()}
+                    className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                  >
+                    <Cross2Icon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="p-4">
+                  <EditorPanel />
+                </div>
+              </div>
+            )}
+            
+            <button
+              type="button"
+              onClick={() => {
+                setShowFullScreenPanel(false);
+                setCanvasFullScreen(true);
+              }}
+              className="absolute right-4 bottom-4 z-20 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200"
+            >
+              <EnterFullScreenIcon className="h-3.5 w-3.5" />
+              Full Screen
+            </button>
+          </div>
         </div>
       </div>
     </main>
   );
 }
-
-const ToolbarButton = ({
-  label,
-  onClick,
-  icon,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  icon?: ReactNode;
-  disabled?: boolean;
-}) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-white/20 dark:hover:text-white"
-    >
-      <span>{label}</span>
-      {icon ?? <span className="text-xs uppercase tracking-wide text-slate-400">⌘</span>}
-    </button>
-  );
-};
 
 function ComparisonPickerDialog({
   scenarios,
