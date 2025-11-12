@@ -1,34 +1,33 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDownIcon, ChevronUpIcon } from '@radix-ui/react-icons';
+import { InfoCircledIcon } from '@radix-ui/react-icons';
+import * as Popover from '@radix-ui/react-popover';
 import { RELATIONSHIP_COLORS } from '@/lib/theme/palette';
 
 export function RelationshipLegend() {
-  const [isExpanded, setIsExpanded] = useState(true);
-
   return (
-    <div className="absolute left-2 top-2 z-30 w-48 sm:left-4 sm:top-4 sm:w-56 md:left-6 md:top-6 md:w-64">
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-lg backdrop-blur sm:rounded-xl dark:border-white/10 dark:bg-slate-900/95">
+    <Popover.Root>
+      <Popover.Trigger asChild>
         <button
           type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex w-full items-center justify-between border-b border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 sm:px-3 sm:py-2 sm:text-sm md:px-4 dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800/50"
+          className="absolute bottom-4 left-4 z-20 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm backdrop-blur transition hover:bg-white hover:shadow-md dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300"
+          title="Show relationship types"
         >
-          <span>Relationship Types</span>
-          {isExpanded ? (
-            <ChevronUpIcon className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
-          ) : (
-            <ChevronDownIcon className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
-          )}
+          <InfoCircledIcon className="h-3.5 w-3.5" />
+          Legend
         </button>
-
-        {isExpanded && (
-          <div className="space-y-2 px-2 py-2 sm:space-y-2.5 sm:px-3 sm:py-2.5 md:space-y-3 md:px-4 md:py-3">
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          className="z-50 w-64 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
+          sideOffset={8}
+          side="top"
+        >
+          <div className="space-y-2.5">
             {/* Manager */}
-            <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
-              <div className="flex h-6 w-8 flex-shrink-0 items-center justify-center sm:h-7 sm:w-10 md:h-8 md:w-12">
-                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible" preserveAspectRatio="xMidYMid meet">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-6 w-10 flex-shrink-0 items-center justify-center">
+                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible">
                   <defs>
                     <marker
                       id="arrow-manager-legend"
@@ -56,20 +55,20 @@ export function RelationshipLegend() {
                   />
                 </svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-slate-900 sm:text-sm dark:text-white">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-900 dark:text-white">
                   Manager
                 </div>
-                <div className="truncate text-[10px] text-slate-500 sm:text-xs dark:text-slate-400">
-                  Direct reporting line
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Direct reporting
                 </div>
               </div>
             </div>
 
             {/* Sponsor */}
-            <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
-              <div className="flex h-6 w-8 flex-shrink-0 items-center justify-center sm:h-7 sm:w-10 md:h-8 md:w-12">
-                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible" preserveAspectRatio="xMidYMid meet">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-6 w-10 flex-shrink-0 items-center justify-center">
+                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible">
                   <defs>
                     <marker
                       id="diamond-sponsor-legend"
@@ -98,20 +97,20 @@ export function RelationshipLegend() {
                   />
                 </svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-slate-900 sm:text-sm dark:text-white">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-900 dark:text-white">
                   Sponsor
                 </div>
-                <div className="truncate text-[10px] text-slate-500 sm:text-xs dark:text-slate-400">
-                  Executive sponsorship
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Executive support
                 </div>
               </div>
             </div>
 
             {/* Dotted Line */}
-            <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
-              <div className="flex h-6 w-8 flex-shrink-0 items-center justify-center sm:h-7 sm:w-10 md:h-8 md:w-12">
-                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible" preserveAspectRatio="xMidYMid meet">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-6 w-10 flex-shrink-0 items-center justify-center">
+                <svg width="100%" height="16" viewBox="0 0 48 20" className="overflow-visible">
                   <defs>
                     <marker
                       id="arrow-dotted-legend"
@@ -140,25 +139,20 @@ export function RelationshipLegend() {
                   />
                 </svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-slate-900 sm:text-sm dark:text-white">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-900 dark:text-white">
                   Dotted Line
                 </div>
-                <div className="truncate text-[10px] text-slate-500 sm:text-xs dark:text-slate-400">
-                  Collaborative/advisory
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Collaborative
                 </div>
-              </div>
-            </div>
-
-            <div className="mt-2 rounded-md bg-slate-50 px-2 py-1.5 sm:mt-2.5 sm:rounded-lg sm:px-2.5 sm:py-2 md:mt-3 md:px-3 dark:bg-slate-800/50">
-              <div className="text-[10px] leading-tight text-slate-600 sm:text-xs dark:text-slate-300">
-                <strong>Tip:</strong> Hover over an edge to see details. Right-click to change type.
               </div>
             </div>
           </div>
-        )}
-      </div>
-    </div>
+          <Popover.Arrow className="fill-white dark:fill-slate-900" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

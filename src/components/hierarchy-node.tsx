@@ -8,6 +8,10 @@ import { InlineCardEditor } from "@/components/inline-card-editor";
 import type { LensId } from "@/lib/schema/lenses";
 import type { PersonNode } from "@/lib/schema/types";
 
+// Extract static styles as constants for better performance
+const HANDLE_BASE_CLASS = "h-3 w-3 rounded-full border border-white shadow-sm transition-transform hover:scale-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-sky-400";
+const BADGE_BASE_CLASS = "inline-flex items-center rounded-full border border-slate-200 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-white/10 dark:text-slate-300";
+
 type NodeActions = {
   addDirectReport: (managerId: string) => void;
   addManager: (nodeId: string) => void;
@@ -31,9 +35,11 @@ export type HierarchyNodeData = {
   highlightTokens: string[];
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
+  zoom?: number; // Current zoom level for LOD rendering
 };
 
-const tierBadges: Record<string, { label: string; className: string }> = {
+// Tier badges configuration
+const TIER_BADGES: Record<string, { label: string; className: string }> = {
   "c-suite": { label: "C-Suite", className: "bg-amber-100 text-amber-800" },
   vp: { label: "VP", className: "bg-indigo-100 text-indigo-700" },
   director: { label: "Director", className: "bg-teal-100 text-teal-700" },
@@ -41,14 +47,8 @@ const tierBadges: Record<string, { label: string; className: string }> = {
   ic: { label: "Individual Contributor", className: "bg-slate-100 text-slate-600" },
 };
 
-const badgeClass =
-  "inline-flex items-center rounded-full border border-slate-200 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-white/10 dark:text-slate-300";
-
-const handleClass =
-  "h-3 w-3 rounded-full border border-white shadow-sm transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-sky-400";
-
 function Component({ data }: { data: HierarchyNodeData }) {
-  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect } = data;
+  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1 } = data;
   
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [editorPosition, setEditorPosition] = useState({ x: 0, y: 0 });
@@ -64,7 +64,10 @@ function Component({ data }: { data: HierarchyNodeData }) {
     [node.name],
   );
 
-  const tierBadge = node.attributes.tier ? tierBadges[node.attributes.tier] : undefined;
+  const tierBadge = node.attributes.tier ? TIER_BADGES[node.attributes.tier] : undefined;
+  
+  // Level of detail based on zoom - less aggressive for better initial render
+  const lodLevel = zoom > 0.6 ? 'full' : 'medium';
 
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
@@ -100,7 +103,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
             position={Position.Top}
             id={`${node.id}-manager-target`}
             data-handle-type="manager"
-            className={`${handleClass} !bg-slate-400 dark:!bg-slate-600 transition-transform group-hover:scale-125`}
+            className={`${HANDLE_BASE_CLASS} !bg-slate-400 dark:!bg-slate-600`}
           />
           <button
             type="button"
@@ -125,7 +128,8 @@ function Component({ data }: { data: HierarchyNodeData }) {
               <p className="text-xs leading-snug text-slate-500 dark:text-slate-300">
                 {node.attributes.title}
               </p>
-              {node.attributes.jobDescription && (
+              {/* Hide job description at medium zoom for performance */}
+              {lodLevel === 'full' && node.attributes.jobDescription && (
                 <p className="mt-1 text-[10px] leading-relaxed text-slate-400 dark:text-slate-400 line-clamp-2">
                   {node.attributes.jobDescription}
                 </p>
@@ -137,13 +141,15 @@ function Component({ data }: { data: HierarchyNodeData }) {
                   {tierBadge.label}
                 </span>
               ) : null}
-              {primaryContextBadge ? (
-                <span className={`${badgeClass} border-transparent bg-slate-900/10 text-[10px]`}>
+              {/* Show context badge only at full zoom */}
+              {lodLevel === 'full' && primaryContextBadge ? (
+                <span className={`${BADGE_BASE_CLASS} border-transparent bg-slate-900/10 text-[10px]`}>
                   {primaryContextBadge}
                 </span>
               ) : null}
-              {highlightTokens.map((token) => (
-                <span key={token} className={`${badgeClass} border-transparent bg-sky-100 text-sky-700`}>
+              {/* Show highlight tokens only at full zoom */}
+              {lodLevel === 'full' && highlightTokens.map((token) => (
+                <span key={token} className={`${BADGE_BASE_CLASS} border-transparent bg-sky-100 text-sky-700`}>
                   {token}
                 </span>
               ))}
@@ -155,7 +161,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
               position={Position.Left}
               id={`${node.id}-dotted-source`}
               data-handle-type="dotted"
-              className={`${handleClass} !bg-indigo-400 dark:!bg-indigo-500 transition-transform group-hover:scale-125`}
+              className={`${HANDLE_BASE_CLASS} !bg-indigo-400 dark:!bg-indigo-500`}
             />
             <span className="text-[9px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300">
               Dotted
@@ -167,7 +173,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
               position={Position.Right}
               id={`${node.id}-sponsor-source`}
               data-handle-type="sponsor"
-              className={`${handleClass} !bg-amber-400 dark:!bg-amber-500 transition-transform group-hover:scale-125`}
+              className={`${HANDLE_BASE_CLASS} !bg-amber-400 dark:!bg-amber-500`}
             />
             <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500 dark:text-amber-300">
               Sponsor
@@ -179,7 +185,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
             position={Position.Bottom}
             id={`${node.id}-manager-source`}
             data-handle-type="manager"
-            className={`${handleClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400 transition-transform group-hover:scale-125`}
+            className={`${HANDLE_BASE_CLASS} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
           />
           
           {/* Inline Editor Popover */}
@@ -277,4 +283,31 @@ const emphsizedLabelOrFirst = (values: Array<string | undefined | null>) => {
   return values.find((value) => value && value.trim().length > 0);
 };
 
-export const HierarchyNode = memo(Component);
+// Custom comparison function for better memoization
+function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data: HierarchyNodeData }): boolean {
+  const prev = prevProps.data;
+  const next = nextProps.data;
+  
+  // Fast path: if node reference is the same and selection hasn't changed, skip re-render
+  if (prev.node === next.node && 
+      prev.isSelected === next.isSelected &&
+      prev.accentColor === next.accentColor &&
+      prev.emphasisLabel === next.emphasisLabel &&
+      prev.highlightTokens.length === next.highlightTokens.length) {
+    return true;
+  }
+  
+  // Deep comparison for critical fields
+  return (
+    prev.node.id === next.node.id &&
+    prev.node.name === next.node.name &&
+    prev.node.locked === next.node.locked &&
+    prev.node.attributes.title === next.node.attributes.title &&
+    prev.isSelected === next.isSelected &&
+    prev.accentColor === next.accentColor &&
+    prev.lens === next.lens &&
+    prev.highlightTokens.join(',') === next.highlightTokens.join(',')
+  );
+}
+
+export const HierarchyNode = memo(Component, arePropsEqual);

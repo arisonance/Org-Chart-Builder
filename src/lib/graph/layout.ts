@@ -6,10 +6,10 @@ export type ChildMap = Record<string, string[]>;
 
 const NODE_WIDTH = 260;
 const NODE_HEIGHT = 150;
-const NODE_SEPARATION = 140;
-const RANK_SEPARATION = 200;
-const MARGIN_X = 120;
-const MARGIN_Y = 120;
+const NODE_SEPARATION = 240;
+const RANK_SEPARATION = 300;
+const MARGIN_X = 150;
+const MARGIN_Y = 150;
 
 const isManagerEdge = (edge: GraphEdge) => edge.metadata.type === "manager";
 
@@ -127,7 +127,7 @@ export const calculateMatrixLayout = (
   // Layout within each group using hierarchy
   const positions: Record<string, { x: number; y: number }> = {};
   const groupKeys = Array.from(groups.keys());
-  const COLUMN_WIDTH = 600;
+  const COLUMN_WIDTH = 800;
   
   groupKeys.forEach((groupKey, groupIndex) => {
     const groupNodes = groups.get(groupKey)!;
@@ -175,8 +175,8 @@ export const calculateSwimLaneLayout = (
   // Group each row by column dimension
   const positions: Record<string, { x: number; y: number }> = {};
   const rowKeys = Array.from(rows.keys());
-  const ROW_HEIGHT = 400;
-  const COLUMN_WIDTH = 500;
+  const ROW_HEIGHT = 500;
+  const COLUMN_WIDTH = 650;
   
   rowKeys.forEach((rowKey, rowIndex) => {
     const rowNodes = rows.get(rowKey)!;
@@ -198,8 +198,8 @@ export const calculateSwimLaneLayout = (
       const colNodes = columns.get(colKey)!;
       colNodes.forEach((node, nodeIndex) => {
         positions[node.id] = {
-          x: colIndex * COLUMN_WIDTH + 200,
-          y: rowIndex * ROW_HEIGHT + nodeIndex * 180 + 100,
+          x: colIndex * COLUMN_WIDTH + 250,
+          y: rowIndex * ROW_HEIGHT + nodeIndex * 220 + 150,
         };
       });
     });
@@ -240,8 +240,8 @@ export const calculateClusterLayout = (
   // Layout clusters in a grid
   const positions: Record<string, { x: number; y: number }> = {};
   const clusterKeys = Array.from(clusters.keys());
-  const CLUSTER_WIDTH = 500;
-  const CLUSTER_HEIGHT = 400;
+  const CLUSTER_WIDTH = 700;
+  const CLUSTER_HEIGHT = 550;
   const clustersPerRow = Math.ceil(Math.sqrt(clusterKeys.length));
   
   clusterKeys.forEach((clusterKey, clusterIndex) => {
@@ -261,8 +261,8 @@ export const calculateClusterLayout = (
     // Offset positions for this cluster
     Object.keys(clusterPositions).forEach((nodeId) => {
       positions[nodeId] = {
-        x: clusterPositions[nodeId].x + col * CLUSTER_WIDTH + 200,
-        y: clusterPositions[nodeId].y + row * CLUSTER_HEIGHT + 200,
+        x: clusterPositions[nodeId].x + col * CLUSTER_WIDTH + 300,
+        y: clusterPositions[nodeId].y + row * CLUSTER_HEIGHT + 300,
       };
     });
   });
@@ -289,10 +289,10 @@ export const calculateCleanupLayout = (
   }
 
   // Spacing constants based on mode
-  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 120 : 280; // Compact: tighter spacing (may overlap), Spacious: no overlap (280 > 260 node width)
-  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 160 : 300; // Compact: tighter vertical spacing, Spacious: generous vertical space (300 > 150 node height)
-  const CLEANUP_MARGIN_X = mode === "compact" ? 80 : 180;
-  const CLEANUP_MARGIN_Y = mode === "compact" ? 80 : 180;
+  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 180 : 280; // Compact: tighter spacing (may overlap), Spacious: crisp spacing with no overlap
+  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 220 : 350; // Compact: tighter vertical spacing, Spacious: clean vertical space
+  const CLEANUP_MARGIN_X = mode === "compact" ? 120 : 180;
+  const CLEANUP_MARGIN_Y = mode === "compact" ? 120 : 180;
 
   // Build hierarchy using dagre with enhanced spacing
   const g = new graphlib.Graph({ directed: true, compound: false, multigraph: false });

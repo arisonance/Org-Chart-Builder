@@ -83,13 +83,36 @@ body {
   filter: drop-shadow(0 0 6px currentColor);
 }
 
-/* Smooth transitions for all react-flow elements */
+/* GPU-accelerated smooth transitions for all react-flow elements */
 .react-flow__node {
-  transition: transform 0.2s ease-in-out, opacity 0.2s ease-in-out;
+  will-change: transform;
+  transform: translateZ(0);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+.react-flow__edge {
+  will-change: opacity;
 }
 
 .react-flow__edge path {
-  transition: stroke-width 0.2s ease-in-out, opacity 0.2s ease-in-out;
+  transition: stroke-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-in-out;
+}
+
+/* Optimize panning and zooming */
+.react-flow__viewport {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Smooth zoom transitions */
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane:active {
+  cursor: grabbing;
 }
 
 /* Command palette animations */

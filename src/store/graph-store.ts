@@ -39,6 +39,12 @@ type GraphStoreState = {
   scenarios: Record<string, Scenario>;
   activeScenarioId: string | null;
   comparisonScenarioId: string | null;
+  // Separate viewport state to prevent document re-renders
+  currentViewport: {
+    x: number;
+    y: number;
+    zoom: number;
+  };
 };
 
 type GraphStoreActions = {
@@ -63,6 +69,7 @@ type GraphStoreActions = {
   pasteClipboard: (position?: XY) => void;
   updateNodePosition: (nodeId: string, position: XY) => void;
   updateViewport: (lens: LensId, viewport: LayoutState["viewport"]) => void;
+  setCurrentViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   toggleSnap: (lens: LensId) => void;
   toggleGrid: (lens: LensId) => void;
   setLensFilters: (lens: LensId, filters: Partial<LensState["filters"]>) => void;
@@ -130,6 +137,11 @@ const initialState: GraphStoreState = {
   scenarios: {},
   activeScenarioId: null,
   comparisonScenarioId: null,
+  currentViewport: {
+    x: 0,
+    y: 0,
+    zoom: 1,
+  },
 };
 
 const withHistory = (
@@ -473,6 +485,14 @@ export const useGraphStore = create<GraphStore>()(
             ensureLensState(state.document, lens);
             state.document.lens_state[lens].layout.viewport = viewport;
             state.document.lens_state[lens].layout.lastUpdated = now();
+          }),
+        );
+      },
+      setCurrentViewport: (viewport) => {
+        // Lightweight viewport update that doesn't trigger document re-renders
+        set(
+          produce((state: GraphStoreState) => {
+            state.currentViewport = viewport;
           }),
         );
       },
