@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, DotsHorizontalIcon, Cross2Icon } from '@radix-ui/react-icons';
+import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, DotsHorizontalIcon, Cross2Icon, PlusIcon, MagnifyingGlassIcon } from '@radix-ui/react-icons';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ZodError } from 'zod';
 import { HierarchyCanvas } from '@/components/hierarchy-canvas';
@@ -31,6 +31,7 @@ export default function Home() {
   const undo = useGraphStore((state) => state.undo);
   const redo = useGraphStore((state) => state.redo);
   const autoLayout = useGraphStore((state) => state.autoLayout);
+  const addPerson = useGraphStore((state) => state.addPerson);
   const exportWorkspace = useGraphStore((state) => state.exportWorkspace);
   const importDocument = useGraphStore((state) => state.importDocument);
   const importWorkspace = useGraphStore((state) => state.importWorkspace);
@@ -38,6 +39,7 @@ export default function Home() {
   const scenarios = useGraphStore((state) => state.scenarios);
   const setComparisonScenario = useGraphStore((state) => state.setComparisonScenario);
   const selection = useGraphStore((state) => state.selection);
+  const peopleCount = useGraphStore((state) => state.document.nodes.length);
   const clearSelection = useGraphStore((state) => state.clearSelection);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -46,9 +48,18 @@ export default function Home() {
   const [showComparisonPicker, setShowComparisonPicker] = useState(false);
   const [showAIImport, setShowAIImport] = useState(false);
 
-  const lensDescription = useMemo(() => LENS_BY_ID[lens].description, [lens]);
-
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
+
+  const handleAddPerson = useCallback(() => {
+    addPerson({
+      name: 'New person',
+      title: 'Role',
+      brands: [],
+      channels: [],
+      departments: [],
+      position: { x: 420, y: 260 },
+    });
+  }, [addPerson]);
 
   // Lens switcher keyboard shortcuts (1-4)
   useEffect(() => {
@@ -160,7 +171,7 @@ export default function Home() {
   }, [importDocument, importWorkspace]);
 
   return (
-    <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(0,163,225,0.10),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] pb-20 pt-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <ScenarioComparison />
       {showAIImport && <AIImportWizard onClose={() => setShowAIImport(false)} />}
       {showComparisonPicker && (
@@ -183,23 +194,36 @@ export default function Home() {
       ) : null}
       <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 sm:px-8">
         {/* Compact Toolbar */}
-        <header className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              {documentMeta.name}
-            </h1>
+        <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white/90 px-5 py-4 shadow-sm ring-1 ring-black/[0.03] backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/80">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <div className="min-w-0 pr-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-600">Org Matrix Builder</p>
+              <h1 className="truncate text-xl font-semibold text-slate-950 dark:text-white">
+                {documentMeta.name}
+              </h1>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              {peopleCount} people
+            </span>
             <LensSwitcher activeLens={lens} onChange={setLens} />
             <ScenarioManager />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <ProfileWidget />
             <button
               type="button"
-              onClick={() => setShowAIImport(true)}
-              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-200"
-              title="AI Import is paused until Cortex/Okta sign-in is enabled"
+              onClick={handleAddPerson}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
-              <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import Paused
+              <PlusIcon className="h-4 w-4" /> Add person
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAIImport(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
+              title="AI Import is paused until the workflow is enabled"
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-400" /> AI paused
             </button>
             
             {/* More Actions Menu */}
@@ -279,12 +303,10 @@ export default function Home() {
 
         {/* Optional: Search/Filter - Collapsible */}
         <details className="group">
-          <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200">
+          <summary className="cursor-pointer list-none rounded-xl border border-slate-200/80 bg-white/75 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200">
             <span className="inline-flex items-center gap-2">
-              <svg className="h-4 w-4 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              Search & Filter
+              <MagnifyingGlassIcon className="h-4 w-4 text-sky-600" />
+              Search, filter, and narrow the current lens
             </span>
           </summary>
           <div className="mt-2">
