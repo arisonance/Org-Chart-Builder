@@ -24,6 +24,7 @@ type NodeActions = {
   lockToggle: (nodeId: string) => void;
   colorTag: (nodeId: string, token: string) => void;
   openEditor: (nodeId: string) => void;
+  focusBranch: (nodeId: string) => void;
 };
 
 export type HierarchyNodeData = {
@@ -33,6 +34,8 @@ export type HierarchyNodeData = {
   emphasisLabel?: string;
   isSelected: boolean;
   highlightTokens: string[];
+  directReportCount: number;
+  presentationMode?: boolean;
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
   lod: 'full' | 'medium' | 'compact'; // Semantic zoom level for readable overview/detail rendering
@@ -48,7 +51,7 @@ const TIER_BADGES: Record<string, { label: string; className: string }> = {
 };
 
 function Component({ data }: { data: HierarchyNodeData }) {
-  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, lod } = data;
+  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, directReportCount, presentationMode, actions, onSelect, lod } = data;
   
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [editorPosition, setEditorPosition] = useState({ x: 0, y: 0 });
@@ -107,15 +110,15 @@ function Component({ data }: { data: HierarchyNodeData }) {
             onClick={(event) => handleSelect(event, event.shiftKey)}
             onDoubleClick={handleDoubleClick}
             className={[
-              "relative flex w-[16rem] flex-col items-center rounded-2xl border bg-white/95 text-center shadow-lg ring-1 ring-slate-200 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-950/85 dark:ring-white/10",
-              lod === 'compact' ? "min-h-[8rem] gap-2 px-4 py-4" : lod === 'medium' ? "min-h-[10rem] gap-2.5 px-5 py-4" : "min-h-[13rem] gap-3 px-5 py-5",
+              "relative flex flex-col items-center rounded-2xl border bg-white/95 text-center shadow-lg ring-1 ring-slate-200 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-950/85 dark:ring-white/10",
+              lod === 'compact' ? "min-h-[7.25rem] w-[13.5rem] gap-1.5 px-3.5 py-3.5" : lod === 'medium' ? "min-h-[9rem] w-[15rem] gap-2 px-4 py-4" : "min-h-[13rem] w-[16rem] gap-3 px-5 py-5",
               isSelected
                 ? "border-sky-500 ring-2 ring-sky-300/80 shadow-xl"
                 : "hover:-translate-y-1 hover:shadow-xl",
             ].join(" ")}
           >
             <span
-              className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
+              className={lod === 'compact' ? "pointer-events-none absolute inset-x-4 top-0 h-1 rounded-full" : "pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"}
               style={{ background: accentColor }}
             />
             {lod === 'full' ? (
@@ -137,6 +140,11 @@ function Component({ data }: { data: HierarchyNodeData }) {
               )}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-1">
+              {directReportCount > 0 ? (
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-white/10 dark:bg-white/10 dark:text-slate-300">
+                  {directReportCount} report{directReportCount === 1 ? '' : 's'}
+                </span>
+              ) : null}
               {tierBadge ? (
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tierBadge.className}`}>
                   {tierBadge.label}
@@ -154,7 +162,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
               ))}
             </div>
           </button>
-          <div className={lod === 'compact' ? "pointer-events-none absolute left-[-12px] top-1/2 flex flex-col items-center gap-1" : "pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1"}>
+          <div className={[lod === 'compact' ? "pointer-events-none absolute left-[-12px] top-1/2 flex flex-col items-center gap-1" : "pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1", presentationMode ? "opacity-0" : "opacity-0 transition group-hover:opacity-100"].join(' ')}>
             <Handle
               type="source"
               position={Position.Left}
@@ -168,7 +176,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
               </span>
             ) : null}
           </div>
-          <div className={lod === 'compact' ? "pointer-events-none absolute right-[-12px] top-1/2 flex flex-col items-center gap-1" : "pointer-events-none absolute right-[-18px] top-1/2 flex flex-col items-center gap-1"}>
+          <div className={[lod === 'compact' ? "pointer-events-none absolute right-[-12px] top-1/2 flex flex-col items-center gap-1" : "pointer-events-none absolute right-[-18px] top-1/2 flex flex-col items-center gap-1", presentationMode ? "opacity-0" : "opacity-0 transition group-hover:opacity-100"].join(' ')}>
             <Handle
               type="source"
               position={Position.Right}
@@ -188,7 +196,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
             position={Position.Bottom}
             id={`${node.id}-manager-source`}
             data-handle-type="manager"
-            className={`${HANDLE_BASE_CLASS} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
+            className={[HANDLE_BASE_CLASS, "!bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400", presentationMode ? "opacity-0" : "opacity-0 group-hover:opacity-100"].join(' ')}
           />
           
           {/* Inline Editor Popover */}
@@ -208,6 +216,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
         <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
         <MenuItem onSelect={() => actions.addSponsor(node.id)}>Add executive sponsor</MenuItem>
         <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
+        <MenuItem onSelect={() => actions.focusBranch(node.id)}>Focus on branch</MenuItem>
         <MenuSeparator />
         <ContextMenu.Sub>
           <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
@@ -297,6 +306,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
       prev.accentColor === next.accentColor &&
       prev.emphasisLabel === next.emphasisLabel &&
       prev.highlightTokens.length === next.highlightTokens.length &&
+      prev.directReportCount === next.directReportCount &&
+      prev.presentationMode === next.presentationMode &&
       prev.lod === next.lod) {
     return true;
   }
@@ -311,6 +322,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.accentColor === next.accentColor &&
     prev.lens === next.lens &&
     prev.lod === next.lod &&
+    prev.directReportCount === next.directReportCount &&
+    prev.presentationMode === next.presentationMode &&
     prev.highlightTokens.join(',') === next.highlightTokens.join(',')
   );
 }

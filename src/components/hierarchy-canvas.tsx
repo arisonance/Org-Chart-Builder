@@ -104,6 +104,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const clearSelection = useGraphStore((state) => state.clearSelection);
   const toggleGrid = useGraphStore((state) => state.toggleGrid);
   const toggleSnap = useGraphStore((state) => state.toggleSnap);
+  const setLensFilters = useGraphStore((state) => state.setLensFilters);
   const autoLayout = useGraphStore((state) => state.autoLayout);
   const cleanupCanvas = useGraphStore((state) => state.cleanupCanvas);
   const updateViewport = useGraphStore((state) => state.updateViewport);
@@ -118,6 +119,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentLod, setCurrentLod] = useState<CanvasLod>('full');
   const [viewMode, setViewMode] = useState<ViewMode>('detail');
+  const [presentationMode, setPresentationMode] = useState(false);
   const isRestoringViewport = useRef(false);
   const [quickAddDialog, setQuickAddDialog] = useState<{
     open: boolean;
@@ -162,6 +164,39 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const fitWholeOrg = useCallback(() => {
     rfInstance?.fitView(fitOptions);
   }, [fitOptions, rfInstance]);
+
+  const getBranchIds = useCallback((rootId: string) => {
+    const childMap = new Map<string, string[]>();
+    edgesData.forEach((edge) => {
+      if (edge.metadata.type !== 'manager') return;
+      const list = childMap.get(edge.source) ?? [];
+      list.push(edge.target);
+      childMap.set(edge.source, list);
+    });
+    const ids: string[] = [];
+    const queue = [rootId];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+      queue.push(...(childMap.get(id) ?? []));
+    }
+    return ids;
+  }, [edgesData]);
+
+  const focusBranch = useCallback((nodeId: string) => {
+    const ids = getBranchIds(nodeId);
+    setLensFilters(lens, { focusIds: ids, hiddenIds: [] });
+    setViewMode('detail');
+    setTimeout(() => rfInstance?.fitView({ ...fitOptions, padding: 0.18 }), 80);
+  }, [fitOptions, getBranchIds, lens, rfInstance, setLensFilters]);
+
+  const clearFocus = useCallback(() => {
+    setLensFilters(lens, { focusIds: [], hiddenIds: [] });
+    setTimeout(() => rfInstance?.fitView(fitOptions), 80);
+  }, [fitOptions, lens, rfInstance, setLensFilters]);
 
   const centerSelectedNode = useCallback(() => {
     if (!rfInstance || selection.nodeIds.length !== 1) return;
@@ -244,6 +279,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         emphasisLabel: getPrimaryLabel(node, lens),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
+        directReportCount: edgesData.filter((edge) => edge.metadata.type === 'manager' && edge.source === node.id).length,
+        presentationMode,
         lod: effectiveLod,
         actions: {
           addDirectReport: (managerId) => {
@@ -302,6 +339,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           lockToggle: toggleNodeLock,
           colorTag: addTagToNode,
           openEditor: (nodeId) => selectNode(nodeId),
+          focusBranch,
         },
         onSelect: (id, additive) => {
           selectNode(id, additive);
@@ -335,12 +373,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setSelection,
     filters?.focusIds,
     filters?.hiddenIds,
+    edgesData,
+    presentationMode,
+    focusBranch,
   ]);
 
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
     
-    return edgesData.map((edge) => {
+    const visibleIds = new Set(nodes.map((node) => node.id));
+    return edgesData.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => {
       const marker = markerByType[edge.metadata.type] ?? markerByType.manager;
       const color = RELATIONSHIP_COLORS[edge.metadata.type] ?? "#94a3b8";
       const isGhost =
@@ -380,7 +422,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         selected: selection.edgeIds.includes(edge.id),
       };
     });
-  }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, effectiveLod]);
+  }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, effectiveLod, nodes]);
 
   // Handle node drag stop - instant position updates without debouncing
   const handleNodeDragStop = useCallback(
@@ -539,6 +581,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return;
       }
 
+      if (event.key === 'Escape') {
+        if (presentationMode) setPresentationMode(false);
+        if (filters?.focusIds?.length) clearFocus();
+        return;
+      }
+
       if ((event.key === "Backspace" || event.key === "Delete") && !event.metaKey && !event.ctrlKey) {
         if (selection.nodeIds.length > 0) {
           event.preventDefault();
@@ -650,6 +698,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       fitWholeOrg,
       fitOptions,
       centerSelectedNode,
+      presentationMode,
+      filters?.focusIds,
+      clearFocus,
     ],
   );
 
@@ -719,8 +770,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 setCurrentViewport(viewport); // Lightweight update
               }
             }}
-            nodesDraggable
-            nodesConnectable
+            nodesDraggable={!presentationMode}
+            nodesConnectable={!presentationMode}
             elementsSelectable
             selectNodesOnDrag={false}
             elevateEdgesOnSelect={false}
@@ -746,17 +797,19 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               size={lensLayout?.showGrid ? 1 : 0.5}
               color={lensLayout?.showGrid ? "#cbd5f5" : "#e2e8f0"}
             />
-            <MiniMap
-              className="!bottom-6 !right-6 rounded-2xl border border-slate-200 bg-white/90 text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80"
-              nodeStrokeColor={(n) => (n.data?.accentColor as string) ?? "#64748b"}
-              nodeColor={(n) => (n.data?.accentColor as string) ?? "#cbd5f5"}
-              maskColor="rgba(15, 23, 42, 0.08)"
-              pannable
-              zoomable
-            />
-            <Controls className="!left-6 !bottom-6 rounded-full bg-white/90 text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10" />
+            {!presentationMode ? (
+              <MiniMap
+                className="!bottom-6 !right-6 rounded-2xl border border-slate-200 bg-white/90 text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80"
+                nodeStrokeColor={(n) => (n.data?.accentColor as string) ?? "#64748b"}
+                nodeColor={(n) => (n.data?.accentColor as string) ?? "#cbd5f5"}
+                maskColor="rgba(15, 23, 42, 0.08)"
+                pannable
+                zoomable
+              />
+            ) : null}
+            {!presentationMode ? <Controls className="!left-6 !bottom-6 rounded-full bg-white/90 text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10" /> : null}
             {/* Cleanup Canvas Button */}
-            {personNodes.length > 0 && (
+            {!presentationMode && personNodes.length > 0 && (
               <CleanupButton
                 onCleanup={(mode) => {
                   cleanupCanvas(lens, mode);
@@ -785,6 +838,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   }, 120);
                 }}
                 onFit={fitWholeOrg}
+                presentationMode={presentationMode}
+                onPresent={() => {
+                  setPresentationMode((prev) => !prev);
+                  setTimeout(() => rfInstance?.fitView({ ...fitOptions, padding: 0.08 }), 80);
+                }}
               />
             </Panel>
           </ReactFlow>
@@ -797,8 +855,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
           
+          {filters?.focusIds?.length ? (
+            <div className="absolute left-1/2 top-5 z-20 -translate-x-1/2 rounded-full border border-sky-200 bg-white/92 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur-xl dark:border-sky-400/30 dark:bg-slate-900/88 dark:text-slate-100">
+              Focused branch · {filters.focusIds.length} people
+              <button type="button" onClick={clearFocus} className="ml-3 rounded-full bg-slate-950 px-2 py-1 text-[10px] uppercase tracking-wide text-white dark:bg-white dark:text-slate-950">Show all</button>
+            </div>
+          ) : null}
+
           {/* Relationship legend - compact button in corner */}
-          {personNodes.length > 0 && <RelationshipLegend />}
+          {!presentationMode && personNodes.length > 0 && <RelationshipLegend />}
         </div>
       </ContextMenu.Trigger>
       
@@ -858,12 +923,16 @@ const ViewModePanel = ({
   onOverview,
   onDetail,
   onFit,
+  presentationMode,
+  onPresent,
 }: {
   mode: ViewMode;
   lod: CanvasLod;
   onOverview: () => void;
   onDetail: () => void;
   onFit: () => void;
+  presentationMode: boolean;
+  onPresent: () => void;
 }) => (
   <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/92 p-1.5 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/88 dark:text-slate-200">
     <button
@@ -891,6 +960,17 @@ const ViewModePanel = ({
     <div className="mx-1 h-6 w-px bg-slate-200 dark:bg-white/10" />
     <button type="button" onClick={onFit} className="rounded-xl px-3 py-2 hover:bg-slate-100 dark:hover:bg-white/10">
       Fit
+    </button>
+    <button
+      type="button"
+      onClick={onPresent}
+      className={[
+        "rounded-xl px-3 py-2 transition",
+        presentationMode ? "bg-sky-600 text-white shadow-sm" : "hover:bg-slate-100 dark:hover:bg-white/10",
+      ].join(" ")}
+      title="Hide editing chrome for clean presentation"
+    >
+      Present
     </button>
     <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase tracking-wide text-slate-500 sm:inline dark:bg-white/10 dark:text-slate-300">
       {lod}
