@@ -8,9 +8,7 @@ import type { PersonNode } from '@/lib/schema/types';
 export function SearchFilterBar() {
   const nodes = useGraphStore((state) => state.document.nodes);
   const lens = useGraphStore((state) => state.document.lens);
-  const lensState = useGraphStore((state) => state.document.lens_state[state.document.lens]);
   const setLensFilters = useGraphStore((state) => state.setLensFilters);
-  const selectNode = useGraphStore((state) => state.selectNode);
   const setSelection = useGraphStore((state) => state.setSelection);
   const clearSelection = useGraphStore((state) => state.clearSelection);
 
@@ -358,6 +356,22 @@ export function SearchFilterBar() {
           </div>
         )}
       </div>
+
+      {hasActiveFilters && matchingNodes.length === 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-100">
+          <p className="font-semibold">No people match this view.</p>
+          <p className="mt-1 text-amber-800/80 dark:text-amber-100/80">
+            Clear the search or loosen filters to bring the org back into focus. The chart data is unchanged.
+          </p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="mt-3 rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-800 dark:bg-amber-100 dark:text-amber-950 dark:hover:bg-amber-200"
+          >
+            Clear search & filters
+          </button>
+        </div>
+      )}
 
       {/* Results and Actions */}
       <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-white/10">

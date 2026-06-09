@@ -11,9 +11,18 @@ import { ScenarioManager } from '@/components/scenario-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import { SearchFilterBar } from '@/components/search-filter-bar';
-import { useGraphStore } from '@/store/graph-store';
+import { ProfileWidget } from '@/components/profile-widget';
+import { useGraphStore, type WorkspaceExport } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
 import { parseGraphDocument } from '@/lib/schema/validation';
+
+const isWorkspaceExport = (value: unknown): value is Partial<WorkspaceExport> =>
+  Boolean(
+    value &&
+      typeof value === 'object' &&
+      (value as { format?: unknown }).format === 'org-chart-workspace' &&
+      (value as { document?: unknown }).document,
+  );
 
 export default function Home() {
   const documentMeta = useGraphStore((state) => state.document.metadata);
@@ -22,8 +31,9 @@ export default function Home() {
   const undo = useGraphStore((state) => state.undo);
   const redo = useGraphStore((state) => state.redo);
   const autoLayout = useGraphStore((state) => state.autoLayout);
-  const exportDocument = useGraphStore((state) => state.exportDocument);
+  const exportWorkspace = useGraphStore((state) => state.exportWorkspace);
   const importDocument = useGraphStore((state) => state.importDocument);
+  const importWorkspace = useGraphStore((state) => state.importWorkspace);
   const resetToDemo = useGraphStore((state) => state.resetToDemo);
   const scenarios = useGraphStore((state) => state.scenarios);
   const setComparisonScenario = useGraphStore((state) => state.setComparisonScenario);
@@ -49,6 +59,23 @@ export default function Home() {
         return;
       }
       
+      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey && !e.altKey;
+      const isRedo =
+        ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && e.shiftKey && !e.altKey) ||
+        ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y' && !e.shiftKey && !e.altKey);
+
+      if (isUndo) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      if (isRedo) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       // Lens switching (1, 2, 3, 4 keys)
       if (e.key === '1' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -66,7 +93,7 @@ export default function Home() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [setLens]);
+  }, [redo, setLens, undo]);
 
   useEffect(() => {
     if (isCanvasFullScreen) {
@@ -80,15 +107,15 @@ export default function Home() {
   }, [isCanvasFullScreen]);
 
   const handleExport = useCallback(() => {
-    const doc = exportDocument();
-    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+    const workspace = exportWorkspace();
+    const blob = new Blob([JSON.stringify(workspace, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${doc.metadata.name.replace(/\s+/g, '-').toLowerCase()}-graph.json`;
+    link.download = `${workspace.document.metadata.name.replace(/\s+/g, '-').toLowerCase()}-workspace.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [exportDocument]);
+  }, [exportWorkspace]);
 
   const handleImport = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -96,8 +123,30 @@ export default function Home() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      const validated = parseGraphDocument(parsed);
-      importDocument(validated);
+      if (isWorkspaceExport(parsed)) {
+        const scenarios = Object.fromEntries(
+          Object.entries(parsed.scenarios ?? {})
+            .map(([id, scenario]) => {
+              const candidate = scenario as { document?: unknown };
+              if (!candidate.document) return null;
+              return [id, { ...scenario, document: parseGraphDocument(candidate.document) }];
+            })
+            .filter((entry): entry is [string, WorkspaceExport["scenarios"][string]] => Boolean(entry)),
+        );
+
+        importWorkspace({
+          format: 'org-chart-workspace',
+          version: 1,
+          exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : new Date().toISOString(),
+          document: parseGraphDocument(parsed.document),
+          scenarios,
+          activeScenarioId: typeof parsed.activeScenarioId === 'string' ? parsed.activeScenarioId : null,
+          comparisonScenarioId: typeof parsed.comparisonScenarioId === 'string' ? parsed.comparisonScenarioId : null,
+        });
+      } else {
+        const validated = parseGraphDocument(parsed);
+        importDocument(validated);
+      }
     } catch (error) {
       console.error('Failed to import document', error);
       const message =
@@ -108,7 +157,7 @@ export default function Home() {
     } finally {
       event.target.value = '';
     }
-  }, [importDocument]);
+  }, [importDocument, importWorkspace]);
 
   return (
     <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -143,12 +192,14 @@ export default function Home() {
             <ScenarioManager />
           </div>
           <div className="flex items-center gap-2">
+            <ProfileWidget />
             <button
               type="button"
               onClick={() => setShowAIImport(true)}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-200"
+              title="AI Import is paused until Cortex/Okta sign-in is enabled"
             >
-              <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import
+              <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import Paused
             </button>
             
             {/* More Actions Menu */}

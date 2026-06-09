@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const AI_IMPORT_ENABLED = process.env.AI_IMPORT_ENABLED === 'true';
 
 // Rate limiting - simple in-memory store (would use Redis in production)
 const requestCounts = new Map<string, { count: number; resetTime: number }>();
@@ -28,6 +30,17 @@ function checkRateLimit(identifier: string): { allowed: boolean; remaining: numb
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    if (!AI_IMPORT_ENABLED) {
+      return NextResponse.json(
+        { error: 'AI Import is paused until the workflow is enabled by an administrator.' },
+        { status: 403 },
+      );
+    }
     // Rate limiting by IP
     const ip = request.headers.get('x-forwarded-for') || 'unknown';
     const rateCheck = checkRateLimit(ip);

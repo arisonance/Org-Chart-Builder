@@ -4,7 +4,7 @@ import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
 import { DEMO_GRAPH_DOCUMENT } from "@/data/demo-graph";
-import { calculateLayout, calculateCleanupLayout } from "@/lib/graph/layout";
+import { buildChildMap, calculateLayout, calculateCleanupLayout, isDescendant } from "@/lib/graph/layout";
 import type {
   ClipboardPayload,
   GraphDocument,
@@ -52,7 +52,9 @@ type GraphStoreActions = {
   clear: () => void;
   loadDocument: (document: GraphDocument) => void;
   importDocument: (document: GraphDocument) => void;
+  importWorkspace: (workspace: WorkspaceExport) => void;
   exportDocument: () => GraphDocument;
+  exportWorkspace: () => WorkspaceExport;
   setLens: (lens: LensId) => void;
   setSelection: (selection: Partial<SelectionState>) => void;
   selectNode: (nodeId: string, additive?: boolean) => void;
@@ -111,6 +113,50 @@ type AddPersonPayload = {
 
 type UpdatePersonOptions = {
   recordHistory?: boolean;
+};
+
+export type WorkspaceExport = {
+  format: "org-chart-workspace";
+  version: 1;
+  exportedAt: string;
+  document: GraphDocument;
+  scenarios: Record<string, Scenario>;
+  activeScenarioId: string | null;
+  comparisonScenarioId: string | null;
+};
+
+const validateRelationship = (
+  document: GraphDocument,
+  sourceId: string,
+  targetId: string,
+  type: RelationshipType,
+) => {
+  if (sourceId === targetId) {
+    throw new Error("A person cannot report to themselves.");
+  }
+
+  const sourceExists = document.nodes.some((node) => node.id === sourceId);
+  const targetExists = document.nodes.some((node) => node.id === targetId);
+  if (!sourceExists || !targetExists) {
+    throw new Error("Both people must exist before creating a relationship.");
+  }
+
+  const duplicate = document.edges.some(
+    (edge) =>
+      edge.source === sourceId &&
+      edge.target === targetId &&
+      edge.metadata.type === type,
+  );
+  if (duplicate) {
+    throw new Error("That relationship already exists.");
+  }
+
+  if (type === "manager") {
+    const childMap = buildChildMap(document.edges);
+    if (isDescendant(childMap, targetId, sourceId)) {
+      throw new Error("Cannot create a reporting loop. Choose a different manager.");
+    }
+  }
 };
 
 const cloneDocument = (document: GraphDocument): GraphDocument => cloneDeep(document);
@@ -227,7 +273,32 @@ export const useGraphStore = create<GraphStore>()(
           state.selection = { nodeIds: [], edgeIds: [] };
         });
       },
+      importWorkspace: (workspace) => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.document = cloneDocument(workspace.document);
+            state.scenarios = cloneDeep(workspace.scenarios ?? {});
+            state.activeScenarioId = workspace.activeScenarioId ?? null;
+            state.comparisonScenarioId = workspace.comparisonScenarioId ?? null;
+            state.selection = { nodeIds: [], edgeIds: [] };
+            state.history = { past: [], future: [] };
+            state.document.metadata.updatedAt = now();
+          }),
+        );
+      },
       exportDocument: () => cloneDocument(get().document),
+      exportWorkspace: () => {
+        const state = get();
+        return {
+          format: "org-chart-workspace",
+          version: 1,
+          exportedAt: now(),
+          document: cloneDocument(state.document),
+          scenarios: cloneDeep(state.scenarios),
+          activeScenarioId: state.activeScenarioId,
+          comparisonScenarioId: state.comparisonScenarioId,
+        };
+      },
       setLens: (lens) => {
         set(
           produce((state: GraphStoreState) => {
@@ -335,7 +406,7 @@ export const useGraphStore = create<GraphStore>()(
         withHistory(set, get, applyUpdates);
       },
       addRelationship: (sourceId, targetId, type, meta) => {
-        if (sourceId === targetId) return null;
+        validateRelationship(get().document, sourceId, targetId, type);
         const id = `edge-${type}-${nanoid(8)}`;
         withHistory(set, get, (state) => {
           const timestamp = now();

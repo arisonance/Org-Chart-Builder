@@ -28,7 +28,6 @@ import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quic
 import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
-import { buildChildMap, isDescendant } from "@/lib/graph/layout";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -115,6 +114,21 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     position?: { x: number; y: number };
   }>({ open: false, mode: 'new-person' });
 
+  const requestRemoveNode = useCallback((nodeId: string) => {
+    const person = nodesData.find((node) => node.id === nodeId);
+    const name = person?.name ?? "this person";
+    const attachedRelationships = edgesData.filter(
+      (edge) => edge.source === nodeId || edge.target === nodeId,
+    ).length;
+    const relationshipNote = attachedRelationships
+      ? ` This will also remove ${attachedRelationships} relationship${attachedRelationships === 1 ? "" : "s"}.`
+      : "";
+
+    if (window.confirm(`Remove ${name}?${relationshipNote} You can undo with Cmd/Ctrl+Z.`)) {
+      removeNode(nodeId);
+    }
+  }, [edgesData, nodesData, removeNode]);
+
   const lensLayout = lensState?.layout;
   const filters = lensState?.filters;
 
@@ -123,7 +137,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [nodesData],
   );
 
-  const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
 
   // Show onboarding for empty canvas
   useEffect(() => {
@@ -252,7 +265,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           },
           duplicate: (nodeId) => duplicateNodes([nodeId]),
           copy: (nodeId) => copyNodesById([nodeId]),
-          delete: removeNode,
+          delete: requestRemoveNode,
           lockToggle: toggleNodeLock,
           colorTag: addTagToNode,
           openEditor: (nodeId) => selectNode(nodeId),
@@ -282,7 +295,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addRelationship,
     duplicateNodes,
     copyNodesById,
-    removeNode,
+    requestRemoveNode,
     toggleNodeLock,
     addTagToNode,
     selectNode,
@@ -360,17 +373,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       if (!connection.source || !connection.target) return;
       const type = deduceRelationshipType(connection);
       if (!type) return;
-      if (type === "manager") {
-        if (connection.source === connection.target) return;
-        if (isDescendant(childMap, connection.target, connection.source)) {
-          window.alert("Cannot create a reporting loop. Choose a different manager.");
-          return;
-        }
+      try {
+        addRelationship(connection.source, connection.target, type);
+        setSelection({ edgeIds: [], nodeIds: [connection.target] });
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Unable to create relationship.");
       }
-      addRelationship(connection.source, connection.target, type);
-      setSelection({ edgeIds: [], nodeIds: [connection.target] });
     },
-    [addRelationship, childMap, setSelection],
+    [addRelationship, setSelection],
   );
 
   const handleEdgesDelete = useCallback(
@@ -382,9 +392,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleNodesDelete = useCallback(
     (deleted: Node[]) => {
-      deleted.forEach((node) => removeNode(node.id));
+      deleted.forEach((node) => requestRemoveNode(node.id));
     },
-    [removeNode],
+    [requestRemoveNode],
   );
 
   const handlePaneClick = useCallback(() => {
@@ -487,6 +497,26 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) {
+        return;
+      }
+
+      if ((event.key === "Backspace" || event.key === "Delete") && !event.metaKey && !event.ctrlKey) {
+        if (selection.nodeIds.length > 0) {
+          event.preventDefault();
+          selection.nodeIds.forEach((nodeId) => requestRemoveNode(nodeId));
+          return;
+        }
+        if (selection.edgeIds.length > 0) {
+          event.preventDefault();
+          if (window.confirm(`Remove ${selection.edgeIds.length} selected relationship${selection.edgeIds.length === 1 ? "" : "s"}? You can undo with Cmd/Ctrl+Z.`)) {
+            selection.edgeIds.forEach((edgeId) => removeRelationship(edgeId));
+          }
+          return;
+        }
+      }
+
       // Cmd/Ctrl + D to duplicate
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
@@ -551,6 +581,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [
       selection.nodeIds,
+      selection.edgeIds,
+      requestRemoveNode,
+      removeRelationship,
       duplicateNodes,
       rfInstance,
       addPerson,
@@ -578,7 +611,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     // If adding a direct report, create the relationship
     if (quickAddDialog.mode === 'direct-report' && quickAddDialog.managerId) {
-      addRelationship(quickAddDialog.managerId, newId, 'manager');
+      try {
+        addRelationship(quickAddDialog.managerId, newId, 'manager');
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Unable to create relationship.');
+      }
     }
 
     setSelection({ nodeIds: [newId], edgeIds: [] });
@@ -632,7 +669,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             panOnScroll
             panOnDrag={[1, 2]}
             zoomOnPinch
-            deleteKeyCode={["Backspace", "Delete"]}
+            deleteKeyCode={null}
             proOptions={{ hideAttribution: true }}
             minZoom={0.25}
             maxZoom={2}

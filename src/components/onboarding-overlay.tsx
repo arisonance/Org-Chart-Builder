@@ -45,19 +45,18 @@ export function OnboardingOverlay({ show, onDismiss }: OnboardingOverlayProps) {
           
           <div className="max-w-md space-y-4 text-center">
             <h3 className="text-2xl font-semibold text-slate-900 dark:text-white">
-              Build Your Org Chart
+              Start with the decision you need to see
             </h3>
             <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              Start by adding your first person to the canvas. You can add team members, create
-              reporting relationships, and visualize your organization structure.
+              Add or select a person, then connect reporting lines. Use lenses to see where brand, channel, and department ownership gets messy before it becomes a meeting.
             </p>
           </div>
 
           <div className="grid w-full max-w-lg gap-3">
-            <QuickTip icon="➕" text="Right-click the canvas or use the + button to add people" />
-            <QuickTip icon="🔗" text="Drag from connection handles to create relationships" />
-            <QuickTip icon="⌨️" text="Press N to quickly add a person at the center" />
-            <QuickTip icon="✏️" text="Double-click any card to edit details" />
+            <QuickTip icon="➕" text="Right-click the canvas or press N to add the first person" />
+            <QuickTip icon="🔗" text="Drag handles to create manager, sponsor, or dotted-line relationships" />
+            <QuickTip icon="⌨️" text="Use Cmd/Ctrl+Z to undo risky edits" />
+            <QuickTip icon="✏️" text="Export JSON to save the full workspace, including scenarios" />
           </div>
         </div>
       </div>
@@ -66,7 +65,7 @@ export function OnboardingOverlay({ show, onDismiss }: OnboardingOverlayProps) {
       <div className="pointer-events-none absolute bottom-24 right-24 animate-bounce">
         <div className="flex items-center gap-3">
           <div className="rounded-2xl border border-sky-200 bg-sky-50/95 px-4 py-3 text-sm font-semibold text-sky-900 shadow-lg backdrop-blur dark:border-sky-800 dark:bg-sky-900/95 dark:text-sky-100">
-            Click here to get started
+            Start here
           </div>
           <svg
             className="h-8 w-8 text-sky-500"
