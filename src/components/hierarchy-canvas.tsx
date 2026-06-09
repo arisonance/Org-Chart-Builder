@@ -12,6 +12,7 @@ import {
   MarkerType,
   MiniMap,
   Node,
+  Panel,
   ReactFlow,
   type NodeChange,
   type ReactFlowInstance,
@@ -45,6 +46,17 @@ type CanvasMenuState = {
 const nodeTypes = {
   hierarchyNode: HierarchyNode,
 } as const;
+
+type CanvasLod = 'full' | 'medium' | 'compact';
+type ViewMode = 'detail' | 'overview';
+
+const lodForZoom = (zoom: number): CanvasLod => {
+  if (zoom >= 0.85) return 'full';
+  if (zoom >= 0.45) return 'medium';
+  return 'compact';
+};
+
+const edgeWidthForLod = (lod: CanvasLod) => (lod === 'compact' ? 1.4 : lod === 'medium' ? 2 : 2.5);
 
 const edgeTypes = {
   ...customEdgeTypes,
@@ -104,7 +116,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     null,
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [currentZoom, setCurrentZoom] = useState(1);
+  const [currentLod, setCurrentLod] = useState<CanvasLod>('full');
+  const [viewMode, setViewMode] = useState<ViewMode>('detail');
   const isRestoringViewport = useRef(false);
   const [quickAddDialog, setQuickAddDialog] = useState<{
     open: boolean;
@@ -137,6 +150,26 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [nodesData],
   );
 
+  const effectiveLod: CanvasLod = viewMode === 'overview' ? 'compact' : currentLod;
+
+  const fitOptions = useMemo(() => ({
+    padding: viewMode === 'overview' ? 0.08 : 0.15,
+    minZoom: 0.1,
+    maxZoom: personNodes.length <= 8 ? 1.2 : personNodes.length <= 25 ? 1 : 0.8,
+    duration: 350,
+  }), [personNodes.length, viewMode]);
+
+  const fitWholeOrg = useCallback(() => {
+    rfInstance?.fitView(fitOptions);
+  }, [fitOptions, rfInstance]);
+
+  const centerSelectedNode = useCallback(() => {
+    if (!rfInstance || selection.nodeIds.length !== 1) return;
+    const selectedId = selection.nodeIds[0];
+    const position = lensLayout?.positions?.[selectedId];
+    if (!position) return;
+    rfInstance.setCenter(position.x + 128, position.y + 90, { zoom: 1.08, duration: 350 });
+  }, [lensLayout?.positions, rfInstance, selection.nodeIds]);
 
   // Show onboarding for empty canvas
   useEffect(() => {
@@ -166,11 +199,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     
     // Delay slightly to ensure all nodes are rendered
     const timer = setTimeout(() => {
-      rfInstance.fitView({ padding: 0.2, duration: 300, maxZoom: 1.5 });
+      rfInstance.fitView(fitOptions);
     }, 150);
     
     return () => clearTimeout(timer);
-  }, [rfInstance, lensLayout, personNodes.length]);
+  }, [rfInstance, lensLayout, personNodes.length, fitOptions]);
 
   const highlightTokens = useMemo(() => {
     if (!filters?.activeTokens?.length) return new Map<string, string[]>();
@@ -211,7 +244,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         emphasisLabel: getPrimaryLabel(node, lens),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
-        zoom: currentZoom, // Pass zoom for LOD rendering
+        lod: effectiveLod,
         actions: {
           addDirectReport: (managerId) => {
             const manager = personNodes.find((n) => n.id === managerId);
@@ -290,7 +323,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lensLayout?.positions,
     lens,
     highlightTokens,
-    currentZoom,
+    effectiveLod,
     addPerson,
     addRelationship,
     duplicateNodes,
@@ -320,7 +353,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                        'manager';
       
       // Calculate opacity based on ghost state (keep edges visible at all zoom levels)
-      const opacity = isGhost || edge.metadata.ghost ? 0.3 : 0.85;
+      const opacity = isGhost || edge.metadata.ghost ? 0.25 : effectiveLod === 'compact' ? 0.55 : 0.85;
       
       return {
         id: edge.id,
@@ -330,7 +363,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         data: {
           ...edge,
         },
-        animated: edge.metadata.type === "dotted" && currentZoom > 0.5,
+        animated: edge.metadata.type === "dotted" && effectiveLod === 'full',
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker
           type: MarkerType.ArrowClosed,
           width: marker.width,
@@ -339,6 +372,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         },
         style: {
           ...baseEdgeStyle,
+          strokeWidth: edgeWidthForLod(effectiveLod),
           stroke: color,
           opacity,
         },
@@ -346,7 +380,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         selected: selection.edgeIds.includes(edge.id),
       };
     });
-  }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, currentZoom]);
+  }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, effectiveLod]);
 
   // Handle node drag stop - instant position updates without debouncing
   const handleNodeDragStop = useCallback(
@@ -450,7 +484,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!rfInstance || isRestoringViewport.current) return;
     
     const viewport = rfInstance.getViewport();
-    setCurrentZoom(viewport.zoom);
+    setCurrentLod((prev) => {
+      const next = lodForZoom(viewport.zoom);
+      return prev === next ? prev : next;
+    });
     // Use lightweight viewport update to avoid document re-renders
     setCurrentViewport(viewport);
   }, [rfInstance, setCurrentViewport]);
@@ -515,6 +552,25 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           }
           return;
         }
+      }
+
+      if (event.key.toLowerCase() === 'f' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        fitWholeOrg();
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'o' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        setViewMode((mode) => mode === 'overview' ? 'detail' : 'overview');
+        setTimeout(() => rfInstance?.fitView(fitOptions), 50);
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'z' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        centerSelectedNode();
+        return;
       }
 
       // Cmd/Ctrl + D to duplicate
@@ -591,6 +647,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       lensLayout,
       addRelationship,
       setSelection,
+      fitWholeOrg,
+      fitOptions,
+      centerSelectedNode,
     ],
   );
 
@@ -653,7 +712,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onMove={() => {
               if (rfInstance) {
                 const viewport = rfInstance.getViewport();
-                setCurrentZoom(viewport.zoom);
+                setCurrentLod((prev) => {
+                  const next = lodForZoom(viewport.zoom);
+                  return prev === next ? prev : next;
+                });
                 setCurrentViewport(viewport); // Lightweight update
               }
             }}
@@ -664,15 +726,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             elevateEdgesOnSelect={false}
             connectionMode={ConnectionMode.Loose}
             fitView
-            fitViewOptions={{ padding: 0.2, maxZoom: 1.5, minZoom: 0.5 }}
+            fitViewOptions={fitOptions}
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             panOnScroll
             panOnDrag={[1, 2]}
             zoomOnPinch
             deleteKeyCode={null}
             proOptions={{ hideAttribution: true }}
-            minZoom={0.25}
-            maxZoom={2}
+            minZoom={0.1}
+            maxZoom={1.8}
             defaultEdgeOptions={{ type: "manager" }}
             onInit={setRfInstance}
             className="bg-transparent"
@@ -700,11 +762,31 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   cleanupCanvas(lens, mode);
                   // Fit view after cleanup with smooth animation
                   setTimeout(() => {
-                    rfInstance?.fitView({ padding: 0.2, duration: 400, maxZoom: 1.5 });
+                    rfInstance?.fitView(fitOptions);
                   }, 100);
                 }}
               />
             )}
+            <Panel position="top-left" className="!m-5">
+              <ViewModePanel
+                mode={viewMode}
+                lod={effectiveLod}
+                onOverview={() => {
+                  setViewMode('overview');
+                  cleanupCanvas(lens, 'compact');
+                  setTimeout(() => rfInstance?.fitView({ ...fitOptions, padding: 0.08 }), 120);
+                }}
+                onDetail={() => {
+                  setViewMode('detail');
+                  cleanupCanvas(lens, 'spacious');
+                  setTimeout(() => {
+                    if (selection.nodeIds.length === 1) centerSelectedNode();
+                    else rfInstance?.fitView(fitOptions);
+                  }, 120);
+                }}
+                onFit={fitWholeOrg}
+              />
+            </Panel>
           </ReactFlow>
           <EdgeContextMenu
             edgeMenu={edgeMenu}
@@ -761,13 +843,60 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           })
         }
         onDeselect={() => clearSelection()}
-        onZoomFit={() => rfInstance?.fitView({ padding: 0.25 })}
+        onZoomFit={fitWholeOrg}
         onToggleGrid={() => toggleGrid(lens)}
         onToggleSnap={() => toggleSnap(lens)}
       />
     </ContextMenu.Root>
   );
 }
+
+
+const ViewModePanel = ({
+  mode,
+  lod,
+  onOverview,
+  onDetail,
+  onFit,
+}: {
+  mode: ViewMode;
+  lod: CanvasLod;
+  onOverview: () => void;
+  onDetail: () => void;
+  onFit: () => void;
+}) => (
+  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/92 p-1.5 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/88 dark:text-slate-200">
+    <button
+      type="button"
+      onClick={onOverview}
+      className={[
+        "rounded-xl px-3 py-2 transition",
+        mode === 'overview' ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950" : "hover:bg-slate-100 dark:hover:bg-white/10",
+      ].join(" ")}
+      title="Readable whole-org view"
+    >
+      Overview
+    </button>
+    <button
+      type="button"
+      onClick={onDetail}
+      className={[
+        "rounded-xl px-3 py-2 transition",
+        mode === 'detail' ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950" : "hover:bg-slate-100 dark:hover:bg-white/10",
+      ].join(" ")}
+      title="Readable card detail"
+    >
+      Detail
+    </button>
+    <div className="mx-1 h-6 w-px bg-slate-200 dark:bg-white/10" />
+    <button type="button" onClick={onFit} className="rounded-xl px-3 py-2 hover:bg-slate-100 dark:hover:bg-white/10">
+      Fit
+    </button>
+    <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase tracking-wide text-slate-500 sm:inline dark:bg-white/10 dark:text-slate-300">
+      {lod}
+    </span>
+  </div>
+);
 
 const CanvasContextMenu = ({
   open,
@@ -829,7 +958,7 @@ const CanvasContextMenu = ({
         <MenuItem onSelect={onToggleGrid}>Toggle grid</MenuItem>
         <MenuItem onSelect={onToggleSnap}>Toggle snap-to-grid</MenuItem>
         <MenuSeparator />
-        <MenuItem onSelect={() => rfInstance?.fitView({ padding: 0.1 })}>Reset view</MenuItem>
+        <MenuItem onSelect={() => rfInstance?.fitView({ padding: 0.1, minZoom: 0.1, maxZoom: 0.9, duration: 300 })}>Reset view</MenuItem>
       </ContextMenu.Content>
     </ContextMenu.Portal>
   );

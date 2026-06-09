@@ -35,7 +35,7 @@ export type HierarchyNodeData = {
   highlightTokens: string[];
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
-  zoom?: number; // Current zoom level for LOD rendering
+  lod: 'full' | 'medium' | 'compact'; // Semantic zoom level for readable overview/detail rendering
 };
 
 // Tier badges configuration
@@ -48,7 +48,7 @@ const TIER_BADGES: Record<string, { label: string; className: string }> = {
 };
 
 function Component({ data }: { data: HierarchyNodeData }) {
-  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1 } = data;
+  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, lod } = data;
   
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [editorPosition, setEditorPosition] = useState({ x: 0, y: 0 });
@@ -65,9 +65,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
   );
 
   const tierBadge = node.attributes.tier ? TIER_BADGES[node.attributes.tier] : undefined;
-  
-  // Level of detail based on zoom - less aggressive for better initial render
-  const lodLevel = zoom > 0.6 ? 'full' : 'medium';
 
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
@@ -110,7 +107,8 @@ function Component({ data }: { data: HierarchyNodeData }) {
             onClick={(event) => handleSelect(event, event.shiftKey)}
             onDoubleClick={handleDoubleClick}
             className={[
-              "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white/95 px-5 py-5 text-center shadow-lg ring-1 ring-slate-200 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-950/85 dark:ring-white/10",
+              "relative flex w-[16rem] flex-col items-center rounded-2xl border bg-white/95 text-center shadow-lg ring-1 ring-slate-200 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-950/85 dark:ring-white/10",
+              lod === 'compact' ? "min-h-[8rem] gap-2 px-4 py-4" : lod === 'medium' ? "min-h-[10rem] gap-2.5 px-5 py-4" : "min-h-[13rem] gap-3 px-5 py-5",
               isSelected
                 ? "border-sky-500 ring-2 ring-sky-300/80 shadow-xl"
                 : "hover:-translate-y-1 hover:shadow-xl",
@@ -120,17 +118,20 @@ function Component({ data }: { data: HierarchyNodeData }) {
               className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
               style={{ background: accentColor }}
             />
-            <div className="relative mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900/90 text-sm font-semibold uppercase tracking-tight text-white shadow-md dark:bg-slate-200/50 dark:text-white">
-              {initials}
-            </div>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{node.name}</p>
-              <p className="text-xs leading-snug text-slate-500 dark:text-slate-300">
-                {node.attributes.title}
-              </p>
-              {/* Hide job description at medium zoom for performance */}
-              {lodLevel === 'full' && node.attributes.jobDescription && (
-                <p className="mt-1 text-[10px] leading-relaxed text-slate-400 dark:text-slate-400 line-clamp-2">
+            {lod === 'full' ? (
+              <div className="relative mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900/90 text-sm font-semibold uppercase tracking-tight text-white shadow-md dark:bg-slate-200/50 dark:text-white">
+                {initials}
+              </div>
+            ) : null}
+            <div className="flex min-h-0 flex-col justify-center gap-1">
+              <p className={lod === 'compact' ? "text-xl font-bold leading-tight text-slate-950 dark:text-slate-50" : lod === 'medium' ? "text-base font-bold leading-tight text-slate-950 dark:text-slate-50" : "text-sm font-semibold text-slate-900 dark:text-slate-50"}>{node.name}</p>
+              {lod !== 'compact' ? (
+                <p className="line-clamp-2 text-xs leading-snug text-slate-500 dark:text-slate-300">
+                  {node.attributes.title}
+                </p>
+              ) : null}
+              {lod === 'full' && node.attributes.jobDescription && (
+                <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-slate-400 dark:text-slate-400">
                   {node.attributes.jobDescription}
                 </p>
               )}
@@ -141,21 +142,19 @@ function Component({ data }: { data: HierarchyNodeData }) {
                   {tierBadge.label}
                 </span>
               ) : null}
-              {/* Show context badge only at full zoom */}
-              {lodLevel === 'full' && primaryContextBadge ? (
+              {lod === 'full' && primaryContextBadge ? (
                 <span className={`${BADGE_BASE_CLASS} border-transparent bg-slate-900/10 text-[10px]`}>
                   {primaryContextBadge}
                 </span>
               ) : null}
-              {/* Show highlight tokens only at full zoom */}
-              {lodLevel === 'full' && highlightTokens.map((token) => (
+              {lod === 'full' && highlightTokens.map((token) => (
                 <span key={token} className={`${BADGE_BASE_CLASS} border-transparent bg-sky-100 text-sky-700`}>
                   {token}
                 </span>
               ))}
             </div>
           </button>
-          <div className="pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1">
+          <div className={lod === 'compact' ? "pointer-events-none absolute left-[-12px] top-1/2 flex flex-col items-center gap-1" : "pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1"}>
             <Handle
               type="source"
               position={Position.Left}
@@ -163,11 +162,13 @@ function Component({ data }: { data: HierarchyNodeData }) {
               data-handle-type="dotted"
               className={`${HANDLE_BASE_CLASS} !bg-indigo-400 dark:!bg-indigo-500`}
             />
-            <span className="text-[9px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300">
-              Dotted
-            </span>
+            {lod !== 'compact' ? (
+              <span className="text-[9px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300">
+                Dotted
+              </span>
+            ) : null}
           </div>
-          <div className="pointer-events-none absolute right-[-18px] top-1/2 flex flex-col items-center gap-1">
+          <div className={lod === 'compact' ? "pointer-events-none absolute right-[-12px] top-1/2 flex flex-col items-center gap-1" : "pointer-events-none absolute right-[-18px] top-1/2 flex flex-col items-center gap-1"}>
             <Handle
               type="source"
               position={Position.Right}
@@ -175,9 +176,11 @@ function Component({ data }: { data: HierarchyNodeData }) {
               data-handle-type="sponsor"
               className={`${HANDLE_BASE_CLASS} !bg-amber-400 dark:!bg-amber-500`}
             />
-            <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500 dark:text-amber-300">
-              Sponsor
-            </span>
+            {lod !== 'compact' ? (
+              <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500 dark:text-amber-300">
+                Sponsor
+              </span>
+            ) : null}
           </div>
           
           <Handle
@@ -293,7 +296,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
       prev.isSelected === next.isSelected &&
       prev.accentColor === next.accentColor &&
       prev.emphasisLabel === next.emphasisLabel &&
-      prev.highlightTokens.length === next.highlightTokens.length) {
+      prev.highlightTokens.length === next.highlightTokens.length &&
+      prev.lod === next.lod) {
     return true;
   }
   
@@ -306,6 +310,7 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.isSelected === next.isSelected &&
     prev.accentColor === next.accentColor &&
     prev.lens === next.lens &&
+    prev.lod === next.lod &&
     prev.highlightTokens.join(',') === next.highlightTokens.join(',')
   );
 }

@@ -270,6 +270,69 @@ export const calculateClusterLayout = (
   return positions;
 };
 
+
+const calculateExecutiveOverviewLayout = (
+  personNodes: PersonNode[],
+  edges: GraphEdge[],
+): Record<string, { x: number; y: number }> => {
+  const managerEdges = edges.filter(isManagerEdge);
+  const childrenByManager = buildChildMap(managerEdges);
+  const incoming = new Set(managerEdges.map((edge) => edge.target));
+  const roots = personNodes.filter((node) => !incoming.has(node.id));
+  const nodeById = new Map(personNodes.map((node) => [node.id, node]));
+  const fallbackRoot = personNodes[0]?.id;
+  const rootIds = roots.length ? roots.map((node) => node.id) : fallbackRoot ? [fallbackRoot] : [];
+  const primaryRoot = rootIds[0];
+  const topLevelIds = primaryRoot && childrenByManager[primaryRoot]?.length ? childrenByManager[primaryRoot] : rootIds;
+
+  const visited = new Set<string>();
+  const positions: Record<string, { x: number; y: number }> = {};
+  const COLUMN_WIDTH = 340;
+  const ROW_HEIGHT = 138;
+  const TOP_Y = -260;
+  const CHILD_Y = -40;
+
+  const collectSubtree = (nodeId: string): Array<{ id: string; depth: number }> => {
+    const rows: Array<{ id: string; depth: number }> = [];
+    const walk = (id: string, depth: number) => {
+      if (visited.has(id) || !nodeById.has(id)) return;
+      visited.add(id);
+      rows.push({ id, depth });
+      (childrenByManager[id] ?? []).forEach((childId) => walk(childId, depth + 1));
+    };
+    walk(nodeId, 0);
+    return rows;
+  };
+
+  const columnCount = Math.max(topLevelIds.length, 1);
+  if (primaryRoot && childrenByManager[primaryRoot]?.length) {
+    visited.add(primaryRoot);
+    positions[primaryRoot] = { x: -NODE_WIDTH / 2, y: TOP_Y };
+  }
+
+  topLevelIds.forEach((topId, columnIndex) => {
+    const columnX = (columnIndex - (columnCount - 1) / 2) * COLUMN_WIDTH;
+    const rows = collectSubtree(topId);
+    rows.forEach((row, rowIndex) => {
+      positions[row.id] = {
+        x: columnX + Math.min(row.depth, 2) * 26 - NODE_WIDTH / 2,
+        y: CHILD_Y + rowIndex * ROW_HEIGHT,
+      };
+    });
+  });
+
+  personNodes.forEach((node, index) => {
+    if (!positions[node.id]) {
+      positions[node.id] = {
+        x: (index % columnCount - (columnCount - 1) / 2) * COLUMN_WIDTH - NODE_WIDTH / 2,
+        y: CHILD_Y + (Math.floor(index / columnCount) + 7) * ROW_HEIGHT,
+      };
+    }
+  });
+
+  return positions;
+};
+
 /**
  * Enhanced cleanup layout that optimizes spacing, alignment, and overall aesthetics.
  * Similar to macOS desktop cleanup - reorganizes nodes for a clean, elegant appearance.
@@ -288,11 +351,15 @@ export const calculateCleanupLayout = (
     return {};
   }
 
+  if (mode === "compact") {
+    return calculateExecutiveOverviewLayout(personNodes, edges);
+  }
+
   // Spacing constants based on mode
-  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 180 : 280; // Compact: tighter spacing (may overlap), Spacious: crisp spacing with no overlap
-  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 220 : 350; // Compact: tighter vertical spacing, Spacious: clean vertical space
-  const CLEANUP_MARGIN_X = mode === "compact" ? 120 : 180;
-  const CLEANUP_MARGIN_Y = mode === "compact" ? 120 : 180;
+  const CLEANUP_NODE_SEPARATION = 280; // Spacious: crisp spacing with no overlap
+  const CLEANUP_RANK_SEPARATION = 350; // Spacious: clean vertical space
+  const CLEANUP_MARGIN_X = 180;
+  const CLEANUP_MARGIN_Y = 180;
 
   // Build hierarchy using dagre with enhanced spacing
   const g = new graphlib.Graph({ directed: true, compound: false, multigraph: false });
