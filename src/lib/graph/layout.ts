@@ -6,8 +6,9 @@ export type ChildMap = Record<string, string[]>;
 
 export const NODE_WIDTH = 260;
 export const NODE_HEIGHT = 150;
-const NODE_SEPARATION = 240;
-const RANK_SEPARATION = 300;
+// Edge-to-edge gaps between cards (dagre semantics), not center pitches
+const NODE_SEPARATION = 120;
+const RANK_SEPARATION = 220;
 const MARGIN_X = 150;
 const MARGIN_Y = 150;
 
@@ -329,9 +330,10 @@ export const calculateCleanupLayout = (
     return {};
   }
 
-  // Spacing constants based on mode
-  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 180 : 280; // Compact: tighter spacing (may overlap), Spacious: crisp spacing with no overlap
-  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 220 : 350; // Compact: tighter vertical spacing, Spacious: clean vertical space
+  // Spacing constants based on mode. Dagre's nodesep/ranksep are edge-to-edge
+  // gaps between cards, so neither mode can produce overlap.
+  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 60 : 140;
+  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 140 : 240;
   const CLEANUP_MARGIN_X = mode === "compact" ? 120 : 180;
   const CLEANUP_MARGIN_Y = mode === "compact" ? 120 : 180;
 
@@ -374,35 +376,9 @@ export const calculateCleanupLayout = (
     };
   });
 
-  // Post-processing: Align nodes at the same rank level
-  const rankMap = new Map<number, string[]>();
-  g.nodes().forEach((id) => {
-    const node = g.node(id);
-    const rank = node?.y ?? 0;
-    const roundedRank = Math.round(rank / CLEANUP_RANK_SEPARATION) * CLEANUP_RANK_SEPARATION;
-    
-    if (!rankMap.has(roundedRank)) {
-      rankMap.set(roundedRank, []);
-    }
-    rankMap.get(roundedRank)!.push(id);
-  });
-
-  // Align nodes horizontally within each rank
-  rankMap.forEach((nodeIds, rank) => {
-    if (nodeIds.length <= 1) return;
-    
-    // Sort nodes by current x position
-    nodeIds.sort((a, b) => positions[a].x - positions[b].x);
-    
-    // Calculate total width needed
-    const totalWidth = (nodeIds.length - 1) * CLEANUP_NODE_SEPARATION;
-    const startX = positions[nodeIds[0]].x - totalWidth / 2;
-    
-    // Reassign positions with even spacing
-    nodeIds.forEach((nodeId, index) => {
-      positions[nodeId].x = startX + index * CLEANUP_NODE_SEPARATION;
-    });
-  });
+  // NOTE: deliberately no per-rank "even spacing" pass here. Re-spacing a rank
+  // at a uniform pitch narrower than the card width crushed wide ranks into
+  // overlapping stacks and broke dagre's parent-over-children centering.
 
   // Center the entire layout
   if (Object.keys(positions).length > 0) {
