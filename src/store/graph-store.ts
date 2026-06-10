@@ -794,7 +794,7 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 5,
+      version: 6,
       partialize: (state) => ({
         document: state.document,
         selection: state.selection,
