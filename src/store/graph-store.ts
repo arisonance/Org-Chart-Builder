@@ -84,6 +84,11 @@ type GraphStoreActions = {
   autoLayout: (lens?: LensId) => void;
   cleanupCanvas: (lens?: LensId, mode?: "compact" | "spacious") => void;
   toggleNodeLock: (nodeId: string) => void;
+  reassignToLane: (
+    nodeId: string,
+    dimension: "brand" | "channel" | "department",
+    laneKey: string,
+  ) => void;
   addTagToNode: (nodeId: string, tag: string) => void;
   copyNodesById: (nodeIds: string[], edgeIds?: string[]) => void;
   undo: () => void;
@@ -590,6 +595,26 @@ export const useGraphStore = create<GraphStore>()(
           const node = state.document.nodes.find((item) => item.id === nodeId);
           if (!node || node.kind !== "person") return;
           node.locked = !node.locked;
+          node.updatedAt = now();
+        });
+      },
+      reassignToLane: (nodeId, dimension, laneKey) => {
+        withHistory(set, get, (state) => {
+          const node = state.document.nodes.find(
+            (item) => item.id === nodeId && item.kind === "person",
+          );
+          if (!node || node.kind !== "person") return;
+          const attr = node.attributes;
+          if (dimension === "brand") {
+            if (!attr.brands.includes(laneKey)) attr.brands.unshift(laneKey);
+            attr.primaryBrand = laneKey;
+          } else if (dimension === "channel") {
+            if (!attr.channels.includes(laneKey)) attr.channels.unshift(laneKey);
+            attr.primaryChannel = laneKey;
+          } else {
+            if (!attr.departments.includes(laneKey)) attr.departments.unshift(laneKey);
+            attr.primaryDepartment = laneKey;
+          }
           node.updatedAt = now();
         });
       },

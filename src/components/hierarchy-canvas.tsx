@@ -37,6 +37,7 @@ import {
   getGroupKey,
   groupNodesByDimension,
   lensToDimension,
+  UNASSIGNED_GROUP_KEY,
   NODE_WIDTH,
   NODE_HEIGHT,
   type LensDimension,
@@ -99,6 +100,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const removeNode = useGraphStore((state) => state.removeNode);
   const duplicateNodes = useGraphStore((state) => state.duplicateNodes);
   const toggleNodeLock = useGraphStore((state) => state.toggleNodeLock);
+  const reassignToLane = useGraphStore((state) => state.reassignToLane);
   const addTagToNode = useGraphStore((state) => state.addTagToNode);
   const copyNodesById = useGraphStore((state) => state.copyNodesById);
   const pasteClipboard = useGraphStore((state) => state.pasteClipboard);
@@ -175,6 +177,26 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     () => (focusedNodeId ? personNodes.find((n) => n.id === focusedNodeId) ?? null : null),
     [focusedNodeId, personNodes],
   );
+
+  // Horizontal extent of each lane in the active matrix view, used to detect
+  // which lane a card was dropped into for drag-to-reassign
+  const laneXRanges = useMemo(() => {
+    const dimension = lensToDimension(lens);
+    if (!dimension) return null;
+    const positions = lensLayout?.positions ?? {};
+    const groups = groupNodesByDimension(personNodes, dimension);
+    const ranges: Array<{ key: string; minX: number; maxX: number; centerX: number }> = [];
+    groups.forEach((members, key) => {
+      const xs = members
+        .map((m) => positions[m.id]?.x)
+        .filter((x): x is number => typeof x === "number");
+      if (xs.length === 0) return;
+      const minX = Math.min(...xs) - 80;
+      const maxX = Math.max(...xs) + NODE_WIDTH + 80;
+      ranges.push({ key, minX, maxX, centerX: (minX + maxX) / 2 });
+    });
+    return { dimension, ranges };
+  }, [lens, lensLayout?.positions, personNodes]);
 
   // Show onboarding for empty canvas
   useEffect(() => {
@@ -453,12 +475,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusedNodeId,
   ]);
 
-  // Handle node drag stop - instant position updates without debouncing
+  // Handle node drag stop - persist position, and in matrix views reassign the
+  // person to whichever lane they were dropped into
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       updateNodePosition(node.id, node.position);
+
+      if (!laneXRanges || laneXRanges.ranges.length === 0) return;
+      const person = personNodes.find((n) => n.id === node.id);
+      if (!person) return;
+
+      const dropX = node.position.x + NODE_WIDTH / 2;
+      let target = laneXRanges.ranges.find((r) => dropX >= r.minX && dropX <= r.maxX);
+      if (!target) {
+        // Dropped in the gap between lanes — snap to the nearest one
+        target = laneXRanges.ranges.reduce((best, r) =>
+          Math.abs(dropX - r.centerX) < Math.abs(dropX - best.centerX) ? r : best,
+        );
+      }
+      if (!target || target.key === UNASSIGNED_GROUP_KEY) return;
+      if (getGroupKey(person, laneXRanges.dimension) === target.key) return;
+
+      reassignToLane(node.id, laneXRanges.dimension, target.key);
     },
-    [updateNodePosition],
+    [updateNodePosition, laneXRanges, personNodes, reassignToLane],
   );
 
   const handleNodesChange = useCallback(
