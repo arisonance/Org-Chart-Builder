@@ -863,7 +863,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             panOnScroll={!scrollZoom}
             zoomOnScroll={scrollZoom}
-            panOnDrag={[1, 2]}
+            panOnDrag={[0, 1, 2]}
             zoomOnPinch
             deleteKeyCode={["Backspace", "Delete"]}
             proOptions={{ hideAttribution: true }}
