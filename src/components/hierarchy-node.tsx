@@ -65,9 +65,9 @@ function Component({ data }: { data: HierarchyNodeData }) {
   );
 
   const tierBadge = node.attributes.tier ? TIER_BADGES[node.attributes.tier] : undefined;
-  
+
   // Level of detail based on zoom - less aggressive for better initial render
-  const lodLevel = zoom > 0.6 ? 'full' : 'medium';
+  const lodLevel = getLodLevel(zoom);
 
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
@@ -120,40 +120,62 @@ function Component({ data }: { data: HierarchyNodeData }) {
               className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
               style={{ background: accentColor }}
             />
-            <div className="relative mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900/90 text-sm font-semibold uppercase tracking-tight text-white shadow-md dark:bg-slate-200/50 dark:text-white">
-              {initials}
-            </div>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{node.name}</p>
-              <p className="text-xs leading-snug text-slate-500 dark:text-slate-300">
-                {node.attributes.title}
-              </p>
-              {/* Hide job description at medium zoom for performance */}
-              {lodLevel === 'full' && node.attributes.jobDescription && (
-                <p className="mt-1 text-[10px] leading-relaxed text-slate-400 dark:text-slate-400 line-clamp-2">
-                  {node.attributes.jobDescription}
+            {lodLevel === 'compact' ? (
+              /* Zoomed way out: counter-scale the name so cards stay legible as chips */
+              <div className="flex min-h-[7rem] flex-col items-center justify-center gap-1 overflow-hidden">
+                <p
+                  className="line-clamp-2 font-bold tracking-tight text-slate-900 dark:text-slate-50"
+                  style={{ fontSize: Math.min(40, 14 / Math.max(zoom, 0.1)), lineHeight: 1.05 }}
+                >
+                  {node.name}
                 </p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-1">
-              {tierBadge ? (
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tierBadge.className}`}>
-                  {tierBadge.label}
-                </span>
-              ) : null}
-              {/* Show context badge only at full zoom */}
-              {lodLevel === 'full' && primaryContextBadge ? (
-                <span className={`${BADGE_BASE_CLASS} border-transparent bg-slate-900/10 text-[10px]`}>
-                  {primaryContextBadge}
-                </span>
-              ) : null}
-              {/* Show highlight tokens only at full zoom */}
-              {lodLevel === 'full' && highlightTokens.map((token) => (
-                <span key={token} className={`${BADGE_BASE_CLASS} border-transparent bg-sky-100 text-sky-700`}>
-                  {token}
-                </span>
-              ))}
-            </div>
+                {zoom >= 0.25 && (
+                  <p
+                    className="line-clamp-1 text-slate-500 dark:text-slate-300"
+                    style={{ fontSize: Math.min(18, 7 / Math.max(zoom, 0.1)) }}
+                  >
+                    {node.attributes.title}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="relative mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900/90 text-sm font-semibold uppercase tracking-tight text-white shadow-md dark:bg-slate-200/50 dark:text-white">
+                  {initials}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{node.name}</p>
+                  <p className="text-xs leading-snug text-slate-500 dark:text-slate-300">
+                    {node.attributes.title}
+                  </p>
+                  {/* Hide job description at medium zoom for performance */}
+                  {lodLevel === 'full' && node.attributes.jobDescription && (
+                    <p className="mt-1 text-[10px] leading-relaxed text-slate-400 dark:text-slate-400 line-clamp-2">
+                      {node.attributes.jobDescription}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-1">
+                  {tierBadge ? (
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tierBadge.className}`}>
+                      {tierBadge.label}
+                    </span>
+                  ) : null}
+                  {/* Show context badge only at full zoom */}
+                  {lodLevel === 'full' && primaryContextBadge ? (
+                    <span className={`${BADGE_BASE_CLASS} border-transparent bg-slate-900/10 text-[10px]`}>
+                      {primaryContextBadge}
+                    </span>
+                  ) : null}
+                  {/* Show highlight tokens only at full zoom */}
+                  {lodLevel === 'full' && highlightTokens.map((token) => (
+                    <span key={token} className={`${BADGE_BASE_CLASS} border-transparent bg-sky-100 text-sky-700`}>
+                      {token}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
           </button>
           <div className="pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1">
             <Handle
@@ -283,20 +305,39 @@ const emphsizedLabelOrFirst = (values: Array<string | undefined | null>) => {
   return values.find((value) => value && value.trim().length > 0);
 };
 
+// Level of detail buckets: full cards zoomed in, no badges at medium zoom,
+// oversized name-only chips when zoomed way out
+const getLodLevel = (zoom: number): 'full' | 'medium' | 'compact' => {
+  if (zoom > 0.6) return 'full';
+  if (zoom >= 0.45) return 'medium';
+  return 'compact';
+};
+
 // Custom comparison function for better memoization
 function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data: HierarchyNodeData }): boolean {
   const prev = prevProps.data;
   const next = nextProps.data;
-  
+
+  // Re-render whenever the zoom crosses an LOD boundary
+  const prevLod = getLodLevel(prev.zoom ?? 1);
+  const nextLod = getLodLevel(next.zoom ?? 1);
+  if (prevLod !== nextLod) {
+    return false;
+  }
+  // Compact cards counter-scale their text with zoom, so track it continuously there
+  if (nextLod === 'compact' && Math.abs((prev.zoom ?? 1) - (next.zoom ?? 1)) > 0.01) {
+    return false;
+  }
+
   // Fast path: if node reference is the same and selection hasn't changed, skip re-render
-  if (prev.node === next.node && 
+  if (prev.node === next.node &&
       prev.isSelected === next.isSelected &&
       prev.accentColor === next.accentColor &&
       prev.emphasisLabel === next.emphasisLabel &&
       prev.highlightTokens.length === next.highlightTokens.length) {
     return true;
   }
-  
+
   // Deep comparison for critical fields
   return (
     prev.node.id === next.node.id &&

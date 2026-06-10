@@ -386,6 +386,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       mirrorLanes,
       selectNode,
       focusSet,
+      currentZoom,
     );
     return [...laneNodes, ...personFlowNodes];
   }, [
@@ -1169,6 +1170,10 @@ const MIRROR_HEIGHT = 120;
 const MIRROR_GAP = 40;
 const MIRROR_SECTION_GAP = 90;
 
+const isVacantRole = (person: PersonNode) =>
+  person.name.toLowerCase().includes("vacant") ||
+  person.attributes.title.toLowerCase().includes("vacant");
+
 const buildLaneNodes = (
   people: PersonNode[],
   positions: Record<string, { x: number; y: number }>,
@@ -1176,6 +1181,7 @@ const buildLaneNodes = (
   showMirrors: boolean,
   onSelectMirror: (id: string) => void,
   focusSet: Set<string> | null,
+  zoom: number,
 ): Node[] => {
   const groups = groupNodesByDimension(people, dimension);
   const laneNodes: Node[] = [];
@@ -1239,6 +1245,11 @@ const buildLaneNodes = (
       label: key,
       color: getLaneColor(key, dimension),
       count: members.length,
+      crossAssigned: members.filter(
+        (member) => getAssignments(member, dimension).length > 1,
+      ).length,
+      vacancies: members.filter(isVacantRole).length,
+      zoom,
     };
     laneNodes.push({
       id: `lane:${key}`,
