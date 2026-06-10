@@ -58,9 +58,9 @@ export function EditorPanel() {
             Tips
           </p>
           <ul className="list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400">
-            <li>Double-click a card to edit inline.</li>
+            <li>Click a card to edit it here; right-click for quick actions.</li>
             <li>Drag handles to create manager, sponsor, or dotted-line relationships.</li>
-            <li>Press 1-4 to switch between lenses.</li>
+            <li>Press 1-5 to switch between lenses.</li>
           </ul>
         </div>
       </aside>

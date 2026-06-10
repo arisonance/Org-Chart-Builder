@@ -1,10 +1,9 @@
 'use client';
 
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
-import { InlineCardEditor } from "@/components/inline-card-editor";
 import type { LensId } from "@/lib/schema/lenses";
 import type { PersonNode } from "@/lib/schema/types";
 
@@ -49,9 +48,6 @@ const TIER_BADGES: Record<string, { label: string; className: string }> = {
 
 function Component({ data }: { data: HierarchyNodeData }) {
   const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1 } = data;
-  
-  const [showInlineEditor, setShowInlineEditor] = useState(false);
-  const [editorPosition, setEditorPosition] = useState({ x: 0, y: 0 });
 
   const initials = useMemo(
     () =>
@@ -72,18 +68,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
     onSelect(node.id, additive || event.metaKey || event.ctrlKey || event.shiftKey);
-  };
-
-  const handleDoubleClick = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    
-    // Get the position of the card on screen
-    const rect = event.currentTarget.getBoundingClientRect();
-    setEditorPosition({
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    });
-    setShowInlineEditor(true);
   };
 
   const primaryContextBadge =
@@ -108,7 +92,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
           <button
             type="button"
             onClick={(event) => handleSelect(event, event.shiftKey)}
-            onDoubleClick={handleDoubleClick}
             className={[
               "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white/95 px-5 py-5 text-center shadow-lg ring-1 ring-slate-200 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-950/85 dark:ring-white/10",
               isSelected
@@ -208,14 +191,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
             id={`${node.id}-manager-source`}
             data-handle-type="manager"
             className={`${HANDLE_BASE_CLASS} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
-          />
-          
-          {/* Inline Editor Popover */}
-          <InlineCardEditor
-            node={node}
-            isOpen={showInlineEditor}
-            onClose={() => setShowInlineEditor(false)}
-            position={editorPosition}
           />
         </div>
       </ContextMenu.Trigger>
