@@ -246,8 +246,9 @@ export default function Home() {
           <div className="relative h-[calc(100vh-180px)] min-h-[700px] w-full">
             <HierarchyCanvas className="h-full" />
             
-            {/* Floating Editor Panel - Only shows when node is selected */}
-            {selection.nodeIds.length > 0 && (
+            {/* Floating Editor Panel - Only for single selections; multi-select
+                uses the canvas bulk-assign toolbar instead */}
+            {selection.nodeIds.length === 1 && (
               <div className="absolute right-4 top-4 bottom-4 z-30 w-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>

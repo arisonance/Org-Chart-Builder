@@ -89,6 +89,11 @@ type GraphStoreActions = {
     dimension: "brand" | "channel" | "department",
     laneKey: string,
   ) => void;
+  reassignManyToLane: (
+    nodeIds: string[],
+    dimension: "brand" | "channel" | "department",
+    laneKey: string,
+  ) => void;
   addTagToNode: (nodeId: string, tag: string) => void;
   copyNodesById: (nodeIds: string[], edgeIds?: string[]) => void;
   undo: () => void;
@@ -176,6 +181,30 @@ const withHistory = (
       state.document.metadata.updatedAt = now();
     }),
   );
+};
+
+const applyLaneAssignment = (
+  state: GraphStoreState,
+  nodeId: string,
+  dimension: "brand" | "channel" | "department",
+  laneKey: string,
+) => {
+  const node = state.document.nodes.find(
+    (item) => item.id === nodeId && item.kind === "person",
+  );
+  if (!node || node.kind !== "person") return;
+  const attr = node.attributes;
+  if (dimension === "brand") {
+    if (!attr.brands.includes(laneKey)) attr.brands.unshift(laneKey);
+    attr.primaryBrand = laneKey;
+  } else if (dimension === "channel") {
+    if (!attr.channels.includes(laneKey)) attr.channels.unshift(laneKey);
+    attr.primaryChannel = laneKey;
+  } else {
+    if (!attr.departments.includes(laneKey)) attr.departments.unshift(laneKey);
+    attr.primaryDepartment = laneKey;
+  }
+  node.updatedAt = now();
 };
 
 const ensureLensState = (document: GraphDocument, lens: LensId) => {
@@ -600,22 +629,15 @@ export const useGraphStore = create<GraphStore>()(
       },
       reassignToLane: (nodeId, dimension, laneKey) => {
         withHistory(set, get, (state) => {
-          const node = state.document.nodes.find(
-            (item) => item.id === nodeId && item.kind === "person",
-          );
-          if (!node || node.kind !== "person") return;
-          const attr = node.attributes;
-          if (dimension === "brand") {
-            if (!attr.brands.includes(laneKey)) attr.brands.unshift(laneKey);
-            attr.primaryBrand = laneKey;
-          } else if (dimension === "channel") {
-            if (!attr.channels.includes(laneKey)) attr.channels.unshift(laneKey);
-            attr.primaryChannel = laneKey;
-          } else {
-            if (!attr.departments.includes(laneKey)) attr.departments.unshift(laneKey);
-            attr.primaryDepartment = laneKey;
-          }
-          node.updatedAt = now();
+          applyLaneAssignment(state, nodeId, dimension, laneKey);
+        });
+      },
+      reassignManyToLane: (nodeIds, dimension, laneKey) => {
+        if (nodeIds.length === 0) return;
+        withHistory(set, get, (state) => {
+          nodeIds.forEach((nodeId) => {
+            applyLaneAssignment(state, nodeId, dimension, laneKey);
+          });
         });
       },
       addTagToNode: (nodeId, tag) => {

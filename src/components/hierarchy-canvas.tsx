@@ -3,6 +3,7 @@
 import "@xyflow/react/dist/style.css";
 
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Connection,
@@ -14,6 +15,7 @@ import {
   Node,
   ReactFlow,
   type NodeChange,
+  type OnSelectionChangeParams,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -50,6 +52,7 @@ import {
   UNASSIGNED_LANE_COLOR,
 } from "@/lib/theme/palette";
 import { ROLE_TEMPLATES, type RoleTemplate } from "@/lib/schema/templates";
+import { DEMO_LENS_LABELS } from "@/data/demo-graph";
 
 type CanvasMenuState = {
   open: boolean;
@@ -101,6 +104,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const duplicateNodes = useGraphStore((state) => state.duplicateNodes);
   const toggleNodeLock = useGraphStore((state) => state.toggleNodeLock);
   const reassignToLane = useGraphStore((state) => state.reassignToLane);
+  const reassignManyToLane = useGraphStore((state) => state.reassignManyToLane);
   const addTagToNode = useGraphStore((state) => state.addTagToNode);
   const copyNodesById = useGraphStore((state) => state.copyNodesById);
   const pasteClipboard = useGraphStore((state) => state.pasteClipboard);
@@ -267,7 +271,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return tokensByNode;
   }, [filters?.activeTokens, personNodes, lens]);
 
-  const nodes = useMemo<Node[]>(() => {
+  const computedNodes = useMemo<Node[]>(() => {
     const positions = lensLayout?.positions ?? {};
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
@@ -411,6 +415,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     filters?.hiddenIds,
   ]);
 
+  // Local node state so React Flow position changes (dragging) render per
+  // frame; re-synced from the store-derived nodes whenever those change
+  const [rfNodes, setRfNodes] = useState<Node[]>(computedNodes);
+  useEffect(() => {
+    setRfNodes(computedNodes);
+  }, [computedNodes]);
+
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
     
@@ -476,38 +487,60 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusedNodeId,
   ]);
 
-  // Handle node drag stop - persist position, and in matrix views reassign the
-  // person to whichever lane they were dropped into
+  // Handle node drag stop - persist positions (the whole dragged selection),
+  // and in matrix views reassign each person to the lane they were dropped into
   const handleNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      updateNodePosition(node.id, node.position);
+    (_event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
+      const moved = draggedNodes?.length ? draggedNodes : [node];
+      moved.forEach((item) => updateNodePosition(item.id, item.position));
 
       if (!laneXRanges || laneXRanges.ranges.length === 0) return;
-      const person = personNodes.find((n) => n.id === node.id);
-      if (!person) return;
+      moved.forEach((item) => {
+        const person = personNodes.find((n) => n.id === item.id);
+        if (!person) return;
 
-      const dropX = node.position.x + NODE_WIDTH / 2;
-      let target = laneXRanges.ranges.find((r) => dropX >= r.minX && dropX <= r.maxX);
-      if (!target) {
-        // Dropped in the gap between lanes — snap to the nearest one
-        target = laneXRanges.ranges.reduce((best, r) =>
-          Math.abs(dropX - r.centerX) < Math.abs(dropX - best.centerX) ? r : best,
-        );
-      }
-      if (!target || target.key === UNASSIGNED_GROUP_KEY) return;
-      if (getGroupKey(person, laneXRanges.dimension) === target.key) return;
+        const dropX = item.position.x + NODE_WIDTH / 2;
+        let target = laneXRanges.ranges.find((r) => dropX >= r.minX && dropX <= r.maxX);
+        if (!target) {
+          // Dropped in the gap between lanes — snap to the nearest one
+          target = laneXRanges.ranges.reduce((best, r) =>
+            Math.abs(dropX - r.centerX) < Math.abs(dropX - best.centerX) ? r : best,
+          );
+        }
+        if (!target || target.key === UNASSIGNED_GROUP_KEY) return;
+        if (getGroupKey(person, laneXRanges.dimension) === target.key) return;
 
-      reassignToLane(node.id, laneXRanges.dimension, target.key);
+        reassignToLane(item.id, laneXRanges.dimension, target.key);
+      });
     },
     [updateNodePosition, laneXRanges, personNodes, reassignToLane],
   );
 
-  const handleNodesChange = useCallback(
-    (_changes: NodeChange[]) => {
-      // Let React Flow handle visual updates natively for smooth dragging
-      // Position persistence happens only on drag stop via handleNodeDragStop
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    // Apply changes to the local copy so cards follow the cursor while
+    // dragging; the store is only written on drag stop
+    setRfNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
+
+  // Keep the store's selection in sync with React Flow's (shift+drag box
+  // selection, shift-click), ignoring lane backgrounds and mirror cards
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
+      const ids = selectedNodes
+        .map((n) => n.id)
+        .filter((id) => !id.startsWith("lane:") && !id.startsWith("mirror:"))
+        .sort();
+      const current = [...selection.nodeIds].sort();
+      if (ids.length === current.length && ids.every((id, i) => id === current[i])) {
+        return;
+      }
+      // Only push multi-selections (or shrinking ones) from React Flow; single
+      // clicks are handled by the cards' own onSelect
+      if (ids.length > 1 || (ids.length === 0 && current.length > 1)) {
+        setSelection({ nodeIds: ids, edgeIds: [] });
+      }
     },
-    [],
+    [selection.nodeIds, setSelection],
   );
 
   const handleEdgesChange = useCallback(() => {
@@ -748,7 +781,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           onContextMenu={handlePaneContextMenu}
         >
           <ReactFlow
-            nodes={nodes}
+            nodes={rfNodes}
             edges={edges}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             nodeTypes={nodeTypes as any}
@@ -761,6 +794,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
             onPaneClick={handlePaneClick}
+            onSelectionChange={handleSelectionChange}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}
             onMove={() => {
@@ -852,6 +886,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           
           {/* Relationship legend - compact button in corner */}
           {personNodes.length > 0 && <RelationshipLegend />}
+
+          {/* Bulk assignment toolbar for multi-selections */}
+          {selection.nodeIds.length > 1 && (
+            <BulkAssignToolbar
+              count={selection.nodeIds.length}
+              onAssign={(dimension, laneKey) =>
+                reassignManyToLane(selection.nodeIds, dimension, laneKey)
+              }
+              onClear={() => clearSelection()}
+            />
+          )}
 
           {/* Focus mode banner */}
           {focusedPerson && (
@@ -1154,6 +1199,63 @@ const CleanupButton = ({
   );
 };
 
+const BulkAssignToolbar = ({
+  count,
+  onAssign,
+  onClear,
+}: {
+  count: number;
+  onAssign: (dimension: LensDimension, laneKey: string) => void;
+  onClear: () => void;
+}) => {
+  const pickers: Array<{ dimension: LensDimension; label: string; options: string[] }> = [
+    { dimension: "brand", label: "Brand", options: DEMO_LENS_LABELS.brand },
+    { dimension: "channel", label: "Channel", options: DEMO_LENS_LABELS.channel },
+    { dimension: "department", label: "Department", options: DEMO_LENS_LABELS.department },
+  ];
+
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
+      <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-200 bg-white/95 px-4 py-2.5 text-xs shadow-lg ring-1 ring-indigo-100 backdrop-blur dark:border-indigo-400/20 dark:bg-slate-900/90 dark:ring-indigo-400/10">
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          {count} people selected
+        </span>
+        <span className="text-slate-300 dark:text-slate-600">|</span>
+        <span className="text-slate-500 dark:text-slate-400">Assign all to:</span>
+        {pickers.map(({ dimension, label, options }) => (
+          <select
+            key={dimension}
+            value=""
+            aria-label={`Assign selected people to a ${label.toLowerCase()}`}
+            onChange={(event) => {
+              if (event.target.value) {
+                onAssign(dimension, event.target.value);
+              }
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-medium text-slate-700 focus:border-indigo-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-slate-200"
+          >
+            <option value="" disabled>
+              {label}…
+            </option>
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ))}
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 transition hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const LANE_PALETTES: Record<LensDimension, Record<string, string>> = {
   brand: BRAND_COLORS,
   channel: CHANNEL_COLORS,
@@ -1230,6 +1332,7 @@ const buildLaneNodes = (
             data,
             draggable: false,
             focusable: false,
+            selectable: false,
             style: {
               opacity: dimmed ? 0.12 : 1,
               transition: "opacity 0.3s ease-in-out",
