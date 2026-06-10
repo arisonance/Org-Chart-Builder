@@ -1423,6 +1423,7 @@ const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
       label: col.key,
       color: CHANNEL_COLORS[col.key] ?? UNASSIGNED_LANE_COLOR,
       count: col.count,
+      width: col.width,
       height: geo.height,
       zoom,
     },

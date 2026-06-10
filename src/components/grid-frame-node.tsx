@@ -6,6 +6,7 @@ export type GridColNodeData = {
   label: string;
   color: string;
   count: number;
+  width: number;
   height: number;
   zoom: number;
 };
@@ -20,14 +21,14 @@ export type GridRowNodeData = {
 
 // Vertical channel band spanning the full grid height, with a header label
 function ColComponent({ data }: { data: GridColNodeData }) {
-  const { label, color, count, height, zoom } = data;
+  const { label, color, count, width, height, zoom } = data;
   const safeZoom = Math.max(zoom || 1, 0.12);
   const headerFont = Math.min(60, 22 / safeZoom);
   const chipFont = Math.min(34, 12 / safeZoom);
   return (
     <div
       className="pointer-events-none rounded-3xl border-2 border-dashed"
-      style={{ width: "100%", height, borderColor: `${color}40`, background: `${color}0a` }}
+      style={{ width, height, borderColor: `${color}40`, background: `${color}0a` }}
     >
       <div
         className="flex flex-col items-center gap-2 px-4 pt-5 text-center"

@@ -321,7 +321,6 @@ export const calculateClusterLayout = (
 // ===== Brand × Channel grid (matrix lens) =====
 export const isGridLens = (lens: LensId) => lens === "matrix";
 
-const GRID_CELL_COLS = 4;
 const GRID_GAP = 28;
 const GRID_CELL_PAD = 30;
 const GRID_ROW_LABEL_W = 280;
@@ -330,7 +329,15 @@ const GRID_ROW_GAP = 56;
 const GRID_COL_GAP = 48;
 const GRID_CARD_W = NODE_WIDTH + GRID_GAP;
 const GRID_CARD_H = NODE_HEIGHT + GRID_GAP;
-const GRID_CELL_W = GRID_CELL_COLS * GRID_CARD_W + 2 * GRID_CELL_PAD;
+// Cells wrap adaptively: dense cells get more card-columns (aiming ~2.5x wider
+// than tall) so big buckets spread horizontally instead of towering
+const GRID_MIN_CELL_COLS = 3;
+const GRID_MAX_CELL_COLS = 16;
+const cellColsFor = (count: number) =>
+  Math.max(
+    GRID_MIN_CELL_COLS,
+    Math.min(GRID_MAX_CELL_COLS, Math.ceil(Math.sqrt(count * 2.5))),
+  );
 
 export const GRID_ROW_LABEL_WIDTH = GRID_ROW_LABEL_W;
 export const GRID_COL_HEADER_HEIGHT = GRID_COL_HEADER_H;
@@ -373,12 +380,26 @@ const computeGrid = (people: PersonNode[]) => {
   const rows = orderGridKeys(rowCounts);
   const cols = orderGridKeys(colCounts);
 
-  const colX: Record<string, number> = {};
-  cols.forEach((c, ci) => {
-    colX[c] = GRID_ROW_LABEL_W + ci * (GRID_CELL_W + GRID_COL_GAP);
+  // Each channel column is as wide as its busiest cell needs
+  const colCellCols: Record<string, number> = {};
+  const colWidth: Record<string, number> = {};
+  cols.forEach((c) => {
+    let maxN = 1;
+    rows.forEach((r) => {
+      const n = (cells.get(`${r}|||${c}`) ?? []).length;
+      if (n > maxN) maxN = n;
+    });
+    colCellCols[c] = cellColsFor(maxN);
+    colWidth[c] = colCellCols[c] * GRID_CARD_W - GRID_GAP + 2 * GRID_CELL_PAD;
   });
-  const totalWidth =
-    GRID_ROW_LABEL_W + cols.length * GRID_CELL_W + Math.max(0, cols.length - 1) * GRID_COL_GAP;
+
+  const colX: Record<string, number> = {};
+  let x = GRID_ROW_LABEL_W;
+  cols.forEach((c) => {
+    colX[c] = x;
+    x += colWidth[c] + GRID_COL_GAP;
+  });
+  const totalWidth = x - GRID_COL_GAP;
 
   const rowHeight: Record<string, number> = {};
   rows.forEach((r) => {
@@ -386,7 +407,7 @@ const computeGrid = (people: PersonNode[]) => {
     cols.forEach((c) => {
       const list = cells.get(`${r}|||${c}`) ?? [];
       if (list.length) {
-        const innerRows = Math.ceil(list.length / GRID_CELL_COLS);
+        const innerRows = Math.ceil(list.length / colCellCols[c]);
         const h = innerRows * GRID_CARD_H - GRID_GAP + 2 * GRID_CELL_PAD;
         if (h > maxH) maxH = h;
       }
@@ -400,7 +421,10 @@ const computeGrid = (people: PersonNode[]) => {
     y += rowHeight[r] + GRID_ROW_GAP;
   });
 
-  return { rows, cols, colX, totalWidth, rowHeight, rowY, totalHeight: y, cells, rowCounts, colCounts };
+  return {
+    rows, cols, colX, totalWidth, rowHeight, rowY, totalHeight: y,
+    cells, rowCounts, colCounts, colCellCols, colWidth,
+  };
 };
 
 export const calculateGridLayout = (
@@ -412,9 +436,10 @@ export const calculateGridLayout = (
   g.rows.forEach((r) => {
     g.cols.forEach((c) => {
       const list = g.cells.get(`${r}|||${c}`) ?? [];
+      const cellCols = g.colCellCols[c];
       list.forEach((p, idx) => {
-        const ix = idx % GRID_CELL_COLS;
-        const iy = Math.floor(idx / GRID_CELL_COLS);
+        const ix = idx % cellCols;
+        const iy = Math.floor(idx / cellCols);
         positions[p.id] = {
           x: g.colX[c] + GRID_CELL_PAD + ix * GRID_CARD_W,
           y: g.rowY[r] + GRID_CELL_PAD + iy * GRID_CARD_H,
@@ -438,7 +463,7 @@ export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
     cols: g.cols.map((key) => ({
       key,
       x: g.colX[key],
-      width: GRID_CELL_W,
+      width: g.colWidth[key],
       count: g.colCounts.get(key) ?? 0,
     })),
     width: g.totalWidth,
