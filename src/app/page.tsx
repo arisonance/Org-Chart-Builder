@@ -62,6 +62,9 @@ export default function Home() {
       } else if (e.key === '4' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setLens('department');
+      } else if (e.key === '5' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setLens('matrix');
       }
     };
     document.addEventListener('keydown', handleKeyDown);

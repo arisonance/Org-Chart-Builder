@@ -104,7 +104,7 @@ export const autoLayoutDocument = (document: GraphDocument) => {
 export type LensDimension = "brand" | "channel" | "department";
 
 export const lensToDimension = (lens: LensId): LensDimension | null =>
-  lens === "hierarchy" ? null : lens;
+  lens === "brand" || lens === "channel" || lens === "department" ? lens : null;
 
 export const UNASSIGNED_GROUP_KEY = "Unassigned";
 
@@ -318,6 +318,134 @@ export const calculateClusterLayout = (
  * 
  * @param mode - "compact" fits as much as possible on screen (may overlap), "spacious" ensures no overlap (requires more space)
  */
+// ===== Brand × Channel grid (matrix lens) =====
+export const isGridLens = (lens: LensId) => lens === "matrix";
+
+const GRID_CELL_COLS = 4;
+const GRID_GAP = 28;
+const GRID_CELL_PAD = 30;
+const GRID_ROW_LABEL_W = 280;
+const GRID_COL_HEADER_H = 140;
+const GRID_ROW_GAP = 56;
+const GRID_COL_GAP = 48;
+const GRID_CARD_W = NODE_WIDTH + GRID_GAP;
+const GRID_CARD_H = NODE_HEIGHT + GRID_GAP;
+const GRID_CELL_W = GRID_CELL_COLS * GRID_CARD_W + 2 * GRID_CELL_PAD;
+
+export const GRID_ROW_LABEL_WIDTH = GRID_ROW_LABEL_W;
+export const GRID_COL_HEADER_HEIGHT = GRID_COL_HEADER_H;
+
+const gridRowKey = (p: PersonNode) =>
+  p.attributes.primaryBrand || p.attributes.brands[0] || UNASSIGNED_GROUP_KEY;
+const gridColKey = (p: PersonNode) =>
+  p.attributes.primaryChannel || p.attributes.channels[0] || UNASSIGNED_GROUP_KEY;
+const isSharedGridKey = (k: string) => k.startsWith("All ") || k === UNASSIGNED_GROUP_KEY;
+
+const orderGridKeys = (counts: Map<string, number>) =>
+  [...counts.keys()].sort((a, b) => {
+    const sa = isSharedGridKey(a);
+    const sb = isSharedGridKey(b);
+    if (sa !== sb) return sa ? 1 : -1; // shared/unassigned buckets last
+    const diff = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
+export type GridGeometry = {
+  rows: Array<{ key: string; y: number; height: number; count: number }>;
+  cols: Array<{ key: string; x: number; width: number; count: number }>;
+  width: number;
+  height: number;
+};
+
+const computeGrid = (people: PersonNode[]) => {
+  const rowCounts = new Map<string, number>();
+  const colCounts = new Map<string, number>();
+  const cells = new Map<string, PersonNode[]>();
+  people.forEach((p) => {
+    const r = gridRowKey(p);
+    const c = gridColKey(p);
+    rowCounts.set(r, (rowCounts.get(r) ?? 0) + 1);
+    colCounts.set(c, (colCounts.get(c) ?? 0) + 1);
+    const k = `${r}|||${c}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k)!.push(p);
+  });
+  const rows = orderGridKeys(rowCounts);
+  const cols = orderGridKeys(colCounts);
+
+  const colX: Record<string, number> = {};
+  cols.forEach((c, ci) => {
+    colX[c] = GRID_ROW_LABEL_W + ci * (GRID_CELL_W + GRID_COL_GAP);
+  });
+  const totalWidth =
+    GRID_ROW_LABEL_W + cols.length * GRID_CELL_W + Math.max(0, cols.length - 1) * GRID_COL_GAP;
+
+  const rowHeight: Record<string, number> = {};
+  rows.forEach((r) => {
+    let maxH = NODE_HEIGHT + 2 * GRID_CELL_PAD;
+    cols.forEach((c) => {
+      const list = cells.get(`${r}|||${c}`) ?? [];
+      if (list.length) {
+        const innerRows = Math.ceil(list.length / GRID_CELL_COLS);
+        const h = innerRows * GRID_CARD_H - GRID_GAP + 2 * GRID_CELL_PAD;
+        if (h > maxH) maxH = h;
+      }
+    });
+    rowHeight[r] = maxH;
+  });
+  const rowY: Record<string, number> = {};
+  let y = GRID_COL_HEADER_H;
+  rows.forEach((r) => {
+    rowY[r] = y;
+    y += rowHeight[r] + GRID_ROW_GAP;
+  });
+
+  return { rows, cols, colX, totalWidth, rowHeight, rowY, totalHeight: y, cells, rowCounts, colCounts };
+};
+
+export const calculateGridLayout = (
+  nodes: GraphNode[],
+): Record<string, { x: number; y: number }> => {
+  const people = nodes.filter((n): n is PersonNode => n.kind === "person");
+  const g = computeGrid(people);
+  const positions: Record<string, { x: number; y: number }> = {};
+  g.rows.forEach((r) => {
+    g.cols.forEach((c) => {
+      const list = g.cells.get(`${r}|||${c}`) ?? [];
+      list.forEach((p, idx) => {
+        const ix = idx % GRID_CELL_COLS;
+        const iy = Math.floor(idx / GRID_CELL_COLS);
+        positions[p.id] = {
+          x: g.colX[c] + GRID_CELL_PAD + ix * GRID_CARD_W,
+          y: g.rowY[r] + GRID_CELL_PAD + iy * GRID_CARD_H,
+        };
+      });
+    });
+  });
+  return positions;
+};
+
+export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
+  const people = nodes.filter((n): n is PersonNode => n.kind === "person");
+  const g = computeGrid(people);
+  return {
+    rows: g.rows.map((key) => ({
+      key,
+      y: g.rowY[key],
+      height: g.rowHeight[key],
+      count: g.rowCounts.get(key) ?? 0,
+    })),
+    cols: g.cols.map((key) => ({
+      key,
+      x: g.colX[key],
+      width: GRID_CELL_W,
+      count: g.colCounts.get(key) ?? 0,
+    })),
+    width: g.totalWidth,
+    height: g.totalHeight,
+  };
+};
+
 export const calculateCleanupLayout = (
   nodes: GraphNode[],
   edges: GraphEdge[],

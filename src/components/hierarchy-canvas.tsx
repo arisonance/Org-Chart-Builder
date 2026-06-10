@@ -38,11 +38,14 @@ import {
   getGroupKey,
   groupNodesByDimension,
   lensToDimension,
+  isGridLens,
+  getGridGeometry,
   UNASSIGNED_GROUP_KEY,
   NODE_WIDTH,
   NODE_HEIGHT,
   type LensDimension,
 } from "@/lib/graph/layout";
+import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -63,6 +66,8 @@ const nodeTypes = {
   hierarchyNode: HierarchyNode,
   laneNode: LaneNode,
   mirrorNode: MirrorNode,
+  gridColNode: GridColNode,
+  gridRowNode: GridRowNode,
 } as const;
 
 const edgeTypes = {
@@ -406,6 +411,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         },
       };
     });
+
+    // Brand × Channel grid: draw row bands (brands) and column bands (channels)
+    if (isGridLens(lens)) {
+      const frame = buildGridFrameNodes(personNodes, currentZoom);
+      return [...frame, ...personFlowNodes];
+    }
 
     // Matrix views: draw a labeled swim lane behind each brand/channel/department group
     const dimension = lensToDimension(lens);
@@ -1382,6 +1393,46 @@ const LANE_PAD_BOTTOM = 70;
 const MIRROR_HEIGHT = 120;
 const MIRROR_GAP = 40;
 const MIRROR_SECTION_GAP = 90;
+
+// Row bands (brands) span the full grid width; column bands (channels) span the
+// full grid height. Rows render first so the translucent channel columns layer
+// over them, producing the matrix grid feel; person cards sit on top.
+const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
+  const geo = getGridGeometry(people);
+  const rowNodes: Node[] = geo.rows.map((row) => ({
+    id: `gridrow:${row.key}`,
+    type: "gridRowNode",
+    position: { x: 0, y: row.y },
+    data: {
+      label: row.key,
+      color: BRAND_COLORS[row.key] ?? UNASSIGNED_LANE_COLOR,
+      count: row.count,
+      width: geo.width,
+      zoom,
+    },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 0,
+  }));
+  const colNodes: Node[] = geo.cols.map((col) => ({
+    id: `gridcol:${col.key}`,
+    type: "gridColNode",
+    position: { x: col.x, y: 0 },
+    data: {
+      label: col.key,
+      color: CHANNEL_COLORS[col.key] ?? UNASSIGNED_LANE_COLOR,
+      count: col.count,
+      height: geo.height,
+      zoom,
+    },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 1,
+  }));
+  return [...rowNodes, ...colNodes];
+};
 
 const isVacantRole = (person: PersonNode) =>
   person.name.toLowerCase().includes("vacant") ||

@@ -1,16 +1,16 @@
 export const BRAND_COLORS: Record<string, string> = {
   Sonance: "#1d4ed8",
+  James: "#ea580c",
   iPort: "#0f766e",
-  "James Cloud Speaker": "#ea580c",
-  "Blaze Audio": "#b91c1c",
+  "All Brands": "#475569",
 };
 
 export const CHANNEL_COLORS: Record<string, string> = {
-  "Residential Retail": "#6366f1",
-  "Residential Mid-Market": "#8b5cf6",
-  "Residential Luxury": "#a855f7",
-  "Professional Enterprise": "#2563eb",
-  "Professional Audio": "#0ea5e9",
+  "Sonance Pro": "#2563eb",
+  "Sonance Luxury Residential": "#a855f7",
+  "National Accounts": "#0891b2",
+  "iPort Enterprise": "#0d9488",
+  "All Channels": "#64748b",
 };
 
 export const DEPARTMENT_COLORS: Record<string, string> = {

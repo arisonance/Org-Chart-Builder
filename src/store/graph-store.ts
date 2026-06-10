@@ -8,6 +8,8 @@ import {
   calculateLayout,
   calculateCleanupLayout,
   calculateMatrixLayout,
+  calculateGridLayout,
+  isGridLens,
   lensToDimension,
 } from "@/lib/graph/layout";
 import type {
@@ -582,9 +584,12 @@ export const useGraphStore = create<GraphStore>()(
           const targetLens = lens ?? state.document.lens;
           ensureLensState(state.document, targetLens);
 
-          // Dimension lenses group people into swim lanes; hierarchy uses a plain tree
+          // Grid lens lays people into a brand×channel matrix; dimension lenses
+          // group into swim lanes; hierarchy uses a plain tree
           const dimension = lensToDimension(targetLens);
-          const positions = dimension
+          const positions = isGridLens(targetLens)
+            ? calculateGridLayout(state.document.nodes)
+            : dimension
             ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
             : calculateLayout(state.document.nodes, state.document.edges);
 
@@ -602,9 +607,11 @@ export const useGraphStore = create<GraphStore>()(
           // Get existing positions to preserve locked nodes if needed
           const existingPositions = state.document.lens_state[targetLens].layout.positions;
 
-          // Dimension lenses always clean up into swim lanes
+          // Grid lens → brand×channel matrix; dimension lenses → swim lanes
           const dimension = lensToDimension(targetLens);
-          const positions = dimension
+          const positions = isGridLens(targetLens)
+            ? calculateGridLayout(state.document.nodes)
+            : dimension
             ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
             : calculateCleanupLayout(
                 state.document.nodes,
