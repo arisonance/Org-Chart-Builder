@@ -158,6 +158,24 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
 
+  // Person focus mode: selecting a single person spotlights their matrix web
+  // (manager line, reports, dotted team, sponsor) and dims everyone else.
+  const focusedNodeId =
+    selection.nodeIds.length === 1 ? selection.nodeIds[0] : null;
+  const focusSet = useMemo(() => {
+    if (!focusedNodeId) return null;
+    const set = new Set<string>([focusedNodeId]);
+    edgesData.forEach((edge) => {
+      if (edge.source === focusedNodeId) set.add(edge.target);
+      if (edge.target === focusedNodeId) set.add(edge.source);
+    });
+    return set;
+  }, [focusedNodeId, edgesData]);
+  const focusedPerson = useMemo(
+    () => (focusedNodeId ? personNodes.find((n) => n.id === focusedNodeId) ?? null : null),
+    [focusedNodeId, personNodes],
+  );
+
   // Show onboarding for empty canvas
   useEffect(() => {
     if (personNodes.length === 0) {
@@ -180,17 +198,38 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     }
   }, [personNodes, lensLayout, cleanupCanvas, lens]);
 
-  // Fit view after layout is ready
+  // Position the viewport once per lens visit (initial load or lens switch).
+  // Deliberately NOT keyed on the whole lensLayout: that object changes every
+  // time the viewport is persisted, which previously re-fired fitView ~once a
+  // second and yanked the canvas back while the user was panning ("snapping").
+  const positionedLensRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!rfInstance || !lensLayout || personNodes.length === 0) return;
-    
-    // Delay slightly to ensure all nodes are rendered
+    if (!rfInstance || personNodes.length === 0) return;
+    if (positionedLensRef.current === lens) return;
+    positionedLensRef.current = lens;
+
+    const target = lensLayout?.viewport;
+    const isDefault =
+      !target || (target.x === 0 && target.y === 0 && target.zoom === 1);
+
+    isRestoringViewport.current = true;
     const timer = setTimeout(() => {
-      rfInstance.fitView({ padding: 0.2, duration: 300, maxZoom: 1.5 });
-    }, 150);
-    
+      if (isDefault) {
+        rfInstance.fitView({ padding: 0.15, duration: 350, maxZoom: 1.2 });
+      } else {
+        rfInstance.setViewport(
+          { x: target.x, y: target.y, zoom: target.zoom },
+          { duration: 300 },
+        );
+      }
+      setTimeout(() => {
+        isRestoringViewport.current = false;
+      }, 400);
+    }, 200);
+
     return () => clearTimeout(timer);
-  }, [rfInstance, lensLayout, personNodes.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfInstance, lens, personNodes.length]);
 
   const highlightTokens = useMemo(() => {
     if (!filters?.activeTokens?.length) return new Map<string, string[]>();
@@ -297,6 +336,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         },
       };
       
+      const dimmed = focusSet ? !focusSet.has(node.id) : false;
+
       return {
         id: node.id,
         type: "hierarchyNode",
@@ -304,6 +345,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         data,
         draggable: !node.locked,
         selected: selection.nodeIds.includes(node.id),
+        style: {
+          opacity: dimmed ? 0.12 : 1,
+          transition: "opacity 0.3s ease-in-out",
+        },
       };
     });
 
@@ -312,10 +357,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!dimension) {
       return personFlowNodes;
     }
-    const laneNodes = buildLaneNodes(filteredNodes, positions, dimension, mirrorLanes, selectNode);
+    const laneNodes = buildLaneNodes(
+      filteredNodes,
+      positions,
+      dimension,
+      mirrorLanes,
+      selectNode,
+      focusSet,
+    );
     return [...laneNodes, ...personFlowNodes];
   }, [
     mirrorLanes,
+    focusSet,
     personNodes,
     selection.nodeIds,
     lensLayout?.positions,
@@ -354,8 +407,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // the within-lane reporting lines and let cross-lane links stand out
       const isMatrixView = lens !== "hierarchy";
       const dimmedManager = isMatrixView && edge.metadata.type === "manager";
-      const opacity = isGhost || edge.metadata.ghost ? 0.3 : dimmedManager ? 0.18 : 0.9;
-      
+      let opacity = isGhost || edge.metadata.ghost ? 0.3 : dimmedManager ? 0.18 : 0.9;
+
+      // Focus mode: spotlight the selected person's relationships, fade the rest
+      const isIncidentToFocus =
+        !!focusedNodeId &&
+        (edge.source === focusedNodeId || edge.target === focusedNodeId);
+      if (focusedNodeId) {
+        opacity = isIncidentToFocus ? 0.95 : 0.05;
+      }
+
       return {
         id: edge.id,
         source: edge.source,
@@ -375,12 +436,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           ...baseEdgeStyle,
           stroke: color,
           opacity,
+          strokeWidth: isIncidentToFocus ? 3.5 : baseEdgeStyle.strokeWidth,
         },
         selectable: true,
         selected: selection.edgeIds.includes(edge.id),
+        zIndex: isIncidentToFocus ? 10 : 0,
       };
     });
-  }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, currentZoom]);
+  }, [
+    edgesData,
+    filters?.activeTokens,
+    personNodes,
+    lens,
+    selection.edgeIds,
+    currentZoom,
+    focusedNodeId,
+  ]);
 
   // Handle node drag stop - instant position updates without debouncing
   const handleNodeDragStop = useCallback(
@@ -503,47 +574,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     
     return () => clearTimeout(timer);
   }, [currentViewportState, rfInstance, lens, lensLayout?.viewport, updateViewport]);
-
-  // Restore viewport when lens layout changes (smooth animation)
-  useEffect(() => {
-    if (!rfInstance || !lensLayout?.viewport) return;
-
-    const currentViewport = rfInstance.getViewport();
-    const targetViewport = lensLayout.viewport;
-
-    // Untouched default viewport means this lens has never been viewed —
-    // fit the freshly laid-out content instead of jumping to the origin
-    const isDefaultViewport =
-      targetViewport.x === 0 && targetViewport.y === 0 && targetViewport.zoom === 1;
-    if (isDefaultViewport) {
-      isRestoringViewport.current = true;
-      rfInstance.fitView({ padding: 0.15, duration: 300, maxZoom: 1.2 });
-      setTimeout(() => {
-        isRestoringViewport.current = false;
-      }, 350);
-      return;
-    }
-
-    // Only restore if viewport is significantly different (to avoid conflicts with user interactions)
-    const threshold = 10;
-    const isDifferent = 
-      Math.abs(currentViewport.x - targetViewport.x) > threshold ||
-      Math.abs(currentViewport.y - targetViewport.y) > threshold ||
-      Math.abs(currentViewport.zoom - targetViewport.zoom) > 0.1;
-    
-    if (isDifferent) {
-      isRestoringViewport.current = true;
-      // Smooth viewport restore to avoid jank
-      rfInstance.setViewport(
-        { x: targetViewport.x, y: targetViewport.y, zoom: targetViewport.zoom },
-        { duration: 200 }
-      );
-      // Reset flag after animation
-      setTimeout(() => {
-        isRestoringViewport.current = false;
-      }, 250);
-    }
-  }, [rfInstance, lensLayout?.viewport]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -781,6 +811,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           
           {/* Relationship legend - compact button in corner */}
           {personNodes.length > 0 && <RelationshipLegend />}
+
+          {/* Focus mode banner */}
+          {focusedPerson && (
+            <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
+              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-sky-200 bg-white/95 px-4 py-2 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/90 dark:ring-sky-400/10">
+                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-sky-500" />
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  Focusing on {focusedPerson.name}
+                </span>
+                <span className="text-slate-400 dark:text-slate-500">
+                  {focusSet ? focusSet.size - 1 : 0} connection
+                  {focusSet && focusSet.size - 1 === 1 ? "" : "s"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => clearSelection()}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 transition hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </ContextMenu.Trigger>
       
@@ -1082,6 +1135,7 @@ const buildLaneNodes = (
   dimension: LensDimension,
   showMirrors: boolean,
   onSelectMirror: (id: string) => void,
+  focusSet: Set<string> | null,
 ): Node[] => {
   const groups = groupNodesByDimension(people, dimension);
   const laneNodes: Node[] = [];
@@ -1119,6 +1173,7 @@ const buildLaneNodes = (
             homeLane,
             onSelect: onSelectMirror,
           };
+          const dimmed = focusSet ? !focusSet.has(person.id) : false;
           mirrorNodes.push({
             id: `mirror:${person.id}:${key}`,
             type: "mirrorNode",
@@ -1129,6 +1184,10 @@ const buildLaneNodes = (
             data,
             draggable: false,
             focusable: false,
+            style: {
+              opacity: dimmed ? 0.12 : 1,
+              transition: "opacity 0.3s ease-in-out",
+            },
           });
         });
         const rows = Math.ceil(mirrors.length / cols);
