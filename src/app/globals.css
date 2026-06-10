@@ -92,8 +92,45 @@ body {
   -webkit-font-smoothing: subpixel-antialiased;
 }
 
+/* Don't fight the pointer while dragging */
+.react-flow__node.dragging {
+  transition: none;
+}
+
 .react-flow__edge {
   will-change: opacity;
+  transition: opacity 0.35s ease-in-out;
+}
+
+/* Lens transitions: cards glide to their new positions when switching views.
+   Edges are hidden while cards move (their paths only follow committed
+   positions, so they'd detach from gliding cards), then fade back in. */
+.lens-transition .react-flow__node {
+  transition: transform 0.7s cubic-bezier(0.25, 1, 0.3, 1);
+}
+
+.lens-transition .react-flow__edge {
+  opacity: 0 !important;
+}
+
+/* Lanes and mirror cards belong to a single lens, so they fade in fresh */
+.lane-fade-in {
+  animation: lane-fade-in 0.5s ease-out 0.45s backwards;
+}
+
+@keyframes lane-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lens-transition .react-flow__node {
+    transition: none;
+  }
+  .lane-fade-in {
+    animation: none;
+  }
 }
 
 .react-flow__edge path {

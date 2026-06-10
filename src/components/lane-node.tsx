@@ -12,7 +12,7 @@ function Component({ data }: { data: LaneNodeData }) {
   const { label, color, count } = data;
   return (
     <div
-      className="pointer-events-none h-full w-full rounded-3xl border-2 border-dashed"
+      className="lane-fade-in pointer-events-none h-full w-full rounded-3xl border-2 border-dashed"
       style={{
         borderColor: `${color}55`,
         background: `${color}0d`,

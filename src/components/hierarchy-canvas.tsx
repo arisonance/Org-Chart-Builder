@@ -123,7 +123,19 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(1);
+  const [lensTransition, setLensTransition] = useState(false);
   const isRestoringViewport = useRef(false);
+  const previousLens = useRef(lens);
+
+  // Briefly enable the glide transition when the lens changes so cards
+  // animate from their old positions to the new grouping
+  useEffect(() => {
+    if (previousLens.current === lens) return;
+    previousLens.current = lens;
+    setLensTransition(true);
+    const timer = setTimeout(() => setLensTransition(false), 850);
+    return () => clearTimeout(timer);
+  }, [lens]);
   const [quickAddDialog, setQuickAddDialog] = useState<{
     open: boolean;
     mode: 'direct-report' | 'new-person';
@@ -139,6 +151,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     () => nodesData.filter((node): node is PersonNode => node.kind === "person"),
     [nodesData],
   );
+
+  // Last rendered position per node, across lenses — used as the glide start
+  // point when a lens hasn't been laid out yet
+  const lastRenderedPositions = useRef<Record<string, { x: number; y: number }>>({});
 
   const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
 
@@ -205,7 +221,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     }
     
     const personFlowNodes: Node[] = filteredNodes.map((node) => {
-      const position = positions[node.id] ?? { x: 0, y: 0 };
+      const position =
+        positions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
+      lastRenderedPositions.current[node.id] = position;
       const accent = getAccentColor(node, lens);
       
       const data: HierarchyNodeData = {
@@ -652,6 +670,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         <div
           className={[
             "relative h-full min-h-[720px] w-full overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-md ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10",
+            lensTransition ? "lens-transition" : "",
             className ?? "",
           ].join(" ")}
           style={style}

@@ -19,7 +19,7 @@ function Component({ data }: { data: MirrorNodeData }) {
         event.stopPropagation();
         onSelect(node.id);
       }}
-      className="flex w-[16rem] flex-col items-center gap-1 rounded-2xl border-2 border-dashed bg-white/60 px-4 py-3 text-center opacity-70 shadow-sm transition hover:opacity-100 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-slate-950/50"
+      className="lane-fade-in flex w-[16rem] flex-col items-center gap-1 rounded-2xl border-2 border-dashed bg-white/60 px-4 py-3 text-center opacity-70 shadow-sm transition hover:opacity-100 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-slate-950/50"
       style={{ borderColor: `${accentColor}66` }}
       title={`Mirror of ${node.name} — home lane: ${homeLane}`}
     >
