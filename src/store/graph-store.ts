@@ -50,6 +50,8 @@ type GraphStoreState = {
     y: number;
     zoom: number;
   };
+  // Matrix views: show mirror cards for people in every lane they're assigned to
+  mirrorLanes: boolean;
 };
 
 type GraphStoreActions = {
@@ -76,6 +78,7 @@ type GraphStoreActions = {
   updateViewport: (lens: LensId, viewport: LayoutState["viewport"]) => void;
   setCurrentViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   toggleSnap: (lens: LensId) => void;
+  toggleMirrorLanes: () => void;
   toggleGrid: (lens: LensId) => void;
   setLensFilters: (lens: LensId, filters: Partial<LensState["filters"]>) => void;
   autoLayout: (lens?: LensId) => void;
@@ -147,6 +150,7 @@ const initialState: GraphStoreState = {
     y: 0,
     zoom: 1,
   },
+  mirrorLanes: true,
 };
 
 const withHistory = (
@@ -501,6 +505,13 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
+      toggleMirrorLanes: () => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.mirrorLanes = !state.mirrorLanes;
+          }),
+        );
+      },
       toggleSnap: (lens) => {
         set(
           produce((state: GraphStoreState) => {
@@ -743,6 +754,7 @@ export const useGraphStore = create<GraphStore>()(
         clipboard: state.clipboard,
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        mirrorLanes: state.mirrorLanes,
       }),
       migrate: (persistedState: unknown) => {
         if (!persistedState || typeof persistedState !== "object") {

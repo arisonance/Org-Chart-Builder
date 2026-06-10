@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
 import { LaneNode, type LaneNodeData } from "@/components/lane-node";
+import { MirrorNode, type MirrorNodeData } from "@/components/mirror-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { customEdgeTypes } from "@/components/custom-edges";
@@ -32,6 +33,8 @@ import type { GraphEdge, PersonNode } from "@/lib/schema/types";
 import {
   buildChildMap,
   isDescendant,
+  getAssignments,
+  getGroupKey,
   groupNodesByDimension,
   lensToDimension,
   NODE_WIDTH,
@@ -56,6 +59,7 @@ type CanvasMenuState = {
 const nodeTypes = {
   hierarchyNode: HierarchyNode,
   laneNode: LaneNode,
+  mirrorNode: MirrorNode,
 } as const;
 
 const edgeTypes = {
@@ -109,6 +113,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const updateViewport = useGraphStore((state) => state.updateViewport);
   const setCurrentViewport = useGraphStore((state) => state.setCurrentViewport);
   const currentViewportState = useGraphStore((state) => state.currentViewport);
+  const mirrorLanes = useGraphStore((state) => state.mirrorLanes);
+  const toggleMirrorLanes = useGraphStore((state) => state.toggleMirrorLanes);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuState | null>(null);
@@ -288,9 +294,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!dimension) {
       return personFlowNodes;
     }
-    const laneNodes = buildLaneNodes(filteredNodes, positions, dimension);
+    const laneNodes = buildLaneNodes(filteredNodes, positions, dimension, mirrorLanes, selectNode);
     return [...laneNodes, ...personFlowNodes];
   }, [
+    mirrorLanes,
     personNodes,
     selection.nodeIds,
     lensLayout?.positions,
@@ -709,6 +716,28 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               zoomable
             />
             <Controls className="!left-6 !bottom-6 rounded-full bg-white/90 text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10" />
+            {/* Mirror-lanes toggle, only relevant in matrix views */}
+            {lens !== "hierarchy" && personNodes.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleMirrorLanes}
+                className={[
+                  "absolute left-6 top-6 z-30 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400",
+                  mirrorLanes
+                    ? "border-sky-300 bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100 dark:border-sky-400/30 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20"
+                    : "border-slate-200 bg-white/90 text-slate-600 ring-slate-200 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10",
+                ].join(" ")}
+                title="Show ghost cards for people in every lane they're assigned to, not just their primary lane"
+              >
+                <span
+                  className={[
+                    "inline-block h-2 w-2 rounded-full",
+                    mirrorLanes ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600",
+                  ].join(" ")}
+                />
+                Show in all lanes: {mirrorLanes ? "On" : "Off"}
+              </button>
+            )}
             {/* Cleanup Canvas Button */}
             {personNodes.length > 0 && (
               <CleanupButton
@@ -1024,14 +1053,21 @@ const getLaneColor = (key: string, dimension: LensDimension) =>
 const LANE_PAD_X = 70;
 const LANE_PAD_TOP = 130;
 const LANE_PAD_BOTTOM = 70;
+const MIRROR_HEIGHT = 120;
+const MIRROR_GAP = 40;
+const MIRROR_SECTION_GAP = 90;
 
 const buildLaneNodes = (
   people: PersonNode[],
   positions: Record<string, { x: number; y: number }>,
   dimension: LensDimension,
+  showMirrors: boolean,
+  onSelectMirror: (id: string) => void,
 ): Node[] => {
   const groups = groupNodesByDimension(people, dimension);
   const laneNodes: Node[] = [];
+  const mirrorNodes: Node[] = [];
+
   groups.forEach((members, key) => {
     const points = members
       .map((member) => positions[member.id])
@@ -1040,7 +1076,47 @@ const buildLaneNodes = (
     const minX = Math.min(...points.map((p) => p.x)) - LANE_PAD_X;
     const maxX = Math.max(...points.map((p) => p.x)) + NODE_WIDTH + LANE_PAD_X;
     const minY = Math.min(...points.map((p) => p.y)) - LANE_PAD_TOP;
-    const maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
+    let maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
+
+    // Mirror cards: people whose secondary assignments include this lane,
+    // stacked in a grid below the lane's primary members
+    if (showMirrors) {
+      const mirrors = people.filter(
+        (person) =>
+          getGroupKey(person, dimension) !== key &&
+          getAssignments(person, dimension).includes(key),
+      );
+      if (mirrors.length > 0) {
+        const laneInnerWidth = maxX - minX - 2 * LANE_PAD_X;
+        const cols = Math.max(1, Math.floor((laneInnerWidth + MIRROR_GAP) / (NODE_WIDTH + MIRROR_GAP)));
+        const mirrorTop = maxY - LANE_PAD_BOTTOM + MIRROR_SECTION_GAP;
+        mirrors.forEach((person, index) => {
+          const row = Math.floor(index / cols);
+          const col = index % cols;
+          const homeLane = getGroupKey(person, dimension);
+          const data: MirrorNodeData = {
+            node: person,
+            accentColor: getLaneColor(homeLane, dimension),
+            homeLane,
+            onSelect: onSelectMirror,
+          };
+          mirrorNodes.push({
+            id: `mirror:${person.id}:${key}`,
+            type: "mirrorNode",
+            position: {
+              x: minX + LANE_PAD_X + col * (NODE_WIDTH + MIRROR_GAP),
+              y: mirrorTop + row * (MIRROR_HEIGHT + MIRROR_GAP),
+            },
+            data,
+            draggable: false,
+            focusable: false,
+          });
+        });
+        const rows = Math.ceil(mirrors.length / cols);
+        maxY = mirrorTop + rows * (MIRROR_HEIGHT + MIRROR_GAP) - MIRROR_GAP + LANE_PAD_BOTTOM;
+      }
+    }
+
     const data: LaneNodeData = {
       label: key,
       color: getLaneColor(key, dimension),
@@ -1058,7 +1134,8 @@ const buildLaneNodes = (
       focusable: false,
     });
   });
-  return laneNodes;
+
+  return [...laneNodes, ...mirrorNodes];
 };
 
 const getAccentColor = (node: PersonNode, lens: LensId) => {

@@ -117,6 +117,12 @@ export const getGroupKey = (node: PersonNode, dimension: LensDimension): string 
   return node.attributes.primaryDepartment || node.attributes.departments[0] || UNASSIGNED_GROUP_KEY;
 };
 
+export const getAssignments = (node: PersonNode, dimension: LensDimension): string[] => {
+  if (dimension === "brand") return node.attributes.brands;
+  if (dimension === "channel") return node.attributes.channels;
+  return node.attributes.departments;
+};
+
 export const groupNodesByDimension = (
   nodes: PersonNode[],
   dimension: LensDimension,
