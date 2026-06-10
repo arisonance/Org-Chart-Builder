@@ -4,8 +4,8 @@ import type { LensId } from "@/lib/schema/lenses";
 
 export type ChildMap = Record<string, string[]>;
 
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 150;
+export const NODE_WIDTH = 260;
+export const NODE_HEIGHT = 150;
 const NODE_SEPARATION = 240;
 const RANK_SEPARATION = 300;
 const MARGIN_X = 150;
@@ -100,54 +100,89 @@ export const autoLayoutDocument = (document: GraphDocument) => {
 };
 
 // Matrix-aware layout functions
-export const calculateMatrixLayout = (
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  lens: LensId,
-  dimension: 'brand' | 'channel' | 'department',
-): Record<string, { x: number; y: number }> => {
-  const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
-  
-  // Group nodes by primary dimension
+export type LensDimension = "brand" | "channel" | "department";
+
+export const lensToDimension = (lens: LensId): LensDimension | null =>
+  lens === "hierarchy" ? null : lens;
+
+export const UNASSIGNED_GROUP_KEY = "Unassigned";
+
+export const getGroupKey = (node: PersonNode, dimension: LensDimension): string => {
+  if (dimension === "brand") {
+    return node.attributes.primaryBrand || node.attributes.brands[0] || UNASSIGNED_GROUP_KEY;
+  }
+  if (dimension === "channel") {
+    return node.attributes.primaryChannel || node.attributes.channels[0] || UNASSIGNED_GROUP_KEY;
+  }
+  return node.attributes.primaryDepartment || node.attributes.departments[0] || UNASSIGNED_GROUP_KEY;
+};
+
+export const groupNodesByDimension = (
+  nodes: PersonNode[],
+  dimension: LensDimension,
+): Map<string, PersonNode[]> => {
   const groups = new Map<string, PersonNode[]>();
-  
-  personNodes.forEach((node) => {
-    const key = dimension === 'brand' 
-      ? (node.attributes.primaryBrand || node.attributes.brands[0] || 'unassigned')
-      : dimension === 'channel'
-        ? (node.attributes.primaryChannel || node.attributes.channels[0] || 'unassigned')
-        : (node.attributes.primaryDepartment || node.attributes.departments[0] || 'unassigned');
-    
+  nodes.forEach((node) => {
+    const key = getGroupKey(node, dimension);
     if (!groups.has(key)) {
       groups.set(key, []);
     }
     groups.get(key)!.push(node);
   });
-  
-  // Layout within each group using hierarchy
+  return groups;
+};
+
+const sortGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
+  Array.from(groups.keys()).sort((a, b) => {
+    if (a === UNASSIGNED_GROUP_KEY) return 1;
+    if (b === UNASSIGNED_GROUP_KEY) return -1;
+    const sizeDiff = groups.get(b)!.length - groups.get(a)!.length;
+    return sizeDiff !== 0 ? sizeDiff : a.localeCompare(b);
+  });
+
+/**
+ * Swim-lane layout for matrix views: people are grouped into vertical lanes by
+ * brand/channel/department, and the reporting hierarchy is laid out within each lane.
+ * Lane widths adapt to their content so lanes never overlap.
+ */
+export const calculateMatrixLayout = (
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  dimension: LensDimension,
+): Record<string, { x: number; y: number }> => {
+  const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
+  const groups = groupNodesByDimension(personNodes, dimension);
+  const groupKeys = sortGroupKeys(groups);
+
   const positions: Record<string, { x: number; y: number }> = {};
-  const groupKeys = Array.from(groups.keys());
-  const COLUMN_WIDTH = 800;
-  
-  groupKeys.forEach((groupKey, groupIndex) => {
+  const LANE_GAP = 360;
+  let offsetX = 0;
+
+  groupKeys.forEach((groupKey) => {
     const groupNodes = groups.get(groupKey)!;
-    const groupEdges = edges.filter((edge) => {
-      const sourceInGroup = groupNodes.some((n) => n.id === edge.source);
-      const targetInGroup = groupNodes.some((n) => n.id === edge.target);
-      return sourceInGroup && targetInGroup;
-    });
-    
+    const groupIds = new Set(groupNodes.map((n) => n.id));
+    const groupEdges = edges.filter(
+      (edge) => groupIds.has(edge.source) && groupIds.has(edge.target),
+    );
+
     const groupPositions = calculateLayout(groupNodes, groupEdges);
-    
-    // Offset positions for this column
-    Object.keys(groupPositions).forEach((nodeId) => {
+    const xs = Object.values(groupPositions).map((p) => p.x);
+    const ys = Object.values(groupPositions).map((p) => p.y);
+    if (xs.length === 0) return;
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs) + NODE_WIDTH;
+    const minY = Math.min(...ys);
+
+    Object.entries(groupPositions).forEach(([nodeId, p]) => {
       positions[nodeId] = {
-        x: groupPositions[nodeId].x + groupIndex * COLUMN_WIDTH,
-        y: groupPositions[nodeId].y,
+        x: p.x - minX + offsetX,
+        y: p.y - minY,
       };
     });
+
+    offsetX += maxX - minX + LANE_GAP;
   });
-  
+
   return positions;
 };
 

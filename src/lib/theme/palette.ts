@@ -20,7 +20,21 @@ export const DEPARTMENT_COLORS: Record<string, string> = {
   Sales: "#f97316",
   "People & Culture": "#2563eb",
   Finance: "#0f172a",
+  Technology: "#0d9488",
+  Operations: "#65a30d",
+  "Human Resources": "#2563eb",
+  "Information Technology": "#0369a1",
+  Product: "#0891b2",
+  Services: "#c026d3",
+  "Professional Services": "#7c3aed",
+  "Business Development": "#d97706",
+  Engineering: "#dc2626",
+  "Executive Support": "#475569",
+  Programs: "#059669",
+  "Customer Service": "#db2777",
 };
+
+export const UNASSIGNED_LANE_COLOR = "#94a3b8";
 
 export const RELATIONSHIP_COLORS: Record<string, string> = {
   manager: "#0ea5e9",

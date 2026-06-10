@@ -4,7 +4,12 @@ import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
 import { DEMO_GRAPH_DOCUMENT } from "@/data/demo-graph";
-import { calculateLayout, calculateCleanupLayout } from "@/lib/graph/layout";
+import {
+  calculateLayout,
+  calculateCleanupLayout,
+  calculateMatrixLayout,
+  lensToDimension,
+} from "@/lib/graph/layout";
 import type {
   ClipboardPayload,
   GraphDocument,
@@ -531,10 +536,13 @@ export const useGraphStore = create<GraphStore>()(
         withHistory(set, get, (state) => {
           const targetLens = lens ?? state.document.lens;
           ensureLensState(state.document, targetLens);
-          
-          // Use basic hierarchical layout for all lenses
-          const positions = calculateLayout(state.document.nodes, state.document.edges);
-          
+
+          // Dimension lenses group people into swim lanes; hierarchy uses a plain tree
+          const dimension = lensToDimension(targetLens);
+          const positions = dimension
+            ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
+            : calculateLayout(state.document.nodes, state.document.edges);
+
           Object.entries(positions).forEach(([nodeId, position]) => {
             state.document.lens_state[targetLens].layout.positions[nodeId] = position;
           });
@@ -548,15 +556,18 @@ export const useGraphStore = create<GraphStore>()(
           
           // Get existing positions to preserve locked nodes if needed
           const existingPositions = state.document.lens_state[targetLens].layout.positions;
-          
-          // Use cleanup layout for elegant spacing and alignment
-          const positions = calculateCleanupLayout(
-            state.document.nodes,
-            state.document.edges,
-            existingPositions,
-            mode
-          );
-          
+
+          // Dimension lenses always clean up into swim lanes
+          const dimension = lensToDimension(targetLens);
+          const positions = dimension
+            ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
+            : calculateCleanupLayout(
+                state.document.nodes,
+                state.document.edges,
+                existingPositions,
+                mode
+              );
+
           Object.entries(positions).forEach(([nodeId, position]) => {
             state.document.lens_state[targetLens].layout.positions[nodeId] = position;
           });
@@ -725,7 +736,7 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 3,
+      version: 4,
       partialize: (state) => ({
         document: state.document,
         selection: state.selection,
@@ -745,6 +756,23 @@ export const useGraphStore = create<GraphStore>()(
 
         try {
           const sanitizedDocument = parseGraphDocument(maybeState.document);
+
+          // Older versions shipped the demo without brand/channel assignments;
+          // refresh to the enriched demo so matrix lenses have data to show.
+          const isStaleDemo =
+            sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name &&
+            sanitizedDocument.nodes.every(
+              (node) =>
+                node.kind !== "person" ||
+                (node.attributes.brands.length === 0 && node.attributes.channels.length === 0),
+            );
+          if (isStaleDemo) {
+            return {
+              ...initialState,
+              document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+            };
+          }
+
           const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
           const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
           const documentClone = cloneDocument(sanitizedDocument);

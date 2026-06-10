@@ -406,8 +406,292 @@ const people: SeedPerson[] = [
   },
 ];
 
+export const DEMO_BRANDS = ["Sonance", "iPort", "James Cloud Speaker", "Blaze Audio"];
+
+export const DEMO_CHANNELS = [
+  "Residential Retail",
+  "Residential Mid-Market",
+  "Residential Luxury",
+  "Professional Enterprise",
+  "Professional Audio",
+];
+
+type MatrixAssignment = {
+  brands: string[];
+  primaryBrand?: string;
+  channels: string[];
+  primaryChannel?: string;
+};
+
+// Matrix-org assignments: who works on which brand and serves which channel,
+// independent of the reporting hierarchy. Primary determines lane placement.
+const matrixAssignments: Record<string, MatrixAssignment> = {
+  // Executive leadership spans the whole portfolio
+  "person-ari-supran": {
+    brands: DEMO_BRANDS,
+    primaryBrand: "Sonance",
+    channels: DEMO_CHANNELS,
+    primaryChannel: "Residential Luxury",
+  },
+  "person-jeana-ceglia": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+
+  // Technology
+  "person-derick-dahl": {
+    brands: ["Sonance", "iPort"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-elliana-annador": {
+    brands: ["iPort"],
+    primaryBrand: "iPort",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-caroline-loit": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+  "person-thomas-palmer": {
+    brands: ["Blaze Audio"],
+    primaryBrand: "Blaze Audio",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+
+  // Reseller sales organization
+  "person-jason-sloan": {
+    brands: ["Sonance", "James Cloud Speaker"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail", "Residential Mid-Market", "Residential Luxury"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-andy-borrowscal": {
+    brands: ["iPort", "Sonance"],
+    primaryBrand: "iPort",
+    channels: ["Residential Mid-Market"],
+    primaryChannel: "Residential Mid-Market",
+  },
+  "person-arun-mckay": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-christian-serge-nielsen": {
+    brands: DEMO_BRANDS,
+    primaryBrand: "James Cloud Speaker",
+    channels: ["Residential Luxury"],
+    primaryChannel: "Residential Luxury",
+  },
+  "person-mark-schnoeff": {
+    brands: ["James Cloud Speaker"],
+    primaryBrand: "James Cloud Speaker",
+    channels: ["Residential Luxury"],
+    primaryChannel: "Residential Luxury",
+  },
+  "person-tyler-acengi": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Mid-Market"],
+    primaryChannel: "Residential Mid-Market",
+  },
+  "person-anna-grighins": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-mike-casey": {
+    brands: ["Blaze Audio", "Sonance"],
+    primaryBrand: "Blaze Audio",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+
+  // Corporate sales organization
+  "person-michael-sonntag": {
+    brands: ["Sonance", "Blaze Audio"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise", "Professional Audio"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-chris-lawson": {
+    brands: ["iPort"],
+    primaryBrand: "iPort",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-monica-jorgensen": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-steve-benoit": {
+    brands: ["iPort"],
+    primaryBrand: "iPort",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-sydney-fletcher": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-nathan-whisnot": {
+    brands: ["Blaze Audio"],
+    primaryBrand: "Blaze Audio",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+  "person-vacant-international": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+
+  // Operations
+  "person-pat-mcgaughan": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-keith-kozak": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-gigi-dwyer": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Mid-Market"],
+    primaryChannel: "Residential Mid-Market",
+  },
+  "person-erin-petera": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-keith-harper": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+
+  // Finance / product
+  "person-rob-roland": {
+    brands: ["Sonance", "iPort"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Luxury"],
+    primaryChannel: "Residential Luxury",
+  },
+  "person-erin-blackson": {
+    brands: ["iPort"],
+    primaryBrand: "iPort",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-skylar-gray": {
+    brands: ["James Cloud Speaker"],
+    primaryBrand: "James Cloud Speaker",
+    channels: ["Residential Luxury"],
+    primaryChannel: "Residential Luxury",
+  },
+  "person-brad-thrope": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+
+  // Executive support reports
+  "person-debbie-schnells": {
+    brands: ["James Cloud Speaker", "Sonance"],
+    primaryBrand: "James Cloud Speaker",
+    channels: ["Residential Luxury"],
+    primaryChannel: "Residential Luxury",
+  },
+  "person-todd-spier": {
+    brands: ["Blaze Audio"],
+    primaryBrand: "Blaze Audio",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+  "person-morgan-west": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+
+  // Level 3 and below
+  "person-jenna-campbell": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-jackie-conner": {
+    brands: ["James Cloud Speaker"],
+    primaryBrand: "James Cloud Speaker",
+    channels: ["Residential Luxury"],
+    primaryChannel: "Residential Luxury",
+  },
+  "person-jorge-nodal": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-mike-naves": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Mid-Market"],
+    primaryChannel: "Residential Mid-Market",
+  },
+  "person-nova-navarro": {
+    brands: ["Sonance"],
+    primaryBrand: "Sonance",
+    channels: ["Residential Retail"],
+    primaryChannel: "Residential Retail",
+  },
+  "person-tyson-madrigal": {
+    brands: ["iPort"],
+    primaryBrand: "iPort",
+    channels: ["Professional Enterprise"],
+    primaryChannel: "Professional Enterprise",
+  },
+  "person-alex-birch": {
+    brands: ["Blaze Audio"],
+    primaryBrand: "Blaze Audio",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+  "person-julio-davis": {
+    brands: ["Blaze Audio"],
+    primaryBrand: "Blaze Audio",
+    channels: ["Professional Audio"],
+    primaryChannel: "Professional Audio",
+  },
+};
+
 const createPersonNode = (seed: SeedPerson): GraphNode => {
   const timestamp = new Date().toISOString();
+  const matrix = matrixAssignments[seed.id];
   return {
     id: seed.id,
     kind: "person",
@@ -421,8 +705,10 @@ const createPersonNode = (seed: SeedPerson): GraphNode => {
       tags: [],
       location: seed.location,
       tier: seed.tier,
-      brands: [],
-      channels: [],
+      brands: matrix?.brands ?? [],
+      primaryBrand: matrix?.primaryBrand,
+      channels: matrix?.channels ?? [],
+      primaryChannel: matrix?.primaryChannel,
     },
   };
 };
@@ -513,6 +799,43 @@ const managerEdges: GraphEdge[] = [
   edge("person-todd-spier", "person-julio-davis", "manager"),
 ];
 
+// Matrix relationships: dotted lines connect brand/channel leads to the
+// cross-functional people on their virtual teams; sponsor edges mark
+// executive sponsorship of a brand. These cut across the reporting hierarchy.
+const matrixEdges: GraphEdge[] = [
+  // iPort brand team (led by Andy Borrowscal)
+  edge("person-andy-borrowscal", "person-erin-blackson", "dotted", { label: "iPort brand team" }),
+  edge("person-andy-borrowscal", "person-tyson-madrigal", "dotted", { label: "iPort brand team" }),
+  edge("person-andy-borrowscal", "person-chris-lawson", "dotted", { label: "iPort brand team" }),
+  edge("person-andy-borrowscal", "person-steve-benoit", "dotted", { label: "iPort brand team" }),
+  edge("person-andy-borrowscal", "person-elliana-annador", "dotted", { label: "iPort brand team" }),
+
+  // James Cloud Speaker brand team (led by Christian Serge Nielsen)
+  edge("person-christian-serge-nielsen", "person-skylar-gray", "dotted", { label: "James Cloud brand team" }),
+  edge("person-christian-serge-nielsen", "person-mark-schnoeff", "dotted", { label: "James Cloud brand team" }),
+  edge("person-christian-serge-nielsen", "person-debbie-schnells", "dotted", { label: "James Cloud brand team" }),
+  edge("person-christian-serge-nielsen", "person-jackie-conner", "dotted", { label: "James Cloud brand team" }),
+
+  // Blaze Audio brand team (led by Mike Casey)
+  edge("person-mike-casey", "person-alex-birch", "dotted", { label: "Blaze Audio brand team" }),
+  edge("person-mike-casey", "person-nathan-whisnot", "dotted", { label: "Blaze Audio brand team" }),
+  edge("person-mike-casey", "person-todd-spier", "dotted", { label: "Blaze Audio brand team" }),
+  edge("person-mike-casey", "person-thomas-palmer", "dotted", { label: "Blaze Audio brand team" }),
+
+  // Channel coordination
+  edge("person-jason-sloan", "person-debbie-schnells", "dotted", { label: "Residential channel" }),
+  edge("person-jason-sloan", "person-skylar-gray", "dotted", { label: "Residential channel" }),
+  edge("person-michael-sonntag", "person-brad-thrope", "dotted", { label: "Professional channel" }),
+  edge("person-michael-sonntag", "person-caroline-loit", "dotted", { label: "Professional channel" }),
+
+  // Executive sponsorship of brands
+  edge("person-rob-roland", "person-andy-borrowscal", "sponsor", { label: "iPort P&L sponsor" }),
+  edge("person-derick-dahl", "person-mike-casey", "sponsor", { label: "Blaze Audio sponsor" }),
+  edge("person-ari-supran", "person-christian-serge-nielsen", "sponsor", { label: "James Cloud sponsor" }),
+];
+
+const allEdges = [...managerEdges, ...matrixEdges];
+
 const defaultLensState = buildDefaultLensState();
 
 const demoDocument: GraphDocument = {
@@ -527,7 +850,7 @@ const demoDocument: GraphDocument = {
   },
   lens: "hierarchy",
   nodes,
-  edges: managerEdges,
+  edges: allEdges,
   lens_state: defaultLensState,
 };
 
@@ -554,6 +877,10 @@ export const DEMO_LENS_LABELS: Record<LensId, string[]> = LENSES.reduce(
         "Programs",
         "Customer Service",
       ];
+    } else if (lens.id === "brand") {
+      acc[lens.id] = [...DEMO_BRANDS];
+    } else if (lens.id === "channel") {
+      acc[lens.id] = [...DEMO_CHANNELS];
     } else {
       acc[lens.id] = [];
     }

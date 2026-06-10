@@ -21,6 +21,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
+import { LaneNode, type LaneNodeData } from "@/components/lane-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { customEdgeTypes } from "@/components/custom-edges";
@@ -28,12 +29,21 @@ import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quic
 import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
-import { buildChildMap, isDescendant } from "@/lib/graph/layout";
+import {
+  buildChildMap,
+  isDescendant,
+  groupNodesByDimension,
+  lensToDimension,
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  type LensDimension,
+} from "@/lib/graph/layout";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
   DEPARTMENT_COLORS,
   RELATIONSHIP_COLORS,
+  UNASSIGNED_LANE_COLOR,
 } from "@/lib/theme/palette";
 import { ROLE_TEMPLATES, type RoleTemplate } from "@/lib/schema/templates";
 
@@ -45,6 +55,7 @@ type CanvasMenuState = {
 
 const nodeTypes = {
   hierarchyNode: HierarchyNode,
+  laneNode: LaneNode,
 } as const;
 
 const edgeTypes = {
@@ -173,7 +184,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return tokensByNode;
   }, [filters?.activeTokens, personNodes, lens]);
 
-  const nodes = useMemo<Node<HierarchyNodeData>[]>(() => {
+  const nodes = useMemo<Node[]>(() => {
     const positions = lensLayout?.positions ?? {};
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
@@ -187,7 +198,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       filteredNodes = filteredNodes.filter((node) => !hiddenIds.includes(node.id));
     }
     
-    return filteredNodes.map((node) => {
+    const personFlowNodes: Node[] = filteredNodes.map((node) => {
       const position = positions[node.id] ?? { x: 0, y: 0 };
       const accent = getAccentColor(node, lens);
       
@@ -271,6 +282,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         selected: selection.nodeIds.includes(node.id),
       };
     });
+
+    // Matrix views: draw a labeled swim lane behind each brand/channel/department group
+    const dimension = lensToDimension(lens);
+    if (!dimension) {
+      return personFlowNodes;
+    }
+    const laneNodes = buildLaneNodes(filteredNodes, positions, dimension);
+    return [...laneNodes, ...personFlowNodes];
   }, [
     personNodes,
     selection.nodeIds,
@@ -306,8 +325,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                        edge.metadata.type === 'dotted' ? 'dotted' : 
                        'manager';
       
-      // Calculate opacity based on ghost state (keep edges visible at all zoom levels)
-      const opacity = isGhost || edge.metadata.ghost ? 0.3 : 0.85;
+      // In matrix views the dotted/sponsor relationships are the story, so fade
+      // the within-lane reporting lines and let cross-lane links stand out
+      const isMatrixView = lens !== "hierarchy";
+      const dimmedManager = isMatrixView && edge.metadata.type === "manager";
+      const opacity = isGhost || edge.metadata.ghost ? 0.3 : dimmedManager ? 0.18 : 0.9;
       
       return {
         id: edge.id,
@@ -460,10 +482,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // Restore viewport when lens layout changes (smooth animation)
   useEffect(() => {
     if (!rfInstance || !lensLayout?.viewport) return;
-    
+
     const currentViewport = rfInstance.getViewport();
     const targetViewport = lensLayout.viewport;
-    
+
+    // Untouched default viewport means this lens has never been viewed —
+    // fit the freshly laid-out content instead of jumping to the origin
+    const isDefaultViewport =
+      targetViewport.x === 0 && targetViewport.y === 0 && targetViewport.zoom === 1;
+    if (isDefaultViewport) {
+      isRestoringViewport.current = true;
+      rfInstance.fitView({ padding: 0.15, duration: 300, maxZoom: 1.2 });
+      setTimeout(() => {
+        isRestoringViewport.current = false;
+      }, 350);
+      return;
+    }
+
     // Only restore if viewport is significantly different (to avoid conflicts with user interactions)
     const threshold = 10;
     const isDifferent = 
@@ -561,6 +596,25 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     ],
   );
 
+  // Canvas shortcuts must work without the canvas having DOM focus (clicking the
+  // React Flow pane leaves focus on <body>), so listen at the document level
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      if (quickAddDialog.open) return;
+      handleKeyDown(event as unknown as React.KeyboardEvent);
+    };
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, [handleKeyDown, quickAddDialog.open]);
+
   const handleQuickAddSave = (data: QuickAddPersonData) => {
     const newId = addPerson({
       name: data.name,
@@ -595,7 +649,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           ].join(" ")}
           style={style}
           onContextMenu={handlePaneContextMenu}
-          onKeyDown={handleKeyDown}
         >
           <ReactFlow
             nodes={nodes}
@@ -634,7 +687,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             zoomOnPinch
             deleteKeyCode={["Backspace", "Delete"]}
             proOptions={{ hideAttribution: true }}
-            minZoom={0.25}
+            minZoom={0.08}
             maxZoom={2}
             defaultEdgeOptions={{ type: "manager" }}
             onInit={setRfInstance}
@@ -957,6 +1010,55 @@ const CleanupButton = ({
       </Popover.Portal>
     </Popover.Root>
   );
+};
+
+const LANE_PALETTES: Record<LensDimension, Record<string, string>> = {
+  brand: BRAND_COLORS,
+  channel: CHANNEL_COLORS,
+  department: DEPARTMENT_COLORS,
+};
+
+const getLaneColor = (key: string, dimension: LensDimension) =>
+  LANE_PALETTES[dimension][key] ?? UNASSIGNED_LANE_COLOR;
+
+const LANE_PAD_X = 70;
+const LANE_PAD_TOP = 130;
+const LANE_PAD_BOTTOM = 70;
+
+const buildLaneNodes = (
+  people: PersonNode[],
+  positions: Record<string, { x: number; y: number }>,
+  dimension: LensDimension,
+): Node[] => {
+  const groups = groupNodesByDimension(people, dimension);
+  const laneNodes: Node[] = [];
+  groups.forEach((members, key) => {
+    const points = members
+      .map((member) => positions[member.id])
+      .filter((point): point is { x: number; y: number } => Boolean(point));
+    if (points.length === 0) return;
+    const minX = Math.min(...points.map((p) => p.x)) - LANE_PAD_X;
+    const maxX = Math.max(...points.map((p) => p.x)) + NODE_WIDTH + LANE_PAD_X;
+    const minY = Math.min(...points.map((p) => p.y)) - LANE_PAD_TOP;
+    const maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
+    const data: LaneNodeData = {
+      label: key,
+      color: getLaneColor(key, dimension),
+      count: members.length,
+    };
+    laneNodes.push({
+      id: `lane:${key}`,
+      type: "laneNode",
+      position: { x: minX, y: minY },
+      data,
+      style: { width: maxX - minX, height: maxY - minY },
+      zIndex: -1,
+      draggable: false,
+      selectable: false,
+      focusable: false,
+    });
+  });
+  return laneNodes;
 };
 
 const getAccentColor = (node: PersonNode, lens: LensId) => {
