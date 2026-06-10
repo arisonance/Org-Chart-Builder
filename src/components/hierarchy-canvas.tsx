@@ -8,7 +8,6 @@ import {
   BackgroundVariant,
   Connection,
   ConnectionMode,
-  Controls,
   Edge,
   MarkerType,
   MiniMap,
@@ -149,6 +148,36 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     managerName?: string;
     position?: { x: number; y: number };
   }>({ open: false, mode: 'new-person' });
+
+  // Mouse-wheel behavior: zoom (default, mouse-friendly) or pan (trackpad-friendly)
+  const [scrollZoom, setScrollZoom] = useState<boolean>(true);
+  useEffect(() => {
+    setScrollZoom(localStorage.getItem("org-chart-scroll-mode") !== "pan");
+  }, []);
+  const toggleScrollZoom = useCallback(() => {
+    setScrollZoom((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("org-chart-scroll-mode", next ? "zoom" : "pan");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const zoomOut = useCallback(
+    () => rfInstance?.zoomOut({ duration: 200 }),
+    [rfInstance],
+  );
+  const zoomIn = useCallback(
+    () => rfInstance?.zoomIn({ duration: 200 }),
+    [rfInstance],
+  );
+  const fitToView = useCallback(
+    () => rfInstance?.fitView({ padding: 0.2, duration: 300 }),
+    [rfInstance],
+  );
 
   const lensLayout = lensState?.layout;
   const filters = lensState?.filters;
@@ -660,6 +689,25 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return;
       }
 
+      // Zoom shortcuts: "-" out, "+"/"=" in, "0" fit to view
+      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.key === "-" || event.key === "_") {
+          event.preventDefault();
+          rfInstance?.zoomOut({ duration: 200 });
+          return;
+        }
+        if (event.key === "=" || event.key === "+") {
+          event.preventDefault();
+          rfInstance?.zoomIn({ duration: 200 });
+          return;
+        }
+        if (event.key === "0") {
+          event.preventDefault();
+          rfInstance?.fitView({ padding: 0.2, duration: 300 });
+          return;
+        }
+      }
+
       // N to add new person at center
       if (event.key.toLowerCase() === "n" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
@@ -813,7 +861,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1.5, minZoom: 0.5 }}
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            panOnScroll
+            panOnScroll={!scrollZoom}
+            zoomOnScroll={scrollZoom}
             panOnDrag={[1, 2]}
             zoomOnPinch
             deleteKeyCode={["Backspace", "Delete"]}
@@ -839,7 +888,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               pannable
               zoomable
             />
-            <Controls className="!left-6 !bottom-6 rounded-full bg-white/90 text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10" />
             {/* Mirror-lanes toggle, only relevant in matrix views */}
             {lens !== "hierarchy" && personNodes.length > 0 && (
               <button
@@ -884,6 +932,69 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
           
+          {/* Zoom controls: explicit buttons, %, fit, and scroll-mode toggle */}
+          {personNodes.length > 0 && (
+            <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 -translate-x-1/2">
+              <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/95 p-1 text-slate-600 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-200 dark:ring-white/10">
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  title="Zoom out (−)"
+                  aria-label="Zoom out"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => rfInstance?.zoomTo(1, { duration: 200 })}
+                  title="Reset to 100%"
+                  aria-label="Reset zoom to 100%"
+                  className="min-w-[3.25rem] rounded-full px-2 py-1 text-center text-xs font-semibold tabular-nums transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  {Math.round(currentZoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  title="Zoom in (+)"
+                  aria-label="Zoom in"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  +
+                </button>
+                <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={fitToView}
+                  title="Fit to view (0)"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  Fit
+                </button>
+                <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={toggleScrollZoom}
+                  title={
+                    scrollZoom
+                      ? "Mouse wheel zooms. Click to switch to scroll-to-pan (trackpad-friendly)."
+                      : "Mouse wheel pans. Click to switch to scroll-to-zoom (mouse-friendly)."
+                  }
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  <span
+                    className={[
+                      "inline-block h-1.5 w-1.5 rounded-full",
+                      scrollZoom ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600",
+                    ].join(" ")}
+                  />
+                  Scroll: {scrollZoom ? "Zoom" : "Pan"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Relationship legend - compact button in corner */}
           {personNodes.length > 0 && <RelationshipLegend />}
 
