@@ -3,715 +3,299 @@ import {
   buildDefaultLensState,
   createEmptyGraphDocument,
 } from "@/lib/schema/defaults";
-import type { GraphDocument, GraphEdge, GraphNode, PersonAttributes } from "@/lib/schema/types";
+import type { GraphDocument, GraphEdge, GraphNode, NodeRoleTier } from "@/lib/schema/types";
 import { SCHEMA_VERSION } from "@/lib/schema/types";
 
-type SeedPerson = {
+// NOTE: This file is generated from the company org-chart CSV (Sonance).
+// People, titles, reporting lines, locations, and departments (cost centers)
+// come straight from that data. Brand/channel matrix assignments are left
+// empty until that mapping is provided.
+
+type Seed = {
   id: string;
   name: string;
   title: string;
-  tier: PersonAttributes["tier"];
-  departments: string[];
-  primaryDepartment?: string;
+  tier: NodeRoleTier;
+  department: string;
   location?: string;
-  email?: string;
+  managerId?: string;
 };
 
-const people: SeedPerson[] = [
-  // ==================== CEO ====================
-  {
-    id: "person-ari-supran",
-    name: "Ari Supran",
-    title: "Chief Executive Officer",
-    tier: "c-suite",
-    departments: ["Executive Leadership"],
-    primaryDepartment: "Executive Leadership",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== C-SUITE / DIRECT REPORTS TO CEO ====================
-  {
-    id: "person-derick-dahl",
-    name: "Derick Dahl",
-    title: "Head of Technology and Innovation",
-    tier: "c-suite",
-    departments: ["Technology"],
-    primaryDepartment: "Technology",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-jason-sloan",
-    name: "Jason Sloan",
-    title: "Chief Revenue Officer - Reseller",
-    tier: "c-suite",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-michael-sonntag",
-    name: "Michael Sonntag",
-    title: "Chief Revenue Officer - Corporate",
-    tier: "c-suite",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-pat-mcgaughan",
-    name: "Pat McGaughan",
-    title: "COO/CTO",
-    tier: "c-suite",
-    departments: ["Operations"],
-    primaryDepartment: "Operations",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-rob-roland",
-    name: "Rob Roland",
-    title: "Executive VP/CFO",
-    tier: "c-suite",
-    departments: ["Finance"],
-    primaryDepartment: "Finance",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-jeana-ceglia",
-    name: "Jeana Ceglia",
-    title: "Executive Assistant to the CEO",
-    tier: "ic",
-    departments: ["Executive Support"],
-    primaryDepartment: "Executive Support",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== TECHNOLOGY TEAM (Reports to Derick Dahl) ====================
-  {
-    id: "person-elliana-annador",
-    name: "Elliana Annador",
-    title: "Specialist",
-    tier: "ic",
-    departments: ["Technology"],
-    primaryDepartment: "Technology",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-caroline-loit",
-    name: "Caroline Loit",
-    title: "Lead Backend Engineer",
-    tier: "manager",
-    departments: ["Technology"],
-    primaryDepartment: "Technology",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-thomas-palmer",
-    name: "Thomas Palmer",
-    title: "Technology Research Specialist",
-    tier: "ic",
-    departments: ["Technology"],
-    primaryDepartment: "Technology",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== RESELLER SALES TEAM (Reports to Jason Sloan) ====================
-  {
-    id: "person-andy-borrowscal",
-    name: "Andy Borrowscal",
-    title: "Lead Product Manager",
-    tier: "manager",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-arun-mckay",
-    name: "Arun McKay",
-    title: "Director of Sales Operations and Marketing",
-    tier: "director",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-christian-serge-nielsen",
-    name: "Christian Serge Nielsen",
-    title: "Director of Brand Marketing",
-    tier: "director",
-    departments: ["Marketing"],
-    primaryDepartment: "Marketing",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-mark-schnoeff",
-    name: "Mark Schnoeff",
-    title: "Studio Mayno",
-    tier: "ic",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-tyler-acengi",
-    name: "Tyler Acengi",
-    title: "VP Sales - Northeast, Head",
-    tier: "vp",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-anna-grighins",
-    name: "Anna Grighins",
-    title: "Executive Assistant",
-    tier: "ic",
-    departments: ["Executive Support"],
-    primaryDepartment: "Executive Support",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-mike-casey",
-    name: "Mike Casey",
-    title: "Senior Director of Strategic Accounts",
-    tier: "director",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== CORPORATE SALES TEAM (Reports to Michael Sonntag) ====================
-  {
-    id: "person-chris-lawson",
-    name: "Chris Lawson",
-    title: "Head of Sales and Partnerships",
-    tier: "vp",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-monica-jorgensen",
-    name: "Monica Jorgensen",
-    title: "Vice President of Professional Services",
-    tier: "vp",
-    departments: ["Professional Services"],
-    primaryDepartment: "Professional Services",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-steve-benoit",
-    name: "Steve Benoit",
-    title: "Business Development Project Manager",
-    tier: "manager",
-    departments: ["Business Development"],
-    primaryDepartment: "Business Development",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-sydney-fletcher",
-    name: "Sydney Fletcher",
-    title: "Executive Assistant to the CFO",
-    tier: "ic",
-    departments: ["Executive Support"],
-    primaryDepartment: "Executive Support",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-nathan-whisnot",
-    name: "Nathan Whisnot",
-    title: "Vice President of National Accounts",
-    tier: "vp",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-vacant-international",
-    name: "Vacant",
-    title: "Vice President of International",
-    tier: "vp",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== OPERATIONS TEAM (Reports to Pat McGaughan) ====================
-  {
-    id: "person-keith-kozak",
-    name: "Keith Kozak",
-    title: "Vice President of Human Resources",
-    tier: "vp",
-    departments: ["Human Resources"],
-    primaryDepartment: "Human Resources",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-gigi-dwyer",
-    name: "Gigi Dwyer",
-    title: "Vice President of Human Resources",
-    tier: "vp",
-    departments: ["Human Resources"],
-    primaryDepartment: "Human Resources",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-erin-petera",
-    name: "Erin Petera",
-    title: "Accountant",
-    tier: "ic",
-    departments: ["Finance"],
-    primaryDepartment: "Finance",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-keith-harper",
-    name: "Keith Harper",
-    title: "Vice President of IT",
-    tier: "vp",
-    departments: ["Information Technology"],
-    primaryDepartment: "Information Technology",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== FINANCE/PRODUCT TEAM (Reports to Rob Roland) ====================
-  {
-    id: "person-erin-blackson",
-    name: "Erin Blackson",
-    title: "Director of Product Management",
-    tier: "director",
-    departments: ["Product"],
-    primaryDepartment: "Product",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-skylar-gray",
-    name: "Skylar Gray",
-    title: "Director of Product Management",
-    tier: "director",
-    departments: ["Product"],
-    primaryDepartment: "Product",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-brad-thrope",
-    name: "Brad Thrope",
-    title: "Vice President of Services",
-    tier: "vp",
-    departments: ["Services"],
-    primaryDepartment: "Services",
-    location: "San Clemente, CA",
-  },
-
-  // ==================== EXECUTIVE SUPPORT TEAM (Reports to Jeana Ceglia) ====================
-  {
-    id: "person-debbie-schnells",
-    name: "Debbie Schnells",
-    title: "Director of Marketing",
-    tier: "director",
-    departments: ["Marketing"],
-    primaryDepartment: "Marketing",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-todd-spier",
-    name: "Todd Spier",
-    title: "Chief Support Engineer",
-    tier: "director",
-    departments: ["Engineering"],
-    primaryDepartment: "Engineering",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-morgan-west",
-    name: "Morgan West",
-    title: "Director of Operations - China",
-    tier: "director",
-    departments: ["Operations"],
-    primaryDepartment: "Operations",
-    location: "China",
-  },
-
-  // ==================== LEVEL 3 AND BELOW ====================
-  {
-    id: "person-jenna-campbell",
-    name: "Jenna Campbell",
-    title: "Senior Director of Sales Operations",
-    tier: "director",
-    departments: ["Sales"],
-    primaryDepartment: "Sales",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-jackie-conner",
-    name: "Jackie Conner",
-    title: "Customer Service Representative",
-    tier: "ic",
-    departments: ["Customer Service"],
-    primaryDepartment: "Customer Service",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-jorge-nodal",
-    name: "Jorge Nodal",
-    title: "Vice President of Operations",
-    tier: "vp",
-    departments: ["Operations"],
-    primaryDepartment: "Operations",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-mike-naves",
-    name: "Mike Naves",
-    title: "Senior Director of Associate Programs",
-    tier: "director",
-    departments: ["Programs"],
-    primaryDepartment: "Programs",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-nova-navarro",
-    name: "Nova Navarro",
-    title: "Executive Assistant",
-    tier: "ic",
-    departments: ["Executive Support"],
-    primaryDepartment: "Executive Support",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-tyson-madrigal",
-    name: "Tyson Madrigal",
-    title: "Director of Product Development",
-    tier: "director",
-    departments: ["Product"],
-    primaryDepartment: "Product",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-alex-birch",
-    name: "Alex Birch",
-    title: "Director of Product Management",
-    tier: "director",
-    departments: ["Product"],
-    primaryDepartment: "Product",
-    location: "San Clemente, CA",
-  },
-  {
-    id: "person-julio-davis",
-    name: "Julio Davis",
-    title: "Executive Assistant",
-    tier: "ic",
-    departments: ["Executive Support"],
-    primaryDepartment: "Executive Support",
-    location: "San Clemente, CA",
-  },
+const seeds: Seed[] = [
+  { id: "person-chuck-admire", name: "Chuck Admire", title: "Marketing Manager", tier: "manager", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-aron-mckay" },
+  { id: "person-brett-alejo", name: "Brett Alejo", title: "Digital Operations Lead", tier: "manager", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-jenna-campfield" },
+  { id: "person-jose-almendarez-orozco", name: "Jose Almendarez Orozco", title: "Warehouse Associate", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-lidia-villasenor-de-ruiz" },
+  { id: "person-elliott-amador", name: "Elliott Amador", title: "AI Specialist", tier: "ic", department: "Technology and Innovation", location: "San Clemente, CA", managerId: "person-derick-dahl" },
+  { id: "person-jax-anderson", name: "Jax Anderson", title: "Studio Coordinator", tier: "ic", department: "Sales", location: "San Clemente, CA", managerId: "person-marc-schnoll" },
+  { id: "person-francisco-avina-navarro", name: "Francisco Avina Navarro", title: "Prep Department", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-ryan-baechel", name: "Ryan Baechel", title: "Associate Production Manager", tier: "manager", department: "Brand Marketing", location: "San Clemente, CA", managerId: "person-christian-serge-nelson" },
+  { id: "person-liliana-barajas", name: "Liliana Barajas", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-antonio-barrera", name: "Antonio Barrera", title: "Assembly Lead", tier: "manager", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-jonathan-barrera-martinez", name: "Jonathan Barrera Martinez", title: "QC Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
+  { id: "person-norema-barreto-rugama", name: "Norema Barreto Rugama", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-tania-martinez" },
+  { id: "person-ako-bartoldus", name: "Ako Bartoldus", title: "Engineering Program Manager", tier: "manager", department: "R&D Engineering", location: "San Clemente, CA", managerId: "person-josh-blanken" },
+  { id: "person-ashley-basakis", name: "Ashley Basakis", title: "Tradeshow Coordinator", tier: "ic", department: "Brand Marketing", location: "San Clemente, CA", managerId: "person-christian-serge-nelson" },
+  { id: "person-noah-baxter", name: "Noah Baxter", title: "Senior Software Engineer", tier: "ic", department: "R&D Electronics Engineering", managerId: "person-skylar-gray" },
+  { id: "person-jose-becerra", name: "Jose Becerra", title: "Custodial", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-jeremy-belsher", name: "Jeremy Belsher", title: "Technical Support Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brian-taksier" },
+  { id: "person-steve-benoit", name: "Steve Benoit", title: "Business Development Project Manager", tier: "manager", department: "Sales", location: "San Clemente, CA", managerId: "person-michael-sonntag" },
+  { id: "person-jon-berges", name: "Jon Berges", title: "Quality Manager", tier: "manager", department: "Quality Control", location: "San Clemente, CA", managerId: "person-morgan-west" },
+  { id: "person-alex-bertagni", name: "Alex Bertagni", title: "Senior Engineer", tier: "ic", department: "R&D Engineering", location: "San Clemente, CA", managerId: "person-josh-blanken" },
+  { id: "person-alex-birch", name: "Alex Birch", title: "Director of Product Management", tier: "director", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-rob-roland" },
+  { id: "person-dean-biscocho", name: "Dean Biscocho", title: "Front End Developer", tier: "ic", department: "IT", location: "San Clemente, CA", managerId: "person-joe-deluca" },
+  { id: "person-leena-blake", name: "Leena Blake", title: "Payroll and Benefits Manager", tier: "manager", department: "Administration", location: "San Clemente, CA", managerId: "person-grace-dryer" },
+  { id: "person-eliezer-blandon-montoya", name: "Eliezer Blandon Montoya", title: "Woodworker", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-josh-blanken", name: "Josh Blanken", title: "Director of Product Management", tier: "director", department: "R&D Engineering", location: "San Clemente, CA", managerId: "person-mike-paganini" },
+  { id: "person-rachel-bloomquist", name: "Rachel Bloomquist", title: "Business Process Transformation Manager", tier: "manager", department: "Ops SC", location: "San Clemente, CA", managerId: "person-jorge-notni" },
+  { id: "person-harry-bookstein", name: "Harry Bookstein", title: "Regional Sales Manager - Northeast", tier: "manager", department: "Global Commercial Sales", managerId: "person-michael-bridwell" },
+  { id: "person-will-bozarth", name: "Will Bozarth", title: "Inside Sales Specialist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-juan-rincon" },
+  { id: "person-shawn-brechbill", name: "Shawn Brechbill", title: "Consultant Liaison Director", tier: "director", department: "Global Commercial Sales", location: "San Clemente, CA", managerId: "person-michael-bridwell" },
+  { id: "person-michael-bridwell", name: "Michael Bridwell", title: "Head of Professional US & CAN Sales", tier: "vp", department: "Global Commercial Sales", managerId: "person-michael-sonntag" },
+  { id: "person-juliana-brockman", name: "Juliana Brockman", title: "James Custom Engineer", tier: "ic", department: "Dealer Services", location: "Minden, NV", managerId: "person-miguel-garcia" },
+  { id: "person-steve-brookes", name: "Steve Brookes", title: "Field Support Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brad-thiess" },
+  { id: "person-sharon-bryant", name: "Sharon Bryant", title: "Warehouse Logistics Scheduler 2", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-kim-buck", name: "Kim Buck", title: "Inside Sales Manager - International", tier: "manager", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-jenna-campfield" },
+  { id: "person-bryan-bucknell", name: "Bryan Bucknell", title: "National Accounts Training Manager", tier: "manager", department: "National Accounts", managerId: "person-brian-farrell" },
+  { id: "person-tatiana-byrne", name: "Tatiana Byrne", title: "Accounts Receivable Specialist", tier: "ic", department: "Finance", location: "San Clemente, CA", managerId: "person-mike-neves" },
+  { id: "person-jenna-campfield", name: "Jenna Campfield", title: "Senior Director of Sales Operations", tier: "director", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-omar-castro-rivera", name: "Omar Castro Rivera", title: "Prep Department", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-jeana-ceglia", name: "Jeana Ceglia", title: "Executive Assistant to the CEO", tier: "c-suite", department: "Administration", location: "San Clemente, CA", managerId: "person-ari-supran" },
+  { id: "person-joe-cherbak", name: "Joe Cherbak", title: "Business Applications Support Lead", tier: "manager", department: "IT", location: "San Clemente, CA", managerId: "person-peter-winter" },
+  { id: "person-brit-anne-chynces", name: "Brit'Anne Chynces", title: "Graphic Designer", tier: "ic", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-courtney-santana" },
+  { id: "person-reyna-civiletto", name: "Reyna Civiletto", title: "Master Data Coordinator", tier: "ic", department: "Ops SC", managerId: "person-jorge-notni" },
+  { id: "person-trevin-clark", name: "Trevin Clark", title: "Desktop Support Manager", tier: "manager", department: "IT", location: "San Clemente, CA", managerId: "person-mark-litz" },
+  { id: "person-mike-cleary", name: "Mike Cleary", title: "Senior Director of Strategic Accounts", tier: "director", department: "Luxury Resi N &S America", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-allison-clifford", name: "Allison Clifford", title: "Marketing Communication & Program Manager", tier: "manager", department: "Global Commercial Marketing", managerId: "person-morten-jorgensen" },
+  { id: "person-christian-coblentz", name: "Christian Coblentz", title: "Jr Mechanical & Test Engineer", tier: "ic", department: "R&D Electronics Engineering", location: "San Clemente, CA", managerId: "person-skylar-gray" },
+  { id: "person-jacky-conner", name: "Jacky Conner", title: "Customer Service Representative", tier: "ic", department: "Sales Ops", managerId: "person-juan-rincon" },
+  { id: "person-maria-contreras", name: "Maria Contreras", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-sean-cordero", name: "Sean Cordero", title: "Logistics Analyst", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-gerardo-curiel", name: "Gerardo Curiel", title: "Quality Engineer", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-joe-timpone" },
+  { id: "person-derick-dahl", name: "Derick Dahl", title: "Head of Technology and Innovation", tier: "vp", department: "Technology and Innovation", location: "San Clemente, CA", managerId: "person-ari-supran" },
+  { id: "person-brooke-dahler", name: "Brooke Dahler", title: "Summer Interns", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-rachel-bloomquist" },
+  { id: "person-joe-deluca", name: "Joe DeLuca", title: "IT Solutions Manager", tier: "manager", department: "IT", location: "San Clemente, CA", managerId: "person-keith-harper" },
+  { id: "person-dan-demulling", name: "Dan DeMulling", title: "Technical Services Manager", tier: "manager", department: "R&D Engineering", managerId: "person-josh-blanken" },
+  { id: "person-marco-delgado", name: "Marco Delgado", title: "Assembly Lead", tier: "manager", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-brian-dempsey", name: "Brian Dempsey", title: "Design Services Specialist Lead", tier: "manager", department: "Dealer Services", managerId: "person-brad-thiess" },
+  { id: "person-grace-dryer", name: "Grace Dryer", title: "Vice President of Human Resources", tier: "vp", department: "Administration", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-jack-dryer", name: "Jack Dryer", title: "Sales Development Representative", tier: "ic", department: "iPort Enterprise Sales", location: "San Clemente, CA", managerId: "person-chris-lawson" },
+  { id: "person-kevin-dunlea", name: "Kevin Dunlea", title: "James Custom Engineer", tier: "ic", department: "Dealer Services", location: "San Clemente, CA", managerId: "person-miguel-garcia" },
+  { id: "person-dan-dusek", name: "Dan Dusek", title: "Regional Sales Director", tier: "director", department: "Luxury Resi N &S America", managerId: "person-tyler-kungl" },
+  { id: "person-tiger-edwards", name: "Tiger Edwards", title: "Tool Path", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-miguel-garcia" },
+  { id: "person-michael-eng", name: "Michael Eng", title: "Program Manager iPort", tier: "manager", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-tyson-mackjust" },
+  { id: "person-veronica-enriquez", name: "Veronica Enriquez", title: "Inside Sales Lead", tier: "manager", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-jenna-campfield" },
+  { id: "person-ava-escario", name: "Ava Escario", title: "Summer Interns", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-marnee-sigler" },
+  { id: "person-maria-espinoza-betanco", name: "Maria Espinoza Betanco", title: "Fabrication Application Specialist", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-michael-fagan", name: "Michael Fagan", title: "Senior Business Analyst", tier: "ic", department: "IT", managerId: "person-keith-harper" },
+  { id: "person-brian-farrell", name: "Brian Farrell", title: "National Sales Director - Retail Channel", tier: "director", department: "National Accounts", managerId: "person-nathan-whitesel" },
+  { id: "person-ryan-fayaz", name: "Ryan Fayaz", title: "Inside Sales Analyst", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-juan-rincon" },
+  { id: "person-sydney-fincher", name: "Sydney Fincher", title: "Executive Assistant to the CRO", tier: "ic", department: "Sales", location: "San Clemente, CA", managerId: "person-michael-sonntag" },
+  { id: "person-brandon-flora", name: "Brandon Flora", title: "Regional Sales Manager", tier: "manager", department: "National Accounts", managerId: "person-brian-farrell" },
+  { id: "person-chester-flynn", name: "Chester Flynn", title: "Regional Sales Director", tier: "director", department: "Luxury Resi N &S America", managerId: "person-tyler-kungl" },
+  { id: "person-scott-foco", name: "Scott Foco", title: "Regional Sales Director", tier: "director", department: "Luxury Resi N &S America", managerId: "person-tyler-kungl" },
+  { id: "person-erin-foote", name: "Erin Foote", title: "Accountant", tier: "ic", department: "Finance", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-alexandre-fournier", name: "Alexandre Fournier", title: "Intern", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-mike-leach" },
+  { id: "person-aaron-fraley", name: "Aaron Fraley", title: "Inside Sales Specialist", tier: "ic", department: "Sales Ops", location: "Minden, NV", managerId: "person-juan-rincon" },
+  { id: "person-jimmy-gallagher", name: "Jimmy Gallagher", title: "Mechanical Engineer", tier: "ic", department: "R&D Speaker Engineering", location: "Minden, NV", managerId: "person-trevor-ryan" },
+  { id: "person-courtney-gandolfi", name: "Courtney Gandolfi", title: "Marketing Coordinator", tier: "ic", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-courtney-santana" },
+  { id: "person-miguel-garcia", name: "Miguel Garcia", title: "James Custom Engineering Supervisor", tier: "manager", department: "Dealer Services", location: "Minden, NV", managerId: "person-brad-thiess" },
+  { id: "person-colin-garibaldi", name: "Colin Garibaldi", title: "Summer Interns", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-derick-dahl" },
+  { id: "person-ev-gavryushkin", name: "Ev Gavryushkin", title: "Quality Engineer", tier: "ic", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-tyson-mackjust" },
+  { id: "person-barb-glaab", name: "Barb Glaab", title: "Credit Manager", tier: "manager", department: "Finance", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-alberto-gomez", name: "Alberto Gomez", title: "Production Manager", tier: "manager", department: "Ops MND", location: "Minden, NV", managerId: "person-joe-timpone" },
+  { id: "person-ricardo-gonzalez", name: "Ricardo Gonzalez", title: "Assembler/E-Lab", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
+  { id: "person-nancy-gonzalez-diaz", name: "Nancy Gonzalez Diaz", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-miguel-gonzalez-limon", name: "Miguel Gonzalez Limon", title: "Operations Process Manager", tier: "manager", department: "Ops MND", location: "Minden, NV", managerId: "person-jorge-notni" },
+  { id: "person-skylar-gray", name: "Skylar Gray", title: "Director of Engineering", tier: "director", department: "R&D Electronics Engineering", managerId: "person-mike-paganini" },
+  { id: "person-bret-greenberg", name: "Bret Greenberg", title: "RMA Analyst", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-brett-alejo" },
+  { id: "person-jeremy-griffin", name: "Jeremy Griffin", title: "Research and Development Electrical Engineer", tier: "ic", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-tyson-mackjust" },
+  { id: "person-alina-grijalva", name: "Alina Grijalva", title: "Executive Assistant", tier: "ic", department: "Sales", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-alan-gurvey", name: "Alan Gurvey", title: "Technical Support Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brian-taksier" },
+  { id: "person-cristhian-gutierrez", name: "Cristhian Gutierrez", title: "Lead Packager", tier: "manager", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-sam-hanner", name: "Sam Hanner", title: "Employee Development Manager", tier: "manager", department: "Administration", location: "San Clemente, CA", managerId: "person-grace-dryer" },
+  { id: "person-keith-harper", name: "Keith Harper", title: "Vice President of IT", tier: "vp", department: "IT", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-christian-harris", name: "Christian Harris", title: "National Accounts Project Director", tier: "director", department: "National Accounts", managerId: "person-brian-farrell" },
+  { id: "person-montell-haynes", name: "Montell Haynes", title: "RMA Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-adrian-rodriguez" },
+  { id: "person-robert-hemenway", name: "Robert Hemenway", title: "James Custom Engineer", tier: "ic", department: "Dealer Services", location: "Minden, NV", managerId: "person-miguel-garcia" },
+  { id: "person-eliseo-hernandez", name: "Eliseo Hernandez", title: "Picking and Shipping Lead", tier: "manager", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-brooks-holman", name: "Brooks Holman", title: "Regional Sales Manager", tier: "manager", department: "National Accounts", managerId: "person-brian-farrell" },
+  { id: "person-julie-horn", name: "Julie Horn", title: "Executive Assistant", tier: "ic", department: "R&D Engineering", location: "San Clemente, CA", managerId: "person-rob-roland" },
+  { id: "person-scott-hoy", name: "Scott Hoy", title: "James Custom Engineer", tier: "ic", department: "Dealer Services", location: "Minden, NV", managerId: "person-miguel-garcia" },
+  { id: "person-justin-hoyt", name: "Justin Hoyt", title: "Regional Sales Manager - National Accounts", tier: "manager", department: "National Accounts", managerId: "person-ryan-phillips" },
+  { id: "person-judy-hsu", name: "Judy Hsu", title: "Senior Demand Planner", tier: "ic", department: "Ops SC", location: "San Clemente, CA", managerId: "person-elsa-huang" },
+  { id: "person-elsa-huang", name: "Elsa Huang", title: "Director of Demand Planning and Procurement", tier: "director", department: "Ops SC", location: "San Clemente, CA", managerId: "person-jorge-notni" },
+  { id: "person-eric-huber", name: "Eric Huber", title: "Channel Marketing Manager (US)", tier: "manager", department: "Global Commercial Marketing", managerId: "person-morten-jorgensen" },
+  { id: "person-wil-huffman", name: "Wil Huffman", title: "Inside Sales Specialist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-juan-rincon" },
+  { id: "person-brad-jackson", name: "Brad Jackson", title: "Regional Sales Manager Central", tier: "manager", department: "National Accounts", managerId: "person-brian-farrell" },
+  { id: "person-richie-johnson", name: "Richie Johnson", title: "IPORT Demand Planning Manager", tier: "manager", department: "Ops SC", location: "San Clemente, CA", managerId: "person-elsa-huang" },
+  { id: "person-jill-johsz", name: "Jill Johsz", title: "Paralegal", tier: "ic", department: "Administration", managerId: "person-grace-dryer" },
+  { id: "person-morten-jorgensen", name: "Morten Jorgensen", title: "Vice President Sonance Professional", tier: "vp", department: "Global Commercial Sales", managerId: "person-michael-sonntag" },
+  { id: "person-debbie-jory", name: "Debbie Jory", title: "Accounts Payable Specialist", tier: "ic", department: "Finance", location: "San Clemente, CA", managerId: "person-amy-vanmierlo" },
+  { id: "person-pierce-kadlec", name: "Pierce Kadlec", title: "Field Support & James Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brad-thiess" },
+  { id: "person-glenn-kalinowski", name: "Glenn Kalinowski", title: "Dir Sonance Prof Strategic Accts & North East", tier: "ic", department: "Global Commercial Sales", managerId: "person-michael-bridwell" },
+  { id: "person-tyler-katchka", name: "Tyler Katchka", title: "Director of Retail", tier: "director", department: "iPort Enterprise Sales", managerId: "person-chris-lawson" },
+  { id: "person-karta-khalsa", name: "Karta Khalsa", title: "Director of Enterprise Sales - Hospitality", tier: "director", department: "iPort Enterprise Sales", location: "San Clemente, CA", managerId: "person-chris-lawson" },
+  { id: "person-jacqueline-kubiak", name: "Jacqueline Kubiak", title: "IT Desktop Support Administrator", tier: "ic", department: "IT", location: "San Clemente, CA", managerId: "person-trevin-clark" },
+  { id: "person-tyler-kungl", name: "Tyler Kungl", title: "VP Luxury Residential - North America", tier: "vp", department: "Luxury Resi N &S America", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-norman-lacayo-cuadra", name: "Norman Lacayo Cuadra", title: "CNC Machinist", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-paxson-laird-iii", name: "Paxson Laird III", title: "Director of Sales Engineering- Professional", tier: "director", department: "Global Commercial Sales", managerId: "person-michael-sonntag" },
+  { id: "person-nic-larson", name: "Nic Larson", title: "Painter", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-chris-lawson", name: "Chris Lawson", title: "Head of Iport Sales and Partnerships", tier: "vp", department: "iPort Enterprise Sales", location: "San Clemente, CA", managerId: "person-michael-sonntag" },
+  { id: "person-tim-layton", name: "Tim Layton", title: "Warehouse Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-adrian-rodriguez" },
+  { id: "person-jay-lazzaro-jr", name: "Jay Lazzaro Jr", title: "Director of International Sales", tier: "director", department: "Luxury Resi International", managerId: "person-jason-sloan" },
+  { id: "person-mike-leach", name: "Mike Leach", title: "Assistant Controller", tier: "ic", department: "Finance", location: "San Clemente, CA", managerId: "person-mike-neves" },
+  { id: "person-kendrew-lee", name: "Kendrew Lee", title: "Lead Industrial Designer", tier: "manager", department: "R&D iPort Engineering", managerId: "person-derick-dahl" },
+  { id: "person-maria-limon-espinoza", name: "Maria Limon Espinoza", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-mark-litz", name: "Mark Litz", title: "Director IT Network & CyberSecurity", tier: "director", department: "IT", location: "San Clemente, CA", managerId: "person-keith-harper" },
+  { id: "person-tommy-lopez", name: "Tommy Lopez", title: "Welder", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-eduardo-lopez", name: "Eduardo Lopez", title: "Quality Assurance Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
+  { id: "person-rigo-lopez", name: "Rigo Lopez", title: "Plant Controller", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-mike-neves" },
+  { id: "person-sergio-lopez", name: "Sergio Lopez", title: "Fabrication Specialist", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-anthony-lopez", name: "Anthony Lopez", title: "Prep Department", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-seth-loyd", name: "Seth Loyd", title: "Fabrication Lead", tier: "manager", department: "James Manufacturing - Indirect", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-ted-luna", name: "Ted Luna", title: "Graphic Designer", tier: "ic", department: "iPort Enterprise Marketing", location: "San Clemente, CA", managerId: "person-debbie-michelle" },
+  { id: "person-david-luther", name: "David Luther", title: "Warehouse Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-adrian-rodriguez" },
+  { id: "person-tyson-mackjust", name: "Tyson Mackjust", title: "Director of Product Development", tier: "director", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-rob-roland" },
+  { id: "person-barbaro-marin", name: "Barbaro Marin", title: "Logistics Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-paton-marshall", name: "Paton Marshall", title: "Sales Engineer, IPORT", tier: "ic", department: "iPort Enterprise Sales", managerId: "person-chris-lawson" },
+  { id: "person-ana-martinez", name: "Ana Martinez", title: "QC Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
+  { id: "person-jose-martinez", name: "Jose Martinez", title: "QC Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
+  { id: "person-tania-martinez", name: "Tania Martinez", title: "Production Lead", tier: "manager", department: "James Manufacturing - Indirect", location: "Minden, NV", managerId: "person-alberto-gomez" },
+  { id: "person-lacy-mason", name: "Lacy Mason", title: "RMA Specialist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-brett-alejo" },
+  { id: "person-ashley-mauldin", name: "Ashley Mauldin", title: "Digital Merchandising", tier: "ic", department: "Sales Ops", managerId: "person-aron-mckay" },
+  { id: "person-joseph-mcclendon", name: "Joseph McClendon", title: "Woodworker", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-fiona-mccue", name: "Fiona McCue", title: "Summer Interns", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-charlie-shen" },
+  { id: "person-brian-mccullough", name: "Brian McCullough", title: "Field Support Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brad-thiess" },
+  { id: "person-pat-mcgaughan", name: "Pat McGaughan", title: "COO/CFO", tier: "c-suite", department: "Finance", location: "San Clemente, CA", managerId: "person-ari-supran" },
+  { id: "person-aron-mckay", name: "Aron McKay", title: "Director of Residential Marketing", tier: "director", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-allie-mcmillen", name: "Allie McMillen", title: "Assistant Credit Manager", tier: "manager", department: "Finance", location: "San Clemente, CA", managerId: "person-mike-leach" },
+  { id: "person-gilbert-medina", name: "Gilbert Medina", title: "Night Shift Supervisor", tier: "manager", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-lorena-medina-rodriguez", name: "Lorena Medina Rodriguez", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-marcus-mesta", name: "Marcus Mesta", title: "Business Intelligence", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-miguel-gonzalez-limon" },
+  { id: "person-debbie-michelle", name: "Debbie Michelle", title: "Director of Marketing", tier: "director", department: "iPort Enterprise Marketing", location: "San Clemente, CA", managerId: "person-rob-roland" },
+  { id: "person-meghan-miller", name: "Meghan Miller", title: "Digital Marketing Manager", tier: "manager", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-courtney-santana" },
+  { id: "person-hector-montoya", name: "Hector Montoya", title: "Inside Sales Specialist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-juan-rincon" },
+  { id: "person-jared-morris", name: "Jared Morris", title: "Technical Support Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brian-taksier" },
+  { id: "person-heidi-mullinix", name: "Heidi Mullinix", title: "Accountant", tier: "ic", department: "Finance", location: "San Clemente, CA", managerId: "person-mike-neves" },
+  { id: "person-diane-nally", name: "Diane Nally", title: "Credit Specialist", tier: "ic", department: "Finance", managerId: "person-barb-glaab" },
+  { id: "person-niece-nardini", name: "Niece Nardini", title: "Executive Assistant", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-christian-serge-nelson", name: "Christian Serge Nelson", title: "Director of Brand Marketing", tier: "director", department: "Brand Marketing", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-brandon-nelson", name: "Brandon Nelson", title: "Regional Sales Director", tier: "director", department: "Luxury Resi N &S America", managerId: "person-tyler-kungl" },
+  { id: "person-mike-neves", name: "Mike Neves", title: "Controller/Director of Accounting", tier: "director", department: "Finance", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-jorge-notni", name: "Jorge Notni", title: "Vice President of Operations", tier: "vp", department: "Ops SC", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-laura-nunez", name: "Laura Nunez", title: "Human Resources Manager", tier: "manager", department: "Administration", location: "Minden, NV", managerId: "person-jorge-notni" },
+  { id: "person-maria-nunez", name: "Maria Nunez", title: "Custodial", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-laura-nunez" },
+  { id: "person-mike-paganini", name: "Mike Paganini", title: "Head of Product", tier: "vp", department: "R&D Engineering", location: "San Clemente, CA", managerId: "person-rob-roland" },
+  { id: "person-thomas-palmer", name: "Thomas Palmer", title: "Technology Research Specialist", tier: "ic", department: "Technology and Innovation", location: "San Clemente, CA", managerId: "person-derick-dahl" },
+  { id: "person-qiyin-pan", name: "Qiyin Pan", title: "Mechanical Engineer", tier: "ic", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-nguyen-to" },
+  { id: "person-holly-parker", name: "Holly Parker", title: "Partner Marketing", tier: "ic", department: "iPort Enterprise Marketing", location: "San Clemente, CA", managerId: "person-debbie-michelle" },
+  { id: "person-stephanie-parra", name: "Stephanie Parra", title: "Cost Accountant", tier: "ic", department: "Finance", location: "Minden, NV", managerId: "person-rigo-lopez" },
+  { id: "person-kanila-patel", name: "Kanila Patel", title: "Receptionist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-brett-alejo" },
+  { id: "person-ana-pelayo", name: "Ana Pelayo", title: "Distribution Associate", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-alberto-gomez" },
+  { id: "person-justin-peneueta-riikula", name: "Justin Peneueta-Riikula", title: "QC Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
+  { id: "person-kris-pennington", name: "Kris Pennington", title: "Graphic Designer", tier: "ic", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-chuck-admire" },
+  { id: "person-eleonore-perrigueur", name: "Eleonore Perrigueur", title: "Summer Interns", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-julie-horn" },
+  { id: "person-shane-peterson", name: "Shane Peterson", title: "Warehouse Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-adrian-rodriguez" },
+  { id: "person-brian-pfeiffer", name: "Brian Pfeiffer", title: "Inside Sales Specialist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-juan-rincon" },
+  { id: "person-ryan-phillips", name: "Ryan Phillips", title: "National Sales Manager - Green Channel", tier: "manager", department: "National Accounts", managerId: "person-nathan-whitesel" },
+  { id: "person-felipe-pichardo", name: "Felipe Pichardo", title: "Accounts Payable Specialist", tier: "ic", department: "Finance", location: "San Clemente, CA", managerId: "person-amy-vanmierlo" },
+  { id: "person-genesis-pina", name: "Genesis Pina", title: "Office Administrator", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-leena-blake" },
+  { id: "person-anthony-pisani", name: "Anthony Pisani", title: "Fabrication and Finishing Production Manager", tier: "manager", department: "James Manufacturing - Indirect", location: "Minden, NV", managerId: "person-alberto-gomez" },
+  { id: "person-miguel-prado", name: "Miguel Prado", title: "Loudspeaker Lab Technician", tier: "ic", department: "R&D Speaker Engineering", location: "Minden, NV", managerId: "person-trevor-ryan" },
+  { id: "person-jason-propeck", name: "Jason Propeck", title: "Field Support Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brad-thiess" },
+  { id: "person-rafael-pulido", name: "Rafael Pulido", title: "Warehouse Associate 2", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-gilbert-medina" },
+  { id: "person-carlos-quintero", name: "Carlos Quintero", title: "Purchasing / Demand Planning", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-joe-timpone" },
+  { id: "person-courtney-ralston", name: "Courtney Ralston", title: "Account Setup Specialist", tier: "ic", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-brett-alejo" },
+  { id: "person-ward-ramsdell", name: "Ward Ramsdell", title: "Principal Hardware Engineer", tier: "ic", department: "R&D Electronics Engineering", managerId: "person-skylar-gray" },
+  { id: "person-corey-reando", name: "Corey Reando", title: "Engineer", tier: "ic", department: "R&D Speaker Engineering", location: "Minden, NV", managerId: "person-trevor-ryan" },
+  { id: "person-andy-rectenwald", name: "Andy Rectenwald", title: "Construction Project Manager", tier: "manager", department: "Administration", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-christopher-resendez", name: "Christopher Resendez", title: "Powder Coater", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-mike-riley", name: "Mike Riley", title: "Director of IPORT Healthcare", tier: "director", department: "iPort Enterprise Sales", managerId: "person-chris-lawson" },
+  { id: "person-juan-rincon", name: "Juan Rincon", title: "Inside Sales Manager - Domestic", tier: "manager", department: "Sales Ops", location: "San Clemente, CA", managerId: "person-jenna-campfield" },
+  { id: "person-jason-riske", name: "Jason Riske", title: "Quality Engineer", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-joe-timpone" },
+  { id: "person-antonio-rivera-rosas", name: "Antonio Rivera-Rosas", title: "Lead - Metal Fabrication", tier: "manager", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-naomi-robinson", name: "Naomi Robinson", title: "Executive Assistant", tier: "ic", department: "iPort Enterprise Marketing", location: "San Clemente, CA", managerId: "person-debbie-michelle" },
+  { id: "person-adrian-rodriguez", name: "Adrian Rodriguez", title: "Senior Distribution Supervisor", tier: "manager", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-salvador-rodriguez-lara", name: "Salvador Rodriguez-Lara", title: "Warehouse Associate", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-alejandro-rodriguez-limon", name: "Alejandro Rodriguez-Limon", title: "Production Planner", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-joe-timpone" },
+  { id: "person-alexander-roland", name: "Alexander Roland", title: "Intern", tier: "ic", department: "Ops SC", location: "San Clemente, CA", managerId: "person-jorge-notni" },
+  { id: "person-rob-roland", name: "Rob Roland", title: "Executive VP/CTO", tier: "c-suite", department: "Administration", location: "San Clemente, CA", managerId: "person-ari-supran" },
+  { id: "person-david-rosales", name: "David Rosales", title: "Warehouse Associate 2", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-adrian-rodriguez" },
+  { id: "person-richard-round", name: "Richard Round", title: "Director of Digital Business Transformation", tier: "director", department: "IT", location: "San Clemente, CA", managerId: "person-keith-harper" },
+  { id: "person-juan-ruedas", name: "Juan Ruedas", title: "Assembly and Packaging Manager", tier: "manager", department: "James Manufacturing - Indirect", location: "Minden, NV", managerId: "person-alberto-gomez" },
+  { id: "person-todd-ryan", name: "Todd Ryan", title: "Chief Speaker Engineer", tier: "ic", department: "R&D Speaker Engineering", managerId: "person-mike-paganini" },
+  { id: "person-trevor-ryan", name: "Trevor Ryan", title: "Director of Product Development", tier: "director", department: "R&D Speaker Engineering", location: "Minden, NV", managerId: "person-todd-ryan" },
+  { id: "person-evan-saito", name: "Evan Saito", title: "Junior System Administrator", tier: "ic", department: "IT", location: "Minden, NV", managerId: "person-trevin-clark" },
+  { id: "person-jose-salazar", name: "Jose Salazar", title: "Tool Path", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-miguel-garcia" },
+  { id: "person-fred-salehi", name: "Fred Salehi", title: "Director of Global Distribution & Logistics", tier: "director", department: "Ops FNT", location: "San Clemente, CA", managerId: "person-jorge-notni" },
+  { id: "person-andrew-sandoval", name: "Andrew Sandoval", title: "Warehouse Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-gilbert-medina" },
+  { id: "person-courtney-santana", name: "Courtney Santana", title: "Senior Marketing Manager", tier: "manager", department: "Global Luxury Resi", location: "San Clemente, CA", managerId: "person-aron-mckay" },
+  { id: "person-hector-santizo", name: "Hector Santizo", title: "3D Animator/Designer", tier: "ic", department: "Brand Marketing", location: "San Clemente, CA", managerId: "person-christian-serge-nelson" },
+  { id: "person-marc-schnoll", name: "Marc Schnoll", title: "Studio Sherpa", tier: "manager", department: "Sales", location: "San Clemente, CA", managerId: "person-jason-sloan" },
+  { id: "person-tyler-sharp", name: "Tyler Sharp", title: "Powder Coat Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-charlie-shen", name: "Charlie Shen", title: "Head of FP&A", tier: "vp", department: "Finance", location: "San Clemente, CA", managerId: "person-pat-mcgaughan" },
+  { id: "person-tiffany-shimbo", name: "Tiffany Shimbo", title: "Procurement Specialist", tier: "ic", department: "Ops SC", location: "San Clemente, CA", managerId: "person-elsa-huang" },
+  { id: "person-marnee-sigler", name: "Marnee Sigler", title: "Human Resources Specialist", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-grace-dryer" },
+  { id: "person-jason-sloan", name: "Jason Sloan", title: "Chief Revenue Officer - Residential", tier: "c-suite", department: "Sales", location: "San Clemente, CA", managerId: "person-ari-supran" },
+  { id: "person-luke-small", name: "Luke Small", title: "CAD Designer Engineer", tier: "ic", department: "Ops MND", location: "Minden, NV", managerId: "person-miguel-garcia" },
+  { id: "person-joel-smith", name: "Joel Smith", title: "Shipping Lead", tier: "manager", department: "Ops MND", location: "Minden, NV", managerId: "person-alberto-gomez" },
+  { id: "person-scott-smith", name: "Scott Smith", title: "Key Account Manager, Professional Sales", tier: "manager", department: "Global Commercial Sales", managerId: "person-glenn-kalinowski" },
+  { id: "person-michael-sonntag", name: "Michael Sonntag", title: "Chief Revenue Officer - Commercial", tier: "c-suite", department: "Sales", location: "San Clemente, CA", managerId: "person-ari-supran" },
+  { id: "person-daniel-soria", name: "Daniel Soria", title: "Inventory Control Supervisor", tier: "manager", department: "Ops FNT", location: "Fontana, CA", managerId: "person-fred-salehi" },
+  { id: "person-michael-spencer", name: "Michael Spencer", title: "Warehouse Specialist", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-daniel-soria" },
+  { id: "person-david-stark", name: "David Stark", title: "Engineering Product Coordinator", tier: "ic", department: "R&D Engineering", location: "San Clemente, CA", managerId: "person-josh-blanken" },
+  { id: "person-christian-starling", name: "Christian Starling", title: "Painter", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-anthony-pisani" },
+  { id: "person-matt-stevens", name: "Matt Stevens", title: "Regional Sales Manager", tier: "manager", department: "National Accounts", managerId: "person-brian-farrell" },
+  { id: "person-ari-supran", name: "Ari Supran", title: "Chief Executive Officer", tier: "c-suite", department: "Administration", location: "San Clemente, CA" },
+  { id: "person-brian-taksier", name: "Brian Taksier", title: "Technical Support Supervisor", tier: "manager", department: "Dealer Services", managerId: "person-brad-thiess" },
+  { id: "person-jon-taylor", name: "Jon Taylor", title: "Design Services Specialist", tier: "ic", department: "Dealer Services", managerId: "person-brian-dempsey" },
+  { id: "person-brad-thiess", name: "Brad Thiess", title: "Vice President of Services", tier: "vp", department: "Dealer Services", location: "Minden, NV", managerId: "person-rob-roland" },
+  { id: "person-sawyer-thompson", name: "Sawyer Thompson", title: "Loudspeaker Engineer", tier: "ic", department: "R&D Speaker Engineering", location: "Minden, NV", managerId: "person-trevor-ryan" },
+  { id: "person-joe-timpone", name: "Joe Timpone", title: "Plant Manager", tier: "manager", department: "Ops MND", location: "Minden, NV", managerId: "person-jorge-notni" },
+  { id: "person-nguyen-to", name: "Nguyen To", title: "Head of Mechanical Engineering", tier: "vp", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-tyson-mackjust" },
+  { id: "person-marshall-toro", name: "Marshall Toro", title: "Demand Planner", tier: "ic", department: "Ops SC", location: "San Clemente, CA", managerId: "person-elsa-huang" },
+  { id: "person-young-ung", name: "Young Ung", title: "Logistics Coordinator", tier: "ic", department: "Ops FNT", location: "San Clemente, CA", managerId: "person-fred-salehi" },
+  { id: "person-ofelia-valenzuela", name: "Ofelia Valenzuela", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-tim-valley", name: "Tim Valley", title: "Western Regional Sales Manager", tier: "manager", department: "Global Commercial Sales", managerId: "person-michael-bridwell" },
+  { id: "person-amy-vanmierlo", name: "Amy VanMierlo", title: "Accounts Payable Manager", tier: "manager", department: "Finance", managerId: "person-mike-neves" },
+  { id: "person-oscar-vargas-cruz", name: "Oscar Vargas Cruz", title: "Packager", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-lupita-vazquez-de-avina", name: "Lupita Vazquez de Avina", title: "Assembler", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-juan-ruedas" },
+  { id: "person-daniel-veatch", name: "Daniel Veatch", title: "Inventory Associate", tier: "ic", department: "Ops FNT", location: "Fontana, CA", managerId: "person-daniel-soria" },
+  { id: "person-drew-viehmann", name: "Drew Viehmann", title: "Lead Content Producer", tier: "manager", department: "Brand Marketing", location: "San Clemente, CA", managerId: "person-christian-serge-nelson" },
+  { id: "person-lidia-villasenor-de-ruiz", name: "Lidia Villasenor de Ruiz", title: "Inventory Control Lead", tier: "manager", department: "Ops MND", location: "Minden, NV", managerId: "person-joe-timpone" },
+  { id: "person-rick-wallace", name: "Rick Wallace", title: "Regional Sales Manager SE (US)", tier: "manager", department: "Global Commercial Sales", managerId: "person-michael-bridwell" },
+  { id: "person-chase-waterhouse", name: "Chase Waterhouse", title: "Technical Product Specialist", tier: "ic", department: "iPort Enterprise Marketing", location: "San Clemente, CA", managerId: "person-debbie-michelle" },
+  { id: "person-simon-wehr", name: "Simon Wehr", title: "Sr. Director, Sales and Product Enablement", tier: "director", department: "Global Commercial Sales", location: "San Clemente, CA", managerId: "person-morten-jorgensen" },
+  { id: "person-eric-welch", name: "Eric Welch", title: "Product Manager", tier: "manager", department: "R&D Engineering", managerId: "person-josh-blanken" },
+  { id: "person-morgan-west", name: "Morgan West", title: "Director of Operations - China", tier: "director", department: "Quality Control", location: "San Clemente, CA", managerId: "person-jorge-notni" },
+  { id: "person-sam-white", name: "Sam White", title: "Administrative Assistant to VP Ops", tier: "vp", department: "Administration", location: "San Clemente, CA", managerId: "person-jeana-ceglia" },
+  { id: "person-nathan-whitesel", name: "Nathan Whitesel", title: "Vice President of National Accounts", tier: "vp", department: "National Accounts", managerId: "person-jason-sloan" },
+  { id: "person-dave-wilcher", name: "Dave Wilcher", title: "Construction Specialist", tier: "ic", department: "Administration", location: "San Clemente, CA", managerId: "person-andy-rectenwald" },
+  { id: "person-peter-winter", name: "Peter Winter", title: "Director of Software", tier: "director", department: "IT", location: "San Clemente, CA", managerId: "person-keith-harper" },
+  { id: "person-aaron-winter", name: "Aaron Winter", title: "ERP Support Specialist", tier: "ic", department: "IT", location: "San Clemente, CA", managerId: "person-michael-fagan" },
+  { id: "person-hank-yuh", name: "Hank Yuh", title: "Director of Product Development Management", tier: "director", department: "R&D iPort Engineering", location: "San Clemente, CA", managerId: "person-tyson-mackjust" },
+  { id: "person-sean-zarate-barajas", name: "Sean Zarate Barajas", title: "QC Technician", tier: "ic", department: "James Manufacturing - Direct", location: "Minden, NV", managerId: "person-gerardo-curiel" },
 ];
 
-export const DEMO_BRANDS = ["Sonance", "iPort", "James Cloud Speaker", "Blaze Audio"];
+const TIMESTAMP = "2024-01-01T00:00:00.000Z";
 
-export const DEMO_CHANNELS = [
-  "Residential Retail",
-  "Residential Mid-Market",
-  "Residential Luxury",
-  "Professional Enterprise",
-  "Professional Audio",
-];
-
-type MatrixAssignment = {
-  brands: string[];
-  primaryBrand?: string;
-  channels: string[];
-  primaryChannel?: string;
-};
-
-// Matrix-org assignments: who works on which brand and serves which channel,
-// independent of the reporting hierarchy. Primary determines lane placement.
-const matrixAssignments: Record<string, MatrixAssignment> = {
-  // Executive leadership spans the whole portfolio
-  "person-ari-supran": {
-    brands: DEMO_BRANDS,
-    primaryBrand: "Sonance",
-    channels: DEMO_CHANNELS,
-    primaryChannel: "Residential Luxury",
+const nodes: GraphNode[] = seeds.map((seed) => ({
+  id: seed.id,
+  kind: "person",
+  name: seed.name,
+  createdAt: TIMESTAMP,
+  updatedAt: TIMESTAMP,
+  attributes: {
+    title: seed.title,
+    departments: [seed.department],
+    primaryDepartment: seed.department,
+    brands: [],
+    channels: [],
+    tags: [],
+    location: seed.location,
+    tier: seed.tier,
   },
-  "person-jeana-ceglia": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-
-  // Technology
-  "person-derick-dahl": {
-    brands: ["Sonance", "iPort"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-elliana-annador": {
-    brands: ["iPort"],
-    primaryBrand: "iPort",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-caroline-loit": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-  "person-thomas-palmer": {
-    brands: ["Blaze Audio"],
-    primaryBrand: "Blaze Audio",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-
-  // Reseller sales organization
-  "person-jason-sloan": {
-    brands: ["Sonance", "James Cloud Speaker"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail", "Residential Mid-Market", "Residential Luxury"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-andy-borrowscal": {
-    brands: ["iPort", "Sonance"],
-    primaryBrand: "iPort",
-    channels: ["Residential Mid-Market"],
-    primaryChannel: "Residential Mid-Market",
-  },
-  "person-arun-mckay": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-christian-serge-nielsen": {
-    brands: DEMO_BRANDS,
-    primaryBrand: "James Cloud Speaker",
-    channels: ["Residential Luxury"],
-    primaryChannel: "Residential Luxury",
-  },
-  "person-mark-schnoeff": {
-    brands: ["James Cloud Speaker"],
-    primaryBrand: "James Cloud Speaker",
-    channels: ["Residential Luxury"],
-    primaryChannel: "Residential Luxury",
-  },
-  "person-tyler-acengi": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Mid-Market"],
-    primaryChannel: "Residential Mid-Market",
-  },
-  "person-anna-grighins": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-mike-casey": {
-    brands: ["Blaze Audio", "Sonance"],
-    primaryBrand: "Blaze Audio",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-
-  // Corporate sales organization
-  "person-michael-sonntag": {
-    brands: ["Sonance", "Blaze Audio"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise", "Professional Audio"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-chris-lawson": {
-    brands: ["iPort"],
-    primaryBrand: "iPort",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-monica-jorgensen": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-steve-benoit": {
-    brands: ["iPort"],
-    primaryBrand: "iPort",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-sydney-fletcher": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-nathan-whisnot": {
-    brands: ["Blaze Audio"],
-    primaryBrand: "Blaze Audio",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-  "person-vacant-international": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-
-  // Operations
-  "person-pat-mcgaughan": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-keith-kozak": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-gigi-dwyer": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Mid-Market"],
-    primaryChannel: "Residential Mid-Market",
-  },
-  "person-erin-petera": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-keith-harper": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-
-  // Finance / product
-  "person-rob-roland": {
-    brands: ["Sonance", "iPort"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Luxury"],
-    primaryChannel: "Residential Luxury",
-  },
-  "person-erin-blackson": {
-    brands: ["iPort"],
-    primaryBrand: "iPort",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-skylar-gray": {
-    brands: ["James Cloud Speaker"],
-    primaryBrand: "James Cloud Speaker",
-    channels: ["Residential Luxury"],
-    primaryChannel: "Residential Luxury",
-  },
-  "person-brad-thrope": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-
-  // Executive support reports
-  "person-debbie-schnells": {
-    brands: ["James Cloud Speaker", "Sonance"],
-    primaryBrand: "James Cloud Speaker",
-    channels: ["Residential Luxury"],
-    primaryChannel: "Residential Luxury",
-  },
-  "person-todd-spier": {
-    brands: ["Blaze Audio"],
-    primaryBrand: "Blaze Audio",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-  "person-morgan-west": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-
-  // Level 3 and below
-  "person-jenna-campbell": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-jackie-conner": {
-    brands: ["James Cloud Speaker"],
-    primaryBrand: "James Cloud Speaker",
-    channels: ["Residential Luxury"],
-    primaryChannel: "Residential Luxury",
-  },
-  "person-jorge-nodal": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-mike-naves": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Mid-Market"],
-    primaryChannel: "Residential Mid-Market",
-  },
-  "person-nova-navarro": {
-    brands: ["Sonance"],
-    primaryBrand: "Sonance",
-    channels: ["Residential Retail"],
-    primaryChannel: "Residential Retail",
-  },
-  "person-tyson-madrigal": {
-    brands: ["iPort"],
-    primaryBrand: "iPort",
-    channels: ["Professional Enterprise"],
-    primaryChannel: "Professional Enterprise",
-  },
-  "person-alex-birch": {
-    brands: ["Blaze Audio"],
-    primaryBrand: "Blaze Audio",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-  "person-julio-davis": {
-    brands: ["Blaze Audio"],
-    primaryBrand: "Blaze Audio",
-    channels: ["Professional Audio"],
-    primaryChannel: "Professional Audio",
-  },
-};
-
-const createPersonNode = (seed: SeedPerson): GraphNode => {
-  const timestamp = new Date().toISOString();
-  const matrix = matrixAssignments[seed.id];
-  return {
-    id: seed.id,
-    kind: "person",
-    name: seed.name,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    attributes: {
-      title: seed.title,
-      departments: seed.departments,
-      primaryDepartment: seed.primaryDepartment,
-      tags: [],
-      location: seed.location,
-      tier: seed.tier,
-      brands: matrix?.brands ?? [],
-      primaryBrand: matrix?.primaryBrand,
-      channels: matrix?.channels ?? [],
-      primaryChannel: matrix?.primaryChannel,
-    },
-  };
-};
+}));
 
 let edgeCounter = 0;
 const nextEdgeId = () => {
@@ -719,139 +303,61 @@ const nextEdgeId = () => {
   return edgeCounter.toString().padStart(4, "0");
 };
 
-const edge = (
-  source: string,
-  target: string,
-  type: GraphEdge["metadata"]["type"],
-  options: Partial<GraphEdge["metadata"]> = {},
-): GraphEdge => {
-  const timestamp = new Date().toISOString();
-  return {
-    id: `edge-${type}-${nextEdgeId()}`,
-    source,
-    target,
-    metadata: {
-      type,
-      ...options,
-    },
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-};
+const managerEdges: GraphEdge[] = seeds
+  .filter((seed) => Boolean(seed.managerId))
+  .map((seed) => ({
+    id: `edge-${nextEdgeId()}`,
+    source: seed.managerId as string,
+    target: seed.id,
+    metadata: { type: "manager" as const },
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+  }));
 
-const nodes = people.map(createPersonNode);
-
-const managerEdges: GraphEdge[] = [
-  // CEO's direct reports
-  edge("person-ari-supran", "person-derick-dahl", "manager"),
-  edge("person-ari-supran", "person-jason-sloan", "manager"),
-  edge("person-ari-supran", "person-michael-sonntag", "manager"),
-  edge("person-ari-supran", "person-pat-mcgaughan", "manager"),
-  edge("person-ari-supran", "person-rob-roland", "manager"),
-  edge("person-ari-supran", "person-jeana-ceglia", "manager"),
-  
-  // Technology Team (reports to Derick Dahl)
-  edge("person-derick-dahl", "person-elliana-annador", "manager"),
-  edge("person-derick-dahl", "person-caroline-loit", "manager"),
-  edge("person-derick-dahl", "person-thomas-palmer", "manager"),
-  
-  // Reseller Sales Team (reports to Jason Sloan)
-  edge("person-jason-sloan", "person-andy-borrowscal", "manager"),
-  edge("person-jason-sloan", "person-arun-mckay", "manager"),
-  edge("person-jason-sloan", "person-christian-serge-nielsen", "manager"),
-  edge("person-jason-sloan", "person-mark-schnoeff", "manager"),
-  edge("person-jason-sloan", "person-tyler-acengi", "manager"),
-  edge("person-jason-sloan", "person-anna-grighins", "manager"),
-  edge("person-jason-sloan", "person-mike-casey", "manager"),
-  
-  // Corporate Sales Team (reports to Michael Sonntag)
-  edge("person-michael-sonntag", "person-chris-lawson", "manager"),
-  edge("person-michael-sonntag", "person-monica-jorgensen", "manager"),
-  edge("person-michael-sonntag", "person-steve-benoit", "manager"),
-  edge("person-michael-sonntag", "person-sydney-fletcher", "manager"),
-  edge("person-michael-sonntag", "person-nathan-whisnot", "manager"),
-  edge("person-michael-sonntag", "person-vacant-international", "manager"),
-  
-  // Operations Team (reports to Pat McGaughan)
-  edge("person-pat-mcgaughan", "person-keith-kozak", "manager"),
-  edge("person-pat-mcgaughan", "person-gigi-dwyer", "manager"),
-  edge("person-pat-mcgaughan", "person-erin-petera", "manager"),
-  edge("person-pat-mcgaughan", "person-keith-harper", "manager"),
-  
-  // Finance/Product Team (reports to Rob Roland)
-  edge("person-rob-roland", "person-erin-blackson", "manager"),
-  edge("person-rob-roland", "person-skylar-gray", "manager"),
-  edge("person-rob-roland", "person-brad-thrope", "manager"),
-  
-  // Executive Support Team (reports to Jeana Ceglia)
-  edge("person-jeana-ceglia", "person-debbie-schnells", "manager"),
-  edge("person-jeana-ceglia", "person-todd-spier", "manager"),
-  edge("person-jeana-ceglia", "person-morgan-west", "manager"),
-  
-  // Level 3 and below (will add as we identify reporting relationships)
-  edge("person-arun-mckay", "person-jenna-campbell", "manager"),
-  edge("person-chris-lawson", "person-jorge-nodal", "manager"),
-  edge("person-monica-jorgensen", "person-mike-naves", "manager"),
-  edge("person-sydney-fletcher", "person-nova-navarro", "manager"),
-  edge("person-erin-blackson", "person-tyson-madrigal", "manager"),
-  edge("person-skylar-gray", "person-alex-birch", "manager"),
-  edge("person-debbie-schnells", "person-jackie-conner", "manager"),
-  edge("person-todd-spier", "person-julio-davis", "manager"),
+export const DEMO_BRANDS = ["Sonance", "James", "iPort"];
+export const DEMO_CHANNELS: string[] = [];
+export const DEMO_DEPARTMENTS = [
+  "Administration",
+  "Brand Marketing",
+  "Dealer Services",
+  "Finance",
+  "Global Commercial Marketing",
+  "Global Commercial Sales",
+  "Global Luxury Resi",
+  "IT",
+  "James Manufacturing - Direct",
+  "James Manufacturing - Indirect",
+  "Luxury Resi International",
+  "Luxury Resi N &S America",
+  "National Accounts",
+  "Ops FNT",
+  "Ops MND",
+  "Ops SC",
+  "Quality Control",
+  "R&D Electronics Engineering",
+  "R&D Engineering",
+  "R&D Speaker Engineering",
+  "R&D iPort Engineering",
+  "Sales",
+  "Sales Ops",
+  "Technology and Innovation",
+  "iPort Enterprise Marketing",
+  "iPort Enterprise Sales"
 ];
-
-// Matrix relationships: dotted lines connect brand/channel leads to the
-// cross-functional people on their virtual teams; sponsor edges mark
-// executive sponsorship of a brand. These cut across the reporting hierarchy.
-const matrixEdges: GraphEdge[] = [
-  // iPort brand team (led by Andy Borrowscal)
-  edge("person-andy-borrowscal", "person-erin-blackson", "dotted", { label: "iPort brand team" }),
-  edge("person-andy-borrowscal", "person-tyson-madrigal", "dotted", { label: "iPort brand team" }),
-  edge("person-andy-borrowscal", "person-chris-lawson", "dotted", { label: "iPort brand team" }),
-  edge("person-andy-borrowscal", "person-steve-benoit", "dotted", { label: "iPort brand team" }),
-  edge("person-andy-borrowscal", "person-elliana-annador", "dotted", { label: "iPort brand team" }),
-
-  // James Cloud Speaker brand team (led by Christian Serge Nielsen)
-  edge("person-christian-serge-nielsen", "person-skylar-gray", "dotted", { label: "James Cloud brand team" }),
-  edge("person-christian-serge-nielsen", "person-mark-schnoeff", "dotted", { label: "James Cloud brand team" }),
-  edge("person-christian-serge-nielsen", "person-debbie-schnells", "dotted", { label: "James Cloud brand team" }),
-  edge("person-christian-serge-nielsen", "person-jackie-conner", "dotted", { label: "James Cloud brand team" }),
-
-  // Blaze Audio brand team (led by Mike Casey)
-  edge("person-mike-casey", "person-alex-birch", "dotted", { label: "Blaze Audio brand team" }),
-  edge("person-mike-casey", "person-nathan-whisnot", "dotted", { label: "Blaze Audio brand team" }),
-  edge("person-mike-casey", "person-todd-spier", "dotted", { label: "Blaze Audio brand team" }),
-  edge("person-mike-casey", "person-thomas-palmer", "dotted", { label: "Blaze Audio brand team" }),
-
-  // Channel coordination
-  edge("person-jason-sloan", "person-debbie-schnells", "dotted", { label: "Residential channel" }),
-  edge("person-jason-sloan", "person-skylar-gray", "dotted", { label: "Residential channel" }),
-  edge("person-michael-sonntag", "person-brad-thrope", "dotted", { label: "Professional channel" }),
-  edge("person-michael-sonntag", "person-caroline-loit", "dotted", { label: "Professional channel" }),
-
-  // Executive sponsorship of brands
-  edge("person-rob-roland", "person-andy-borrowscal", "sponsor", { label: "iPort P&L sponsor" }),
-  edge("person-derick-dahl", "person-mike-casey", "sponsor", { label: "Blaze Audio sponsor" }),
-  edge("person-ari-supran", "person-christian-serge-nielsen", "sponsor", { label: "James Cloud sponsor" }),
-];
-
-const allEdges = [...managerEdges, ...matrixEdges];
-
-const defaultLensState = buildDefaultLensState();
 
 const demoDocument: GraphDocument = {
   ...createEmptyGraphDocument(),
   schema_version: SCHEMA_VERSION,
   metadata: {
     name: "Sonance Organization",
-    description:
-      "Sonance organizational structure with reporting relationships.",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    description: "Sonance organizational structure imported from the company directory.",
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
   },
   lens: "hierarchy",
   nodes,
-  edges: allEdges,
-  lens_state: defaultLensState,
+  edges: managerEdges,
+  lens_state: buildDefaultLensState(),
 };
 
 export const DEMO_GRAPH_DOCUMENT: GraphDocument = demoDocument;
@@ -859,24 +365,7 @@ export const DEMO_GRAPH_DOCUMENT: GraphDocument = demoDocument;
 export const DEMO_LENS_LABELS: Record<LensId, string[]> = LENSES.reduce(
   (acc, lens) => {
     if (lens.id === "department") {
-      acc[lens.id] = [
-        "Executive Leadership",
-        "Technology",
-        "Sales",
-        "Marketing",
-        "Operations",
-        "Finance",
-        "Human Resources",
-        "Information Technology",
-        "Product",
-        "Services",
-        "Professional Services",
-        "Business Development",
-        "Engineering",
-        "Executive Support",
-        "Programs",
-        "Customer Service",
-      ];
+      acc[lens.id] = [...DEMO_DEPARTMENTS];
     } else if (lens.id === "brand") {
       acc[lens.id] = [...DEMO_BRANDS];
     } else if (lens.id === "channel") {

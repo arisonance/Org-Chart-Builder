@@ -794,7 +794,7 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 4,
+      version: 5,
       partialize: (state) => ({
         document: state.document,
         selection: state.selection,
@@ -816,16 +816,12 @@ export const useGraphStore = create<GraphStore>()(
         try {
           const sanitizedDocument = parseGraphDocument(maybeState.document);
 
-          // Older versions shipped the demo without brand/channel assignments;
-          // refresh to the enriched demo so matrix lenses have data to show.
-          const isStaleDemo =
-            sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name &&
-            sanitizedDocument.nodes.every(
-              (node) =>
-                node.kind !== "person" ||
-                (node.attributes.brands.length === 0 && node.attributes.channels.length === 0),
-            );
-          if (isStaleDemo) {
+          // On a version bump, refresh any copy that is still the bundled demo
+          // (by name) to the latest demo dataset, so the real org chart replaces
+          // the previous seed. Custom/imported documents are left untouched.
+          const isDemoDoc =
+            sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
+          if (isDemoDoc) {
             return {
               ...initialState,
               document: cloneDocument(DEMO_GRAPH_DOCUMENT),
