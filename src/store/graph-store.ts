@@ -801,7 +801,7 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 6,
+      version: 7,
       partialize: (state) => ({
         document: state.document,
         selection: state.selection,
@@ -823,12 +823,15 @@ export const useGraphStore = create<GraphStore>()(
         try {
           const sanitizedDocument = parseGraphDocument(maybeState.document);
 
-          // On a version bump, refresh any copy that is still the bundled demo
-          // (by name) to the latest demo dataset, so the real org chart replaces
-          // the previous seed. Custom/imported documents are left untouched.
+          // Pre-CSV copies of the bundled demo (identified by name but missing
+          // the real org's people) get refreshed wholesale. Docs already on the
+          // real org keep all their data/edits.
           const isDemoDoc =
             sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
-          if (isDemoDoc) {
+          const hasCsvOrg = sanitizedDocument.nodes.some(
+            (node) => node.id === "person-stephanie-parra",
+          );
+          if (isDemoDoc && !hasCsvOrg) {
             return {
               ...initialState,
               document: cloneDocument(DEMO_GRAPH_DOCUMENT),
@@ -838,6 +841,18 @@ export const useGraphStore = create<GraphStore>()(
           const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
           const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
           const documentClone = cloneDocument(sanitizedDocument);
+
+          // Migration runs once per version bump: drop saved positions for the
+          // grouped lenses so the latest layout algorithms (lane ranks, grid
+          // geometry) re-run, while people, edges, scenarios, and the manually
+          // arranged hierarchy view are preserved.
+          (["brand", "channel", "department", "matrix"] as const).forEach((lensId) => {
+            const lensState = documentClone.lens_state[lensId];
+            if (lensState) {
+              lensState.layout.positions = {};
+              lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
+            }
+          });
 
           const sanitizedSelection: SelectionState = {
             nodeIds: Array.isArray(maybeState.selection?.nodeIds)

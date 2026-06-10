@@ -165,14 +165,39 @@ export const calculateMatrixLayout = (
   const LANE_GAP = 360;
   let offsetX = 0;
 
+  // Global reporting chain, used to rank people whose direct manager sits in
+  // a different lane: link them to their nearest ancestor inside the lane so
+  // they don't get promoted to lane roots next to the actual leaders.
+  const parentOf: Record<string, string> = {};
+  edges.filter(isManagerEdge).forEach((edge) => {
+    if (!(edge.target in parentOf)) parentOf[edge.target] = edge.source;
+  });
+
   groupKeys.forEach((groupKey) => {
     const groupNodes = groups.get(groupKey)!;
     const groupIds = new Set(groupNodes.map((n) => n.id));
-    const groupEdges = edges.filter(
-      (edge) => groupIds.has(edge.source) && groupIds.has(edge.target),
-    );
+    const laneEdges: GraphEdge[] = [];
+    groupNodes.forEach((member) => {
+      let ancestor = parentOf[member.id];
+      const seen = new Set<string>([member.id]);
+      while (ancestor && !seen.has(ancestor)) {
+        if (groupIds.has(ancestor)) {
+          laneEdges.push({
+            id: `lane-edge-${ancestor}-${member.id}`,
+            source: ancestor,
+            target: member.id,
+            metadata: { type: "manager" },
+            createdAt: "",
+            updatedAt: "",
+          });
+          break;
+        }
+        seen.add(ancestor);
+        ancestor = parentOf[ancestor];
+      }
+    });
 
-    const groupPositions = calculateLayout(groupNodes, groupEdges);
+    const groupPositions = calculateLayout(groupNodes, laneEdges);
     const xs = Object.values(groupPositions).map((p) => p.x);
     const ys = Object.values(groupPositions).map((p) => p.y);
     if (xs.length === 0) return;
@@ -364,6 +389,14 @@ export type GridGeometry = {
   height: number;
 };
 
+const TIER_ORDER: Record<string, number> = {
+  "c-suite": 0,
+  vp: 1,
+  director: 2,
+  manager: 3,
+  ic: 4,
+};
+
 const computeGrid = (people: PersonNode[]) => {
   const rowCounts = new Map<string, number>();
   const colCounts = new Map<string, number>();
@@ -377,6 +410,15 @@ const computeGrid = (people: PersonNode[]) => {
     if (!cells.has(k)) cells.set(k, []);
     cells.get(k)!.push(p);
   });
+  // Leaders first within each cell so seniority reads top-left to bottom-right
+  cells.forEach((list) =>
+    list.sort(
+      (a, b) =>
+        (TIER_ORDER[a.attributes.tier ?? "ic"] ?? 4) -
+          (TIER_ORDER[b.attributes.tier ?? "ic"] ?? 4) ||
+        a.name.localeCompare(b.name),
+    ),
+  );
   const rows = orderGridKeys(rowCounts);
   const cols = orderGridKeys(colCounts);
 
