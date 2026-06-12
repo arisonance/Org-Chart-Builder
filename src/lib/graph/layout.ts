@@ -27,6 +27,22 @@ export const buildChildMap = (edges: GraphEdge[]): ChildMap => {
   return map;
 };
 
+// All descendants of the given roots (the roots themselves are not included)
+export const collectDescendants = (
+  childMap: ChildMap,
+  rootIds: string[],
+): Set<string> => {
+  const hidden = new Set<string>();
+  const queue = rootIds.flatMap((id) => childMap[id] ?? []);
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (hidden.has(current)) continue;
+    hidden.add(current);
+    queue.push(...(childMap[current] ?? []));
+  }
+  return hidden;
+};
+
 export const isDescendant = (
   childMap: ChildMap,
   rootId: string,

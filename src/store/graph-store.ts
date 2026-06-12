@@ -3,12 +3,14 @@ import { persist, subscribeWithSelector } from "zustand/middleware";
 import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
-import { DEMO_GRAPH_DOCUMENT } from "@/data/demo-graph";
+import { DEMO_GRAPH_DOCUMENT, DEMO_DEFAULT_COLLAPSED } from "@/data/demo-graph";
 import {
+  buildChildMap,
   calculateLayout,
   calculateCleanupLayout,
   calculateMatrixLayout,
   calculateGridLayout,
+  collectDescendants,
   isGridLens,
   lensToDimension,
 } from "@/lib/graph/layout";
@@ -54,6 +56,8 @@ type GraphStoreState = {
   };
   // Matrix views: show mirror cards for people in every lane they're assigned to
   mirrorLanes: boolean;
+  // Hierarchy view: managers whose subtree is folded away
+  collapsedIds: string[];
 };
 
 type GraphStoreActions = {
@@ -86,6 +90,7 @@ type GraphStoreActions = {
   autoLayout: (lens?: LensId) => void;
   cleanupCanvas: (lens?: LensId, mode?: "compact" | "spacious") => void;
   toggleNodeLock: (nodeId: string) => void;
+  toggleCollapse: (nodeId: string) => void;
   reassignToLane: (
     nodeId: string,
     dimension: "brand" | "channel" | "department",
@@ -163,6 +168,18 @@ const initialState: GraphStoreState = {
     zoom: 1,
   },
   mirrorLanes: true,
+  collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
+};
+
+// Hierarchy layout/cleanup should only place people not folded away under a
+// collapsed manager, so visible cards re-flow tight
+const visibleHierarchyNodes = (state: GraphStoreState) => {
+  if (state.collapsedIds.length === 0) return state.document.nodes;
+  const hidden = collectDescendants(
+    buildChildMap(state.document.edges),
+    state.collapsedIds,
+  );
+  return state.document.nodes.filter((node) => !hidden.has(node.id));
 };
 
 const withHistory = (
@@ -591,7 +608,7 @@ export const useGraphStore = create<GraphStore>()(
             ? calculateGridLayout(state.document.nodes)
             : dimension
             ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
-            : calculateLayout(state.document.nodes, state.document.edges);
+            : calculateLayout(visibleHierarchyNodes(state), state.document.edges);
 
           Object.entries(positions).forEach(([nodeId, position]) => {
             state.document.lens_state[targetLens].layout.positions[nodeId] = position;
@@ -614,7 +631,7 @@ export const useGraphStore = create<GraphStore>()(
             : dimension
             ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
             : calculateCleanupLayout(
-                state.document.nodes,
+                visibleHierarchyNodes(state),
                 state.document.edges,
                 existingPositions,
                 mode
@@ -625,6 +642,31 @@ export const useGraphStore = create<GraphStore>()(
           });
           state.document.lens_state[targetLens].layout.lastUpdated = now();
         });
+      },
+      toggleCollapse: (nodeId) => {
+        set(
+          produce((state: GraphStoreState) => {
+            const index = state.collapsedIds.indexOf(nodeId);
+            if (index >= 0) {
+              state.collapsedIds.splice(index, 1);
+            } else {
+              state.collapsedIds.push(nodeId);
+            }
+            // Re-flow the hierarchy with only the visible people so the gaps
+            // left by folded subtrees close up
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
       },
       toggleNodeLock: (nodeId) => {
         withHistory(set, get, (state) => {
@@ -801,7 +843,7 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 7,
+      version: 8,
       partialize: (state) => ({
         document: state.document,
         selection: state.selection,
@@ -809,6 +851,7 @@ export const useGraphStore = create<GraphStore>()(
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
         mirrorLanes: state.mirrorLanes,
+        collapsedIds: state.collapsedIds,
       }),
       migrate: (persistedState: unknown) => {
         if (!persistedState || typeof persistedState !== "object") {
@@ -842,17 +885,18 @@ export const useGraphStore = create<GraphStore>()(
           const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
           const documentClone = cloneDocument(sanitizedDocument);
 
-          // Migration runs once per version bump: drop saved positions for the
-          // grouped lenses so the latest layout algorithms (lane ranks, grid
-          // geometry) re-run, while people, edges, scenarios, and the manually
-          // arranged hierarchy view are preserved.
-          (["brand", "channel", "department", "matrix"] as const).forEach((lensId) => {
-            const lensState = documentClone.lens_state[lensId];
-            if (lensState) {
-              lensState.layout.positions = {};
-              lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
-            }
-          });
+          // Migration runs once per version bump: drop all saved layouts so the
+          // latest layout algorithms (lane ranks, grid geometry, collapse-aware
+          // hierarchy) re-run, while people, edges, and scenarios are preserved.
+          (["hierarchy", "brand", "channel", "department", "matrix"] as const).forEach(
+            (lensId) => {
+              const lensState = documentClone.lens_state[lensId];
+              if (lensState) {
+                lensState.layout.positions = {};
+                lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
+              }
+            },
+          );
 
           const sanitizedSelection: SelectionState = {
             nodeIds: Array.isArray(maybeState.selection?.nodeIds)
@@ -872,6 +916,13 @@ export const useGraphStore = create<GraphStore>()(
             document: documentClone,
             selection: sanitizedSelection,
             clipboard: null,
+            scenarios: maybeState.scenarios ?? {},
+            activeScenarioId: maybeState.activeScenarioId ?? null,
+            mirrorLanes:
+              typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
+            collapsedIds: Array.isArray(maybeState.collapsedIds)
+              ? maybeState.collapsedIds
+              : [...initialState.collapsedIds],
           };
         } catch (error) {
           console.warn("Failed to restore persisted org chart state; falling back to demo.", error);

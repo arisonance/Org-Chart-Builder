@@ -356,3 +356,26 @@ export const DEMO_LENS_LABELS: Record<LensId, string[]> = LENSES.reduce(
   },
   {} as Record<LensId, string[]>,
 );
+
+// Managers at depth >= 2 start collapsed so the default hierarchy reads as an
+// executive summary (CEO + C-suite + their direct teams); deeper branches sit
+// behind "+N" expand chips. Without this the fully expanded tree is ~48k px
+// wide and a fit-view cannot contain it.
+export const DEMO_DEFAULT_COLLAPSED: string[] = (() => {
+  const depth: Record<string, number> = {};
+  const childCount: Record<string, number> = {};
+  const resolveDepth = (seed: Seed): number => {
+    if (depth[seed.id] !== undefined) return depth[seed.id];
+    depth[seed.id] = 0; // cycle guard
+    const manager = seed.managerId ? seeds.find((s) => s.id === seed.managerId) : undefined;
+    depth[seed.id] = manager ? resolveDepth(manager) + 1 : 0;
+    return depth[seed.id];
+  };
+  seeds.forEach((seed) => {
+    resolveDepth(seed);
+    if (seed.managerId) childCount[seed.managerId] = (childCount[seed.managerId] ?? 0) + 1;
+  });
+  return seeds
+    .filter((seed) => (childCount[seed.id] ?? 0) > 0 && depth[seed.id] >= 2)
+    .map((seed) => seed.id);
+})();

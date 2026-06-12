@@ -40,12 +40,14 @@ import {
   lensToDimension,
   isGridLens,
   getGridGeometry,
+  collectDescendants,
   UNASSIGNED_GROUP_KEY,
   NODE_WIDTH,
   NODE_HEIGHT,
   type LensDimension,
 } from "@/lib/graph/layout";
 import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
+import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -125,6 +127,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const currentViewportState = useGraphStore((state) => state.currentViewport);
   const mirrorLanes = useGraphStore((state) => state.mirrorLanes);
   const toggleMirrorLanes = useGraphStore((state) => state.toggleMirrorLanes);
+  const collapsedIds = useGraphStore((state) => state.collapsedIds);
+  const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
+  const setLensStore = useGraphStore((state) => state.setLens);
+  const undo = useGraphStore((state) => state.undo);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuState | null>(null);
@@ -184,6 +190,35 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance],
   );
 
+  const paletteActions = useMemo<PaletteAction[]>(
+    () => [
+      { id: "lens-1", label: "Switch to Classic Hierarchy", hint: "1", run: () => setLensStore("hierarchy") },
+      { id: "lens-2", label: "Switch to Brand Lens", hint: "2", run: () => setLensStore("brand") },
+      { id: "lens-3", label: "Switch to Channel Lens", hint: "3", run: () => setLensStore("channel") },
+      { id: "lens-4", label: "Switch to Department Lens", hint: "4", run: () => setLensStore("department") },
+      { id: "lens-5", label: "Switch to Brand × Channel Grid", hint: "5", run: () => setLensStore("matrix") },
+      { id: "fit", label: "Fit view", hint: "0", run: () => rfInstance?.fitView({ padding: 0.2, duration: 300 }) },
+      { id: "cleanup", label: "Clean up layout", run: () => cleanupCanvas(lens, "spacious") },
+      {
+        id: "add-person",
+        label: "Add person",
+        hint: "N",
+        run: () =>
+          setQuickAddDialog({
+            open: true,
+            mode: "new-person",
+            position: rfInstance
+              ? rfInstance.screenToFlowPosition({
+                  x: window.innerWidth / 2,
+                  y: window.innerHeight / 2,
+                })
+              : { x: 400, y: 300 },
+          }),
+      },
+    ],
+    [setLensStore, rfInstance, cleanupCanvas, lens],
+  );
+
   const lensLayout = lensState?.layout;
   const filters = lensState?.filters;
 
@@ -197,6 +232,75 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const lastRenderedPositions = useRef<Record<string, { x: number; y: number }>>({});
 
   const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
+
+  // Direct manager of each person (global reporting chain)
+  const parentMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    edgesData.forEach((edge) => {
+      if (edge.metadata.type === "manager" && !(edge.target in map)) {
+        map[edge.target] = edge.source;
+      }
+    });
+    return map;
+  }, [edgesData]);
+
+  // Hierarchy view: people folded away under collapsed managers
+  const hiddenByCollapse = useMemo(
+    () =>
+      lens === "hierarchy" && collapsedIds.length > 0
+        ? collectDescendants(childMap, collapsedIds)
+        : null,
+    [lens, collapsedIds, childMap],
+  );
+
+  // Total subtree size per person, for the "+N" chip on collapsed cards
+  const descendantCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const count = (id: string): number => {
+      if (counts[id] !== undefined) return counts[id];
+      counts[id] = 0; // cycle guard
+      counts[id] = (childMap[id] ?? []).reduce((sum, child) => sum + 1 + count(child), 0);
+      return counts[id];
+    };
+    personNodes.forEach((node) => count(node.id));
+    return counts;
+  }, [childMap, personNodes]);
+
+  // Action confirmation toast with one-click Undo
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((message: string) => {
+    setToast({ message });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 6000);
+  }, []);
+
+  // ⌘K palette: fly to a person in the current lens, expanding any collapsed
+  // ancestors so they're actually visible when the camera arrives
+  const jumpToPerson = useCallback(
+    (id: string) => {
+      let ancestor = parentMap[id];
+      const seen = new Set<string>([id]);
+      while (ancestor && !seen.has(ancestor)) {
+        if (useGraphStore.getState().collapsedIds.includes(ancestor)) {
+          useGraphStore.getState().toggleCollapse(ancestor);
+        }
+        seen.add(ancestor);
+        ancestor = parentMap[ancestor];
+      }
+      selectNode(id);
+      const fresh = useGraphStore.getState();
+      const position =
+        fresh.document.lens_state[fresh.document.lens]?.layout.positions[id];
+      if (position && rfInstance) {
+        rfInstance.setCenter(position.x + NODE_WIDTH / 2, position.y + NODE_HEIGHT / 2, {
+          zoom: Math.max(rfInstance.getViewport().zoom, 0.8),
+          duration: 500,
+        });
+      }
+    },
+    [parentMap, selectNode, rfInstance],
+  );
 
   // Person focus mode: selecting a single person spotlights their matrix web
   // (manager line, reports, dotted team, sponsor) and dims everyone else.
@@ -252,11 +356,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       cleanupCanvas(lens, 'spacious');
       return;
     }
-    const missing = personNodes.some((node) => !lensLayout.positions[node.id]);
+    // People folded under a collapsed manager never get positions; only
+    // visible people count as "missing" or this would relayout forever
+    const missing = personNodes.some(
+      (node) => !hiddenByCollapse?.has(node.id) && !lensLayout.positions[node.id],
+    );
     if (missing) {
       cleanupCanvas(lens, 'spacious');
     }
-  }, [personNodes, lensLayout, cleanupCanvas, lens]);
+  }, [personNodes, lensLayout, cleanupCanvas, lens, hiddenByCollapse]);
 
   // Position the viewport once per lens visit (initial load or lens switch).
   // Deliberately NOT keyed on the whole lensLayout: that object changes every
@@ -318,6 +426,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (hiddenIds.length > 0) {
       filteredNodes = filteredNodes.filter((node) => !hiddenIds.includes(node.id));
     }
+    if (hiddenByCollapse) {
+      filteredNodes = filteredNodes.filter((node) => !hiddenByCollapse.has(node.id));
+    }
     
     const personFlowNodes: Node[] = filteredNodes.map((node) => {
       const position =
@@ -333,6 +444,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
         zoom: currentZoom, // Pass zoom for LOD rendering
+        reportCount: lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0,
+        hiddenCount: descendantCounts[node.id] ?? 0,
+        isCollapsed: collapsedIds.includes(node.id),
+        onToggleCollapse: lens === "hierarchy" ? toggleCollapse : undefined,
         actions: {
           addDirectReport: (managerId) => {
             const manager = personNodes.find((n) => n.id === managerId);
@@ -453,6 +568,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setSelection,
     filters?.focusIds,
     filters?.hiddenIds,
+    hiddenByCollapse,
+    childMap,
+    descendantCounts,
+    collapsedIds,
+    toggleCollapse,
   ]);
 
   // Local node state so React Flow position changes (dragging) render per
@@ -465,7 +585,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
     
-    return edgesData.map((edge) => {
+    const visibleEdges = hiddenByCollapse
+      ? edgesData.filter(
+          (edge) => !hiddenByCollapse.has(edge.source) && !hiddenByCollapse.has(edge.target),
+        )
+      : edgesData;
+    return visibleEdges.map((edge) => {
       const marker = markerByType[edge.metadata.type] ?? markerByType.manager;
       const color = RELATIONSHIP_COLORS[edge.metadata.type] ?? "#94a3b8";
       const isGhost =
@@ -525,6 +650,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     selection.edgeIds,
     currentZoom,
     focusedNodeId,
+    hiddenByCollapse,
   ]);
 
   // Handle node drag stop - persist positions (the whole dragged selection),
@@ -535,6 +661,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       moved.forEach((item) => updateNodePosition(item.id, item.position));
 
       if (!laneXRanges || laneXRanges.ranges.length === 0) return;
+      const reassigned: Array<{ name: string; lane: string }> = [];
       moved.forEach((item) => {
         const person = personNodes.find((n) => n.id === item.id);
         if (!person) return;
@@ -551,9 +678,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         if (getGroupKey(person, laneXRanges.dimension) === target.key) return;
 
         reassignToLane(item.id, laneXRanges.dimension, target.key);
+        reassigned.push({ name: person.name, lane: target.key });
       });
+      if (reassigned.length === 1) {
+        showToast(`Moved ${reassigned[0].name} → ${reassigned[0].lane}`);
+      } else if (reassigned.length > 1) {
+        showToast(`Moved ${reassigned.length} people → ${reassigned[0].lane}`);
+      }
     },
-    [updateNodePosition, laneXRanges, personNodes, reassignToLane],
+    [updateNodePosition, laneXRanges, personNodes, reassignToLane, showToast],
   );
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
@@ -614,9 +747,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleNodesDelete = useCallback(
     (deleted: Node[]) => {
+      const people = deleted.filter((node) => node.id.startsWith("person-"));
       deleted.forEach((node) => removeNode(node.id));
+      if (people.length === 1) {
+        const person = personNodes.find((n) => n.id === people[0].id);
+        showToast(`Deleted ${person?.name ?? "1 person"}`);
+      } else if (people.length > 1) {
+        showToast(`Deleted ${people.length} people`);
+      }
     },
-    [removeNode],
+    [removeNode, personNodes, showToast],
   );
 
   const handlePaneClick = useCallback(() => {
@@ -878,7 +1018,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             zoomOnPinch
             deleteKeyCode={["Backspace", "Delete"]}
             proOptions={{ hideAttribution: true }}
-            minZoom={0.08}
+            minZoom={0.04}
             maxZoom={2}
             defaultEdgeOptions={{ type: "manager" }}
             onInit={setRfInstance}
@@ -1009,13 +1149,48 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Relationship legend - compact button in corner */}
           {personNodes.length > 0 && <RelationshipLegend />}
 
+          {/* ⌘K command palette: jump to anyone, run common actions */}
+          <CommandPalette
+            people={personNodes}
+            actions={paletteActions}
+            onSelectPerson={jumpToPerson}
+          />
+
+          {/* Action confirmation toast with one-click Undo */}
+          {toast && (
+            <div className="pointer-events-none absolute bottom-20 left-1/2 z-40 -translate-x-1/2">
+              <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-slate-900/95 px-4 py-2 text-xs text-white shadow-xl ring-1 ring-white/10">
+                <span>{toast.message}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    undo();
+                    setToast(null);
+                  }}
+                  className="font-bold text-sky-300 transition hover:text-sky-200"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setToast(null)}
+                  className="text-slate-400 transition hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Bulk assignment toolbar for multi-selections */}
           {selection.nodeIds.length > 1 && (
             <BulkAssignToolbar
               count={selection.nodeIds.length}
-              onAssign={(dimension, laneKey) =>
-                reassignManyToLane(selection.nodeIds, dimension, laneKey)
-              }
+              onAssign={(dimension, laneKey) => {
+                reassignManyToLane(selection.nodeIds, dimension, laneKey);
+                showToast(`Assigned ${selection.nodeIds.length} people → ${laneKey}`);
+              }}
               onClear={() => clearSelection()}
             />
           )}

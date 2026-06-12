@@ -35,6 +35,11 @@ export type HierarchyNodeData = {
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
   zoom?: number; // Current zoom level for LOD rendering
+  // Hierarchy view: subtree fold chip (People Finder style)
+  reportCount?: number; // direct reports
+  hiddenCount?: number; // all descendants (shown when collapsed)
+  isCollapsed?: boolean;
+  onToggleCollapse?: (id: string) => void;
 };
 
 // Tier badges configuration
@@ -47,7 +52,10 @@ const TIER_BADGES: Record<string, { label: string; className: string }> = {
 };
 
 function Component({ data }: { data: HierarchyNodeData }) {
-  const { node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1 } = data;
+  const {
+    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
+    reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse,
+  } = data;
 
   const initials = useMemo(
     () =>
@@ -192,6 +200,31 @@ function Component({ data }: { data: HierarchyNodeData }) {
             data-handle-type="manager"
             className={`${HANDLE_BASE_CLASS} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
           />
+
+          {/* Subtree fold chip, People Finder style: "6 ⌄" expanded, "+12 ▸" collapsed */}
+          {reportCount > 0 && onToggleCollapse && (
+            <button
+              type="button"
+              data-testid={`collapse-chip-${node.id}`}
+              aria-label={
+                isCollapsed
+                  ? `Show ${hiddenCount} hidden ${hiddenCount === 1 ? "report" : "reports"}`
+                  : `Hide reports of ${node.name}`
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleCollapse(node.id);
+              }}
+              className={[
+                "absolute -bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
+                isCollapsed
+                  ? "border-sky-300 bg-sky-500 text-white hover:bg-sky-600"
+                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
+              ].join(" ")}
+            >
+              {isCollapsed ? `+${hiddenCount} ▸` : `${reportCount} ⌄`}
+            </button>
+          )}
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Content className="z-50 min-w-[220px] rounded-xl border border-slate-200 bg-white/95 p-1 text-sm shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
@@ -301,6 +334,15 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
   }
   // Compact cards counter-scale their text with zoom, so track it continuously there
   if (nextLod === 'compact' && Math.abs((prev.zoom ?? 1) - (next.zoom ?? 1)) > 0.01) {
+    return false;
+  }
+
+  // Collapse chip state must always trigger a re-render
+  if (
+    prev.isCollapsed !== next.isCollapsed ||
+    prev.reportCount !== next.reportCount ||
+    prev.hiddenCount !== next.hiddenCount
+  ) {
     return false;
   }
 
