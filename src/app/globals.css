@@ -113,8 +113,10 @@ body {
   opacity: 0 !important;
 }
 
-/* Lanes and mirror cards belong to a single lens, so they fade in fresh */
-.lane-fade-in {
+/* Lanes and mirror cards fade in fresh — but only during a lens transition.
+   Unscoped, the animation replayed (0.45s invisible) every time React
+   re-mounted a lane, which read as flickering while panning/zooming. */
+.lens-transition .lane-fade-in {
   animation: lane-fade-in 0.5s ease-out 0.45s backwards;
 }
 
@@ -128,7 +130,7 @@ body {
   .lens-transition .react-flow__node {
     transition: none;
   }
-  .lane-fade-in {
+  .lens-transition .lane-fade-in {
     animation: none;
   }
 }

@@ -139,6 +139,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(1);
+  // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
+  // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
+  const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
   const [lensTransition, setLensTransition] = useState(false);
   const isRestoringViewport = useRef(false);
   const previousLens = useRef(lens);
@@ -443,7 +446,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         emphasisLabel: getPrimaryLabel(node, lens),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
-        zoom: currentZoom, // Pass zoom for LOD rendering
+        zoom: lodZoom, // Pass zoom for LOD rendering
         reportCount: lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0,
         hiddenCount: descendantCounts[node.id] ?? 0,
         isCollapsed: collapsedIds.includes(node.id),
@@ -529,7 +532,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     // Brand × Channel grid: draw row bands (brands) and column bands (channels)
     if (isGridLens(lens)) {
-      const frame = buildGridFrameNodes(personNodes, currentZoom);
+      const frame = buildGridFrameNodes(personNodes, lodZoom);
       return [...frame, ...personFlowNodes];
     }
 
@@ -545,7 +548,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       mirrorLanes,
       selectNode,
       focusSet,
-      currentZoom,
+      lodZoom,
     );
     return [...laneNodes, ...personFlowNodes];
   }, [
@@ -556,7 +559,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lensLayout?.positions,
     lens,
     highlightTokens,
-    currentZoom,
+    lodZoom,
     addPerson,
     addRelationship,
     duplicateNodes,
@@ -624,7 +627,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         data: {
           ...edge,
         },
-        animated: edge.metadata.type === "dotted" && currentZoom > 0.5,
+        animated: edge.metadata.type === "dotted" && lodZoom > 0.5,
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker
           type: MarkerType.ArrowClosed,
           width: marker.width,
@@ -648,7 +651,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     personNodes,
     lens,
     selection.edgeIds,
-    currentZoom,
+    lodZoom,
     focusedNodeId,
     hiddenByCollapse,
   ]);
@@ -1023,7 +1026,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             defaultEdgeOptions={{ type: "manager" }}
             onInit={setRfInstance}
             className="bg-transparent"
-            onlyRenderVisibleElements={personNodes.length > 20}
           >
             <Background
               variant={lensLayout?.showGrid ? BackgroundVariant.Dots : BackgroundVariant.Lines}
