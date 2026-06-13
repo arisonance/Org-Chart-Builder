@@ -49,7 +49,7 @@ import {
 import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
-import { UnitNode, type UnitNodeData } from "@/components/unit-node";
+import { UnitRail } from "@/components/unit-rail";
 import { computeOrgUnits, unitMemberIdSet, type ComputedUnit } from "@/lib/graph/org-units";
 import {
   BRAND_COLORS,
@@ -73,7 +73,6 @@ const nodeTypes = {
   mirrorNode: MirrorNode,
   gridColNode: GridColNode,
   gridRowNode: GridRowNode,
-  unitNode: UnitNode,
 } as const;
 
 const edgeTypes = {
@@ -268,6 +267,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const isCrossCutting = lens === "brand" || lens === "channel" || isGridLens(lens);
   const orgUnits = useMemo(() => computeOrgUnits(personNodes), [personNodes]);
   const unitMemberIds = useMemo(() => unitMemberIdSet(personNodes), [personNodes]);
+  const showUnitRail =
+    isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
+
+  // Dedicated Shared Services view: focus the reporting tree on everyone in the
+  // shared-service units (Finance + Admin/HR + IT) at once.
+  const openSharedServices = useCallback(() => {
+    const ids = orgUnits
+      .filter((u) => u.def.type === "shared-service")
+      .flatMap((u) => u.members.map((m) => m.id));
+    if (ids.length === 0) return;
+    setLensStore("hierarchy");
+    setTimeout(() => {
+      setLensFilters("hierarchy", { focusIds: ids });
+      rfInstance?.fitView({ padding: 0.2, duration: 500, maxZoom: 1 });
+    }, 160);
+  }, [orgUnits, setLensStore, setLensFilters, rfInstance]);
 
   // Last rendered position per node, across lenses — used as the glide start
   // point when a lens hasn't been laid out yet
@@ -576,50 +591,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       };
     });
 
-    // Rolled-up facility / shared-service cards, stacked in a rail left of the lanes
-    const unitFlowNodes: Node[] = [];
-    if (rollUp) {
-      // Anchor the rail just left of the leftmost laid-out person so it reads as a column
-      const laidOut = filteredNodes
-        .map((n) => positions[n.id])
-        .filter((p): p is { x: number; y: number } => !!p);
-      const minX = laidOut.length ? Math.min(...laidOut.map((p) => p.x)) : 0;
-      const minY = laidOut.length ? Math.min(...laidOut.map((p) => p.y)) : 0;
-      let y = minY;
-      const x = minX - 420;
-      orgUnits.forEach((unit) => {
-        const expanded = expandedUnitIds.has(unit.def.id);
-        const data: UnitNodeData = {
-          unit,
-          expanded,
-          onToggleExpand: toggleUnitExpand,
-          onJump: () => jumpToUnit(unit),
-          onSelectMember: (pid) => selectNode(pid),
-        };
-        unitFlowNodes.push({
-          id: unit.def.id,
-          type: "unitNode",
-          position: { x, y },
-          data,
-          draggable: false,
-          // Selectable so React Flow keeps pointer-events on the card's buttons
-          selectable: true,
-        });
-        const rosterH = expanded ? Math.min(unit.members.length, 8) * 28 + 12 : 0;
-        y += 168 + rosterH + 28;
-      });
-    }
-
     // Brand × Channel grid: draw row bands (brands) and column bands (channels)
     if (isGridLens(lens)) {
       const frame = buildGridFrameNodes(personNodes, lodZoom);
-      return [...frame, ...personFlowNodes, ...unitFlowNodes];
+      return [...frame, ...personFlowNodes];
     }
 
     // Matrix views: draw a labeled swim lane behind each brand/channel/department group
     const dimension = lensToDimension(lens);
     if (!dimension) {
-      return [...personFlowNodes, ...unitFlowNodes];
+      return personFlowNodes;
     }
     const laneNodes = buildLaneNodes(
       filteredNodes,
@@ -630,7 +611,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       focusSet,
       lodZoom,
     );
-    return [...laneNodes, ...personFlowNodes, ...unitFlowNodes];
+    return [...laneNodes, ...personFlowNodes];
   }, [
     mirrorLanes,
     focusSet,
@@ -652,9 +633,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     isCrossCutting,
     orgUnits,
     unitMemberIds,
-    expandedUnitIds,
-    toggleUnitExpand,
-    jumpToUnit,
     filters?.focusIds,
     filters?.hiddenIds,
     hiddenByCollapse,
@@ -1189,6 +1167,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 Org Health
               </button>
             )}
+            {/* Persistent link to the dedicated Shared Services view (all lenses) */}
+            {personNodes.length > 0 && (
+              <button
+                type="button"
+                onClick={openSharedServices}
+                className="absolute right-[8.75rem] top-6 z-30 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white/90 px-4 py-2 text-xs font-semibold text-violet-700 shadow-sm ring-1 ring-violet-100 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 dark:border-violet-400/30 dark:bg-slate-900/70 dark:text-violet-200 dark:ring-violet-400/20 dark:hover:bg-violet-500/10"
+                title="See all shared services (Finance, HR, IT) together"
+              >
+                🔗 Shared Services
+              </button>
+            )}
           </ReactFlow>
           <EdgeContextMenu
             edgeMenu={edgeMenu}
@@ -1197,6 +1186,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           />
           
           <OrgHealthPanel open={healthOpen} onClose={() => setHealthOpen(false)} />
+
+          {/* Fixed rail of rolled-up facilities & shared services (cross-cutting lenses) */}
+          {showUnitRail && (
+            <UnitRail
+              units={orgUnits}
+              expanded={expandedUnitIds}
+              onToggleExpand={toggleUnitExpand}
+              onJump={jumpToUnit}
+              onSelectMember={selectNode}
+              onOpenSharedServices={openSharedServices}
+            />
+          )}
 
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
