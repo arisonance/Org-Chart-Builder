@@ -156,7 +156,7 @@ export function InlineCardEditor({ node, isOpen, onClose, position }: InlineCard
           onEscapeKeyDown={onClose}
           onPointerDownOutside={handleSave}
         >
-          <div className="max-h-[600px] overflow-y-auto p-5">
+          <div className="max-h-[600px] overflow-y-auto p-5 [transform:translateZ(0)]">
             {/* Header */}
             <div className="mb-4 flex items-start justify-between">
               <div>

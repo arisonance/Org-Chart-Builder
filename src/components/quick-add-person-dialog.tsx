@@ -119,7 +119,7 @@ export function QuickAddPersonDialog({
           className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900"
           onEscapeKeyDown={onClose}
         >
-          <div className="max-h-[85vh] overflow-y-auto p-6">
+          <div className="max-h-[85vh] overflow-y-auto p-6 [transform:translateZ(0)]">
             {/* Header */}
             <div className="mb-6 flex items-start justify-between">
               <div>

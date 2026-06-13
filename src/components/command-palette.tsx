@@ -132,7 +132,7 @@ export function CommandPalette({ people, actions, onSelectPerson }: CommandPalet
           placeholder="Jump to a person, or type a command…"
           className="w-full border-b border-slate-200 bg-transparent px-5 py-4 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none dark:border-white/10 dark:text-slate-100"
         />
-        <div ref={listRef} className="max-h-[46vh] overflow-y-auto p-2">
+        <div ref={listRef} className="max-h-[46vh] overflow-y-auto p-2 [transform:translateZ(0)]">
           {results.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-slate-400">No matches.</p>
           )}

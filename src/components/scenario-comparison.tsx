@@ -174,7 +174,7 @@ export function ScenarioComparison() {
         )}
 
         {/* Change Details */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 [transform:translateZ(0)]">
           <div className="space-y-6">
             {categories.map((category) => (
               <div key={category.type}>

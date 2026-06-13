@@ -252,8 +252,8 @@ export default function Home() {
             {/* Floating Editor Panel - Only for single selections; multi-select
                 uses the canvas bulk-assign toolbar instead */}
             {selection.nodeIds.length === 1 && (
-              <div className="absolute right-4 top-4 bottom-4 z-30 w-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
-                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+              <div className="absolute right-4 top-4 bottom-4 z-30 w-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>
                   <button
                     onClick={() => clearSelection()}
@@ -274,7 +274,7 @@ export default function Home() {
                 setShowFullScreenPanel(false);
                 setCanvasFullScreen(true);
               }}
-              className="absolute right-4 bottom-4 z-20 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200"
+              className="absolute right-4 bottom-4 z-20 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
             >
               <EnterFullScreenIcon className="h-3.5 w-3.5" />
               Full Screen
@@ -304,7 +304,7 @@ function ComparisonPickerDialog({
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
           Select a scenario to compare with the current one
         </p>
-        <div className="max-h-96 space-y-2 overflow-y-auto">
+        <div className="max-h-96 space-y-2 overflow-y-auto [transform:translateZ(0)]">
           {scenarios.map((scenario) => (
             <button
               key={scenario.id}
@@ -373,7 +373,7 @@ const FullScreenOverlay = ({ lens, onClose, onTogglePanel, panelVisible }: FullS
             <HierarchyCanvas className="h-full" />
           </div>
           {panelVisible ? (
-            <div className="w-[360px] overflow-y-auto rounded-3xl bg-white/95 p-4 text-slate-900 shadow-xl backdrop-blur dark:bg-slate-900/95">
+            <div className="w-[360px] overflow-y-auto rounded-3xl bg-white p-4 text-slate-900 shadow-xl [transform:translateZ(0)] dark:bg-slate-900">
               <EditorPanel />
             </div>
           ) : null}

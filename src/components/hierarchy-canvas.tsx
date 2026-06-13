@@ -1370,7 +1370,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Focus mode banner */}
           {focusedPerson && (
             <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
-              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-sky-200 bg-white/95 px-4 py-2 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/90 dark:ring-sky-400/10">
+              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-sky-200 bg-white px-4 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10">
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-sky-500" />
                 <span className="font-semibold text-slate-700 dark:text-slate-200">
                   Focusing on {focusedPerson.name}
@@ -1685,7 +1685,7 @@ const BulkAssignToolbar = ({
 
   return (
     <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
-      <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-200 bg-white/95 px-4 py-2.5 text-xs shadow-lg ring-1 ring-indigo-100 backdrop-blur dark:border-indigo-400/20 dark:bg-slate-900/90 dark:ring-indigo-400/10">
+      <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-4 py-2.5 text-xs shadow-lg ring-1 ring-indigo-100 dark:border-indigo-400/20 dark:bg-slate-900 dark:ring-indigo-400/10">
         <span className="font-semibold text-slate-700 dark:text-slate-200">
           {count} people selected
         </span>
