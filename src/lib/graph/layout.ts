@@ -1,6 +1,7 @@
 import { graphlib, layout as dagreLayout } from "@dagrejs/dagre";
 import type { GraphDocument, GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
 import type { LensId } from "@/lib/schema/lenses";
+import { channelSortKey, channelTopGroup } from "@/lib/org/channels";
 
 export type ChildMap = Record<string, string[]>;
 
@@ -163,6 +164,16 @@ const sortGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
     return sizeDiff !== 0 ? sizeDiff : a.localeCompare(b);
   });
 
+// Channel lanes follow the taxonomy order so a group's channels stay adjacent
+const sortChannelGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
+  Array.from(groups.keys()).sort((a, b) => {
+    const sa = a === UNASSIGNED_GROUP_KEY || a.startsWith("All ");
+    const sb = b === UNASSIGNED_GROUP_KEY || b.startsWith("All ");
+    if (sa !== sb) return sa ? 1 : -1;
+    const diff = channelSortKey(a) - channelSortKey(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
 /**
  * Swim-lane layout for matrix views: people are grouped into vertical lanes by
  * brand/channel/department, and the reporting hierarchy is laid out within each lane.
@@ -175,7 +186,7 @@ export const calculateMatrixLayout = (
 ): Record<string, { x: number; y: number }> => {
   const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
   const groups = groupNodesByDimension(personNodes, dimension);
-  const groupKeys = sortGroupKeys(groups);
+  const groupKeys = dimension === "channel" ? sortChannelGroupKeys(groups) : sortGroupKeys(groups);
 
   const positions: Record<string, { x: number; y: number }> = {};
   const LANE_GAP = 360;
@@ -398,6 +409,16 @@ const orderGridKeys = (counts: Map<string, number>) =>
     return diff !== 0 ? diff : a.localeCompare(b);
   });
 
+// Channel columns follow the taxonomy order so each group's channels stay adjacent
+const orderChannelGridKeys = (counts: Map<string, number>) =>
+  [...counts.keys()].sort((a, b) => {
+    const sa = isSharedGridKey(a);
+    const sb = isSharedGridKey(b);
+    if (sa !== sb) return sa ? 1 : -1;
+    const diff = channelSortKey(a) - channelSortKey(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
 export type GridGeometry = {
   rows: Array<{ key: string; y: number; height: number; count: number }>;
   cols: Array<{ key: string; x: number; width: number; count: number }>;
@@ -411,6 +432,8 @@ export type GridGeometry = {
     count: number;
     shared: boolean;
   }>;
+  // Top-level channel groups spanning their member columns (for grouped headers)
+  colGroups: Array<{ label: string; x: number; width: number; count: number }>;
   maxCell: number;
   width: number;
   height: number;
@@ -447,7 +470,7 @@ const computeGrid = (people: PersonNode[]) => {
     ),
   );
   const rows = orderGridKeys(rowCounts);
-  const cols = orderGridKeys(colCounts);
+  const cols = orderChannelGridKeys(colCounts);
 
   // Each channel column is as wide as its busiest cell needs
   const colCellCols: Record<string, number> = {};
@@ -543,6 +566,23 @@ export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
       });
     });
   });
+  // Collapse adjacent same-group columns into a spanning header band
+  const colGroups: GridGeometry["colGroups"] = [];
+  g.cols.forEach((c) => {
+    if (isSharedGridKey(c)) return;
+    const label = channelTopGroup(c) ?? c;
+    const x = g.colX[c];
+    const w = g.colWidth[c];
+    const n = g.colCounts.get(c) ?? 0;
+    const last = colGroups[colGroups.length - 1];
+    if (last && last.label === label) {
+      last.width = x + w - last.x;
+      last.count += n;
+    } else {
+      colGroups.push({ label, x, width: w, count: n });
+    }
+  });
+
   return {
     rows: g.rows.map((key) => ({
       key,
@@ -557,6 +597,7 @@ export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
       count: g.colCounts.get(key) ?? 0,
     })),
     cells,
+    colGroups,
     maxCell,
     width: g.totalWidth,
     height: g.totalHeight,

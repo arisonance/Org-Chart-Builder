@@ -129,6 +129,28 @@ function CellComponent({ data }: { data: GridCellNodeData }) {
   );
 }
 
+export type GridGroupNodeData = { label: string; count: number; width: number; color: string; zoom: number };
+
+// Top-level channel-group header spanning its member columns
+function GroupComponent({ data }: { data: GridGroupNodeData }) {
+  const { label, count, width, color, zoom } = data;
+  const safeZoom = Math.max(zoom || 1, 0.12);
+  const labelFont = Math.min(64, 26 / safeZoom);
+  const chipFont = Math.min(34, 12 / safeZoom);
+  return (
+    <div
+      className="pointer-events-none flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border-2"
+      style={{ width, borderColor: `${color}55`, background: `${color}14` }}
+    >
+      <span className="font-extrabold uppercase tracking-wider" style={{ color, fontSize: labelFont, lineHeight: 1 }}>{label}</span>
+      <span className="rounded-full bg-white/85 px-3 py-0.5 font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-white/10" style={{ fontSize: chipFont }}>
+        {count} {count === 1 ? "person" : "people"}
+      </span>
+    </div>
+  );
+}
+
 export const GridColNode = memo(ColComponent);
 export const GridRowNode = memo(RowComponent);
 export const GridCellNode = memo(CellComponent);
+export const GridGroupNode = memo(GroupComponent);

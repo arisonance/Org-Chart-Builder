@@ -46,7 +46,9 @@ import {
   NODE_HEIGHT,
   type LensDimension,
 } from "@/lib/graph/layout";
-import { GridColNode, GridRowNode, GridCellNode } from "@/components/grid-frame-node";
+import { GridColNode, GridRowNode, GridCellNode, GridGroupNode } from "@/components/grid-frame-node";
+import { CHANNEL_GROUP_COLORS } from "@/lib/theme/palette";
+import { channelTopGroup } from "@/lib/org/channels";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
@@ -75,6 +77,7 @@ const nodeTypes = {
   gridColNode: GridColNode,
   gridRowNode: GridRowNode,
   gridCellNode: GridCellNode,
+  gridGroupNode: GridGroupNode,
 } as const;
 
 const edgeTypes = {
@@ -1745,8 +1748,27 @@ const MIRROR_SECTION_GAP = 90;
 // Row bands (brands) span the full grid width; column bands (channels) span the
 // full grid height. Rows render first so the translucent channel columns layer
 // over them, producing the matrix grid feel; person cards sit on top.
+const GRID_GROUP_BAND_H = 96;
 const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
   const geo = getGridGeometry(people);
+  // Channel-group header bands, sitting above the column headers
+  const groupNodes: Node[] = geo.colGroups.map((grp) => ({
+    id: `gridgroup:${grp.label}`,
+    type: "gridGroupNode",
+    position: { x: grp.x, y: -(GRID_GROUP_BAND_H + 24) },
+    data: {
+      label: grp.label,
+      count: grp.count,
+      width: grp.width,
+      color: CHANNEL_GROUP_COLORS[grp.label] ?? UNASSIGNED_LANE_COLOR,
+      zoom,
+    },
+    style: { width: grp.width, height: GRID_GROUP_BAND_H },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 2,
+  }));
   // Heat tiles behind the cards: one per brand×channel intersection
   const cellNodes: Node[] = geo.cells.map((cell) => ({
     id: `gridcell:${cell.rowKey}|||${cell.colKey}`,
@@ -1799,7 +1821,7 @@ const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
     focusable: false,
     zIndex: 1,
   }));
-  return [...cellNodes, ...rowNodes, ...colNodes];
+  return [...cellNodes, ...rowNodes, ...colNodes, ...groupNodes];
 };
 
 const isVacantRole = (person: PersonNode) =>
@@ -1818,6 +1840,7 @@ const buildLaneNodes = (
   const groups = groupNodesByDimension(people, dimension);
   const laneNodes: Node[] = [];
   const mirrorNodes: Node[] = [];
+  const laneRects: Array<{ key: string; minX: number; maxX: number; minY: number; count: number }> = [];
 
   groups.forEach((members, key) => {
     const points = members
@@ -1914,9 +1937,42 @@ const buildLaneNodes = (
       selectable: false,
       focusable: false,
     });
+    laneRects.push({ key, minX, maxX, minY, count: members.length });
   });
 
-  return [...laneNodes, ...mirrorNodes];
+  // Channel lens: draw a group band above each cluster of same-group channel lanes
+  const groupBandNodes: Node[] = [];
+  if (dimension === "channel") {
+    const topMinY = Math.min(...laneRects.map((r) => r.minY), 0);
+    const byGroup = new Map<string, { minX: number; maxX: number; count: number }>();
+    laneRects.forEach((r) => {
+      const g = channelTopGroup(r.key);
+      if (!g) return; // shared "All Channels" / unassigned — no group band
+      const cur = byGroup.get(g);
+      if (cur) {
+        cur.minX = Math.min(cur.minX, r.minX);
+        cur.maxX = Math.max(cur.maxX, r.maxX);
+        cur.count += r.count;
+      } else {
+        byGroup.set(g, { minX: r.minX, maxX: r.maxX, count: r.count });
+      }
+    });
+    byGroup.forEach((span, label) => {
+      groupBandNodes.push({
+        id: `chgroup:${label}`,
+        type: "gridGroupNode",
+        position: { x: span.minX, y: topMinY - 180 },
+        data: { label, count: span.count, width: span.maxX - span.minX, color: CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR, zoom },
+        style: { width: span.maxX - span.minX, height: 120 },
+        zIndex: -1,
+        draggable: false,
+        selectable: false,
+        focusable: false,
+      });
+    });
+  }
+
+  return [...groupBandNodes, ...laneNodes, ...mirrorNodes];
 };
 
 const getAccentColor = (node: PersonNode, lens: LensId) => {
