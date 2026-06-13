@@ -172,6 +172,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [setLensStore, setLensFilters, rfInstance],
   );
   const [currentZoom, setCurrentZoom] = useState(1);
+  const lodBucketRef = useRef<"full" | "medium" | "compact">("full");
   // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
   // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
   const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
@@ -1109,12 +1110,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onSelectionChange={handleSelectionChange}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}
-            onMove={() => {
-              if (rfInstance) {
-                const viewport = rfInstance.getViewport();
+            onMove={(_, viewport) => {
+              // Per-frame React state writes fight React Flow's CSS transform and cause
+              // flicker. During the gesture only re-render when the LOD bucket flips.
+              const bucket =
+                viewport.zoom > 0.6 ? "full" : viewport.zoom >= 0.45 ? "medium" : "compact";
+              if (bucket !== lodBucketRef.current) {
+                lodBucketRef.current = bucket;
                 setCurrentZoom(viewport.zoom);
-                setCurrentViewport(viewport); // Lightweight update
               }
+            }}
+            onMoveEnd={(_, viewport) => {
+              // Settle once when movement stops: exact zoom (counter-scaling, %) + persist
+              setCurrentZoom(viewport.zoom);
+              setCurrentViewport(viewport);
             }}
             nodesDraggable
             nodesConnectable
@@ -1249,7 +1258,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {/* Zoom controls: explicit buttons, %, fit, and scroll-mode toggle */}
           {personNodes.length > 0 && (
             <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 -translate-x-1/2">
-              <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/95 p-1 text-slate-600 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-200 dark:ring-white/10">
+              <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-slate-200 bg-white p-1 text-slate-600 shadow-lg ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10">
                 <button
                   type="button"
                   onClick={zoomOut}

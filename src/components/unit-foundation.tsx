@@ -40,7 +40,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
   };
 
   return (
-    <div className="absolute inset-x-4 bottom-[4.75rem] z-30 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100 px-4 py-2.5 shadow-xl ring-1 ring-slate-200/60 backdrop-blur dark:border-white/10 dark:from-slate-900/95 dark:to-slate-950/95 dark:ring-white/10">
+    <div className="absolute inset-x-4 bottom-[4.75rem] z-30 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100 px-4 py-2.5 shadow-xl ring-1 ring-slate-200/60 dark:border-white/10 dark:from-slate-900 dark:to-slate-950 dark:ring-white/10">
       <div className="mb-1.5 flex items-center justify-between">
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
           ▤ Shared Foundation

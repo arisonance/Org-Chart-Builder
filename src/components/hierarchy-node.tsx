@@ -122,7 +122,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
             type="button"
             onClick={(event) => handleSelect(event, event.shiftKey)}
             className={[
-              "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white/95 px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950/85",
+              "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950",
               isContainer
                 ? "border-2 border-dashed ring-slate-200 dark:ring-white/10"
                 : "border-slate-200 ring-slate-200 dark:border-white/10 dark:ring-white/10",

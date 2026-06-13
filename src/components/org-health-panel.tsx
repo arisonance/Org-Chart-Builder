@@ -76,7 +76,7 @@ export function OrgHealthPanel({ open, onClose }: OrgHealthPanelProps) {
   ];
 
   return (
-    <div className="absolute right-4 top-4 bottom-4 z-40 flex w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/97 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+    <div className="absolute right-4 top-4 bottom-4 z-40 flex w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
