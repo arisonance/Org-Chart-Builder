@@ -10,6 +10,7 @@ import { LensSwitcher } from '@/components/lens-switcher';
 import { ScenarioManager } from '@/components/scenario-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
+import { SpreadsheetView } from '@/components/spreadsheet-view';
 import { SearchFilterBar } from '@/components/search-filter-bar';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
@@ -35,6 +36,7 @@ export default function Home() {
   const [showFullScreenPanel, setShowFullScreenPanel] = useState(false);
   const [showComparisonPicker, setShowComparisonPicker] = useState(false);
   const [showAIImport, setShowAIImport] = useState(false);
+  const [showSpreadsheet, setShowSpreadsheet] = useState(false);
 
   const lensDescription = useMemo(() => LENS_BY_ID[lens].description, [lens]);
 
@@ -117,6 +119,7 @@ export default function Home() {
     <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <ScenarioComparison />
       {showAIImport && <AIImportWizard onClose={() => setShowAIImport(false)} />}
+      <SpreadsheetView open={showSpreadsheet} onClose={() => setShowSpreadsheet(false)} />
       {showComparisonPicker && (
         <ComparisonPickerDialog
           scenarios={scenarioList}
@@ -146,6 +149,13 @@ export default function Home() {
             <ScenarioManager />
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSpreadsheet(true)}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <MixerHorizontalIcon className="inline h-4 w-4 mr-1" /> Spreadsheet
+            </button>
             <button
               type="button"
               onClick={() => setShowAIImport(true)}
