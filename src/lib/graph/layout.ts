@@ -401,6 +401,17 @@ const orderGridKeys = (counts: Map<string, number>) =>
 export type GridGeometry = {
   rows: Array<{ key: string; y: number; height: number; count: number }>;
   cols: Array<{ key: string; x: number; width: number; count: number }>;
+  cells: Array<{
+    rowKey: string;
+    colKey: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    count: number;
+    shared: boolean;
+  }>;
+  maxCell: number;
   width: number;
   height: number;
 };
@@ -511,6 +522,27 @@ export const calculateGridLayout = (
 export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
   const people = nodes.filter((n): n is PersonNode => n.kind === "person");
   const g = computeGrid(people);
+  const cells: GridGeometry["cells"] = [];
+  let maxCell = 0;
+  g.rows.forEach((r) => {
+    g.cols.forEach((c) => {
+      const count = (g.cells.get(`${r}|||${c}`) ?? []).length;
+      const shared = isSharedGridKey(r) || isSharedGridKey(c);
+      // Heat scale tracks real brand×channel cells only, so shared "All …" buckets
+      // (which can be huge) don't wash out the gradient
+      if (!shared && count > maxCell) maxCell = count;
+      cells.push({
+        rowKey: r,
+        colKey: c,
+        x: g.colX[c],
+        y: g.rowY[r],
+        width: g.colWidth[c],
+        height: g.rowHeight[r],
+        count,
+        shared,
+      });
+    });
+  });
   return {
     rows: g.rows.map((key) => ({
       key,
@@ -524,6 +556,8 @@ export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
       width: g.colWidth[key],
       count: g.colCounts.get(key) ?? 0,
     })),
+    cells,
+    maxCell,
     width: g.totalWidth,
     height: g.totalHeight,
   };

@@ -46,7 +46,7 @@ import {
   NODE_HEIGHT,
   type LensDimension,
 } from "@/lib/graph/layout";
-import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
+import { GridColNode, GridRowNode, GridCellNode } from "@/components/grid-frame-node";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
@@ -74,6 +74,7 @@ const nodeTypes = {
   mirrorNode: MirrorNode,
   gridColNode: GridColNode,
   gridRowNode: GridRowNode,
+  gridCellNode: GridCellNode,
 } as const;
 
 const edgeTypes = {
@@ -1746,6 +1747,25 @@ const MIRROR_SECTION_GAP = 90;
 // over them, producing the matrix grid feel; person cards sit on top.
 const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
   const geo = getGridGeometry(people);
+  // Heat tiles behind the cards: one per brand×channel intersection
+  const cellNodes: Node[] = geo.cells.map((cell) => ({
+    id: `gridcell:${cell.rowKey}|||${cell.colKey}`,
+    type: "gridCellNode",
+    position: { x: cell.x, y: cell.y },
+    data: {
+      count: cell.count,
+      maxCell: geo.maxCell,
+      width: cell.width,
+      height: cell.height,
+      color: BRAND_COLORS[cell.rowKey] ?? UNASSIGNED_LANE_COLOR,
+      shared: cell.shared,
+      zoom,
+    },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 0,
+  }));
   const rowNodes: Node[] = geo.rows.map((row) => ({
     id: `gridrow:${row.key}`,
     type: "gridRowNode",
@@ -1779,7 +1799,7 @@ const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
     focusable: false,
     zIndex: 1,
   }));
-  return [...rowNodes, ...colNodes];
+  return [...cellNodes, ...rowNodes, ...colNodes];
 };
 
 const isVacantRole = (person: PersonNode) =>
