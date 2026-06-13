@@ -73,6 +73,7 @@ type GraphStoreActions = {
   clearSelection: () => void;
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
+  applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
   addRelationship: (sourceId: string, targetId: string, type: RelationshipType, meta?: Partial<GraphEdge["metadata"]>) => string | null;
   updateRelationship: (edgeId: string, updates: Partial<GraphEdge["metadata"]>) => void;
   removeRelationship: (edgeId: string) => void;
@@ -396,6 +397,17 @@ export const useGraphStore = create<GraphStore>()(
         }
 
         withHistory(set, get, applyUpdates);
+      },
+      applyToPeople: (nodeIds, patch) => {
+        if (nodeIds.length === 0) return;
+        const ids = new Set(nodeIds);
+        withHistory(set, get, (state) => {
+          state.document.nodes.forEach((node) => {
+            if (node.kind !== "person" || !ids.has(node.id)) return;
+            Object.assign(node.attributes, patch(node.attributes));
+            node.updatedAt = now();
+          });
+        });
       },
       addRelationship: (sourceId, targetId, type, meta) => {
         if (sourceId === targetId) return null;
