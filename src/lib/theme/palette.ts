@@ -6,11 +6,25 @@ export const BRAND_COLORS: Record<string, string> = {
 };
 
 export const CHANNEL_COLORS: Record<string, string> = {
-  "Sonance Pro": "#2563eb",
-  "Sonance Luxury Residential": "#a855f7",
-  "National Accounts": "#0891b2",
-  "iPort Enterprise": "#0d9488",
+  // Residential family — purples
+  "Luxury Residential": "#a855f7",
+  "National Accounts": "#7c3aed",
+  "International Residential": "#c026d3",
+  // Commercial / Professional family — blues/teals
+  "North America Professional": "#2563eb",
+  "International Professional": "#0891b2",
+  Enterprise: "#0d9488",
+  // Catch-all
+  Other: "#64748b",
   "All Channels": "#64748b",
+};
+
+// Top-level channel-group colours, used for the grouped lens bands / grid headers
+export const CHANNEL_GROUP_COLORS: Record<string, string> = {
+  Residential: "#9333ea",
+  Commercial: "#0e7490",
+  Professional: "#2563eb",
+  Other: "#64748b",
 };
 
 export const DEPARTMENT_COLORS: Record<string, string> = {
