@@ -70,6 +70,14 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
   const tierBadge = node.attributes.tier ? TIER_BADGES[node.attributes.tier] : undefined;
 
+  // Matrix load: how many brands + channels this person straddles. People living
+  // in 2+ brands AND 2+ channels carry conflicting-priorities risk (see Org Health X-ray).
+  const brandCount = node.attributes.brands.length;
+  const channelCount = node.attributes.channels.length;
+  const matrixLoad = brandCount + channelCount;
+  const isHeavyMatrix = brandCount >= 2 && channelCount >= 2;
+  const matrixSevere = matrixLoad >= 6;
+
   // Level of detail based on zoom - less aggressive for better initial render
   const lodLevel = getLodLevel(zoom);
 
@@ -150,6 +158,20 @@ function Component({ data }: { data: HierarchyNodeData }) {
                   {tierBadge ? (
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tierBadge.className}`}>
                       {tierBadge.label}
+                    </span>
+                  ) : null}
+                  {/* Matrix-load badge: flag people straddling many brands/channels */}
+                  {lodLevel === 'full' && isHeavyMatrix ? (
+                    <span
+                      title={`Matrix load ${matrixLoad}: in ${brandCount} brands and ${channelCount} channels — conflicting-priorities risk`}
+                      className={[
+                        "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        matrixSevere
+                          ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
+                          : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
+                      ].join(" ")}
+                    >
+                      ⚡ Matrix ×{matrixLoad}
                     </span>
                   ) : null}
                   {/* Show context badge only at full zoom */}
