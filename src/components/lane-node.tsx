@@ -8,16 +8,18 @@ export type LaneNodeData = {
   count: number;
   crossAssigned: number;
   vacancies: number;
+  tiers: { label: string; count: number }[];
   zoom: number;
 };
 
 function Component({ data }: { data: LaneNodeData }) {
-  const { label, color, count, crossAssigned, vacancies, zoom } = data;
+  const { label, color, count, crossAssigned, vacancies, tiers, zoom } = data;
 
   // Counter-scale the header so lane names stay readable when zoomed out
   const safeZoom = Math.max(zoom || 1, 0.15);
   const headerFont = Math.min(76, 20 / safeZoom);
   const chipFont = Math.min(42, 11 / safeZoom);
+  const tierFont = Math.min(38, 12 / safeZoom);
   const dotSize = Math.min(40, 12 / safeZoom);
 
   return (
@@ -62,6 +64,20 @@ function Component({ data }: { data: LaneNodeData }) {
           </span>
         )}
       </div>
+      {/* Tier mix: the lane's leadership shape at a glance */}
+      {tiers.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-6 pt-2 font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+          style={{ fontSize: tierFont }}
+        >
+          {tiers.map((tier, i) => (
+            <span key={tier.label} className="flex items-center gap-2">
+              {i > 0 && <span className="text-slate-300 dark:text-slate-600">·</span>}
+              <span style={{ color }}>{tier.count}</span> {tier.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

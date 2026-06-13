@@ -466,7 +466,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     isRestoringViewport.current = true;
     const timer = setTimeout(() => {
       if (isDefault) {
-        rfInstance.fitView({ padding: 0.15, duration: 350, maxZoom: 1.2 });
+        // Land at a readable zoom rather than crushing a wide org into a 1px ribbon.
+        // The explicit "Fit" control still fits everything; this is just the first frame.
+        rfInstance.fitView({ padding: 0.15, duration: 350, minZoom: 0.42, maxZoom: 1.2 });
       } else {
         rfInstance.setViewport(
           { x: target.x, y: target.y, zoom: target.zoom },
@@ -1830,6 +1832,24 @@ const buildLaneNodes = (
       }
     }
 
+    // Tier mix so each lane communicates its shape at a glance
+    const tierTally: Record<string, number> = {};
+    members.forEach((m) => {
+      const t = m.attributes.tier ?? "ic";
+      tierTally[t] = (tierTally[t] ?? 0) + 1;
+    });
+    const TIER_ORDER: Array<[string, string]> = [
+      ["c-suite", "Exec"],
+      ["vp", "VP"],
+      ["director", "Dir"],
+      ["manager", "Mgr"],
+      ["ic", "IC"],
+    ];
+    const tiers = TIER_ORDER.filter(([key]) => tierTally[key]).map(([key, label]) => ({
+      label,
+      count: tierTally[key],
+    }));
+
     const data: LaneNodeData = {
       label: key,
       color: getLaneColor(key, dimension),
@@ -1838,6 +1858,7 @@ const buildLaneNodes = (
         (member) => getAssignments(member, dimension).length > 1,
       ).length,
       vacancies: members.filter(isVacantRole).length,
+      tiers,
       zoom,
     };
     laneNodes.push({
