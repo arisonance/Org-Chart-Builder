@@ -45,7 +45,7 @@ export function UnitRail({
   const rolledHeadcount = units.reduce((sum, u) => sum + u.members.length, 0);
 
   return (
-    <div className="absolute left-4 top-[4.75rem] bottom-4 z-30 flex w-64 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900">
+    <div className="absolute left-4 top-[4.75rem] bottom-4 z-30 flex w-64 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
       <div className="border-b border-slate-200 px-3 py-2.5 dark:border-white/10">
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
           Facilities & Shared Services
@@ -55,7 +55,7 @@ export function UnitRail({
         </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="flex-1 overflow-y-auto px-2 py-2 [transform:translateZ(0)]">
         {SECTIONS.map((section) => {
           const sectionUnits = units.filter((u) => u.def.type === section.type);
           if (sectionUnits.length === 0) return null;
