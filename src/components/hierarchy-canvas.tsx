@@ -48,6 +48,7 @@ import {
 } from "@/lib/graph/layout";
 import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
+import { OrgHealthPanel } from "@/components/org-health-panel";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -138,6 +139,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     null,
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(1);
   // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
   // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
@@ -202,6 +204,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       { id: "lens-5", label: "Switch to Brand × Channel Grid", hint: "5", run: () => setLensStore("matrix") },
       { id: "fit", label: "Fit view", hint: "0", run: () => rfInstance?.fitView({ padding: 0.2, duration: 300 }) },
       { id: "cleanup", label: "Clean up layout", run: () => cleanupCanvas(lens, "spacious") },
+      { id: "health", label: "Open Org Health X-ray", run: () => setHealthOpen(true) },
       {
         id: "add-person",
         label: "Add person",
@@ -1075,6 +1078,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 }}
               />
             )}
+            {/* Org Health X-ray toggle */}
+            {personNodes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setHealthOpen((v) => !v)}
+                className={[
+                  "absolute right-6 top-6 z-30 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-400",
+                  healthOpen
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800 ring-emerald-200 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-500/20 dark:text-emerald-200 dark:ring-emerald-400/20"
+                    : "border-slate-200 bg-white/90 text-slate-600 ring-slate-200 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10",
+                ].join(" ")}
+                title="Span outliers, matrix overload, coverage gaps"
+              >
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                Org Health
+              </button>
+            )}
           </ReactFlow>
           <EdgeContextMenu
             edgeMenu={edgeMenu}
@@ -1082,6 +1102,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onAction={handleEdgeMenuAction}
           />
           
+          <OrgHealthPanel open={healthOpen} onClose={() => setHealthOpen(false)} />
+
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
           
