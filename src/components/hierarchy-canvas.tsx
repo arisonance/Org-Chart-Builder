@@ -49,6 +49,8 @@ import {
 import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
+import { UnitNode, type UnitNodeData } from "@/components/unit-node";
+import { computeOrgUnits, unitMemberIdSet, type ComputedUnit } from "@/lib/graph/org-units";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -71,6 +73,7 @@ const nodeTypes = {
   mirrorNode: MirrorNode,
   gridColNode: GridColNode,
   gridRowNode: GridRowNode,
+  unitNode: UnitNode,
 } as const;
 
 const edgeTypes = {
@@ -131,6 +134,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const collapsedIds = useGraphStore((state) => state.collapsedIds);
   const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
   const setLensStore = useGraphStore((state) => state.setLens);
+  const setLensFilters = useGraphStore((state) => state.setLensFilters);
   const undo = useGraphStore((state) => state.undo);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
@@ -140,6 +144,32 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
+
+  const toggleUnitExpand = useCallback((unitId: string) => {
+    setExpandedUnitIds((prev) => {
+      const next = new Set(prev);
+      next.has(unitId) ? next.delete(unitId) : next.add(unitId);
+      return next;
+    });
+  }, []);
+
+  // "Open in chart": jump to a focused home view of just this unit's people.
+  // Facilities land in their Department home; shared services in the reporting tree.
+  const jumpToUnit = useCallback(
+    (unit: ComputedUnit) => {
+      const memberIds = unit.members.map((m) => m.id);
+      const targetLens = unit.def.type === "facility" ? "department" : "hierarchy";
+      setLensStore(targetLens);
+      // Apply the focus after the lens-change settles: the search bar resets focusIds
+      // on lens change when its box is empty, so set ours once that effect has run.
+      setTimeout(() => {
+        setLensFilters(targetLens, { focusIds: memberIds });
+        rfInstance?.fitView({ padding: 0.2, duration: 500, maxZoom: 1 });
+      }, 160);
+    },
+    [setLensStore, setLensFilters, rfInstance],
+  );
   const [currentZoom, setCurrentZoom] = useState(1);
   // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
   // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
@@ -232,6 +262,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     () => nodesData.filter((node): node is PersonNode => node.kind === "person"),
     [nodesData],
   );
+
+  // Cross-cutting org units (facilities + shared services) roll up in Brand/Channel/Grid
+  // views so dozens of warehouse/production/HR/finance people don't clutter every lane.
+  const isCrossCutting = lens === "brand" || lens === "channel" || isGridLens(lens);
+  const orgUnits = useMemo(() => computeOrgUnits(personNodes), [personNodes]);
+  const unitMemberIds = useMemo(() => unitMemberIdSet(personNodes), [personNodes]);
 
   // Last rendered position per node, across lenses — used as the glide start
   // point when a lens hasn't been laid out yet
@@ -435,7 +471,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (hiddenByCollapse) {
       filteredNodes = filteredNodes.filter((node) => !hiddenByCollapse.has(node.id));
     }
-    
+
+    // Roll up facilities / shared services into single cards in cross-cutting views,
+    // removing their members from the brand/channel lanes. Skipped while focusing.
+    const rollUp = isCrossCutting && focusIds.length === 0 && orgUnits.length > 0;
+    if (rollUp) {
+      filteredNodes = filteredNodes.filter((node) => !unitMemberIds.has(node.id));
+    }
+
     const personFlowNodes: Node[] = filteredNodes.map((node) => {
       const position =
         positions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
@@ -533,16 +576,50 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       };
     });
 
+    // Rolled-up facility / shared-service cards, stacked in a rail left of the lanes
+    const unitFlowNodes: Node[] = [];
+    if (rollUp) {
+      // Anchor the rail just left of the leftmost laid-out person so it reads as a column
+      const laidOut = filteredNodes
+        .map((n) => positions[n.id])
+        .filter((p): p is { x: number; y: number } => !!p);
+      const minX = laidOut.length ? Math.min(...laidOut.map((p) => p.x)) : 0;
+      const minY = laidOut.length ? Math.min(...laidOut.map((p) => p.y)) : 0;
+      let y = minY;
+      const x = minX - 420;
+      orgUnits.forEach((unit) => {
+        const expanded = expandedUnitIds.has(unit.def.id);
+        const data: UnitNodeData = {
+          unit,
+          expanded,
+          onToggleExpand: toggleUnitExpand,
+          onJump: () => jumpToUnit(unit),
+          onSelectMember: (pid) => selectNode(pid),
+        };
+        unitFlowNodes.push({
+          id: unit.def.id,
+          type: "unitNode",
+          position: { x, y },
+          data,
+          draggable: false,
+          // Selectable so React Flow keeps pointer-events on the card's buttons
+          selectable: true,
+        });
+        const rosterH = expanded ? Math.min(unit.members.length, 8) * 28 + 12 : 0;
+        y += 168 + rosterH + 28;
+      });
+    }
+
     // Brand × Channel grid: draw row bands (brands) and column bands (channels)
     if (isGridLens(lens)) {
       const frame = buildGridFrameNodes(personNodes, lodZoom);
-      return [...frame, ...personFlowNodes];
+      return [...frame, ...personFlowNodes, ...unitFlowNodes];
     }
 
     // Matrix views: draw a labeled swim lane behind each brand/channel/department group
     const dimension = lensToDimension(lens);
     if (!dimension) {
-      return personFlowNodes;
+      return [...personFlowNodes, ...unitFlowNodes];
     }
     const laneNodes = buildLaneNodes(
       filteredNodes,
@@ -553,7 +630,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       focusSet,
       lodZoom,
     );
-    return [...laneNodes, ...personFlowNodes];
+    return [...laneNodes, ...personFlowNodes, ...unitFlowNodes];
   }, [
     mirrorLanes,
     focusSet,
@@ -572,6 +649,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addTagToNode,
     selectNode,
     setSelection,
+    isCrossCutting,
+    orgUnits,
+    unitMemberIds,
+    expandedUnitIds,
+    toggleUnitExpand,
+    jumpToUnit,
     filters?.focusIds,
     filters?.hiddenIds,
     hiddenByCollapse,
@@ -590,12 +673,19 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
-    
-    const visibleEdges = hiddenByCollapse
+
+    const rollUp = isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
+    let visibleEdges = hiddenByCollapse
       ? edgesData.filter(
           (edge) => !hiddenByCollapse.has(edge.source) && !hiddenByCollapse.has(edge.target),
         )
       : edgesData;
+    if (rollUp) {
+      // Drop edges that touch rolled-up unit members so no lines dangle to the rail
+      visibleEdges = visibleEdges.filter(
+        (edge) => !unitMemberIds.has(edge.source) && !unitMemberIds.has(edge.target),
+      );
+    }
     return visibleEdges.map((edge) => {
       const marker = markerByType[edge.metadata.type] ?? markerByType.manager;
       const color = RELATIONSHIP_COLORS[edge.metadata.type] ?? "#94a3b8";
@@ -657,6 +747,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lodZoom,
     focusedNodeId,
     hiddenByCollapse,
+    isCrossCutting,
+    orgUnits,
+    unitMemberIds,
+    filters?.focusIds,
   ]);
 
   // Handle node drag stop - persist positions (the whole dragged selection),
