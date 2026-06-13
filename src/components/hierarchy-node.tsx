@@ -6,6 +6,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
 import type { LensId } from "@/lib/schema/lenses";
 import type { PersonNode } from "@/lib/schema/types";
+import type { UnitDef } from "@/lib/graph/org-units";
 
 // Extract static styles as constants for better performance
 const HANDLE_BASE_CLASS = "h-3 w-3 rounded-full border border-white shadow-sm transition-transform hover:scale-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-sky-400";
@@ -40,6 +41,8 @@ export type HierarchyNodeData = {
   hiddenCount?: number; // all descendants (shown when collapsed)
   isCollapsed?: boolean;
   onToggleCollapse?: (id: string) => void;
+  // When set, this node anchors a facility / shared service and renders as a container
+  unit?: UnitDef;
 };
 
 // Tier badges configuration
@@ -51,11 +54,21 @@ const TIER_BADGES: Record<string, { label: string; className: string }> = {
   ic: { label: "Individual Contributor", className: "bg-slate-100 text-slate-600" },
 };
 
+const UNIT_CONTAINER_STYLE = {
+  facility: { glyph: "🏭", accent: "#0f766e", chip: "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200" },
+  "shared-service": { glyph: "🔗", accent: "#7c3aed", chip: "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200" },
+} as const;
+
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
     node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
-    reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse,
+    reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, unit,
   } = data;
+
+  // Facility / shared-service container: stands in for a whole group of people
+  const isContainer = !!unit && isCollapsed && hiddenCount > 0;
+  const containerStyle = unit ? UNIT_CONTAINER_STYLE[unit.type] : null;
+  const containerCount = hiddenCount + 1;
 
   const initials = useMemo(
     () =>
@@ -109,17 +122,37 @@ function Component({ data }: { data: HierarchyNodeData }) {
             type="button"
             onClick={(event) => handleSelect(event, event.shiftKey)}
             className={[
-              "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white/95 px-5 py-5 text-center shadow-lg ring-1 ring-slate-200 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-950/85 dark:ring-white/10",
+              "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white/95 px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950/85",
+              isContainer
+                ? "border-2 border-dashed ring-slate-200 dark:ring-white/10"
+                : "border-slate-200 ring-slate-200 dark:border-white/10 dark:ring-white/10",
               isSelected
                 ? "border-sky-500 ring-2 ring-sky-300/80 shadow-xl"
                 : "hover:-translate-y-1 hover:shadow-xl",
             ].join(" ")}
+            style={isContainer && containerStyle ? { borderColor: containerStyle.accent } : undefined}
           >
+            {isContainer && (
+              <>
+                <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 translate-x-1.5 translate-y-1.5 rounded-2xl border border-slate-300 bg-white dark:border-white/15 dark:bg-slate-900" />
+                <span aria-hidden className="pointer-events-none absolute inset-0 -z-20 translate-x-3 translate-y-3 rounded-2xl border border-slate-300 bg-white dark:border-white/10 dark:bg-slate-900" />
+              </>
+            )}
             <span
               className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
-              style={{ background: accentColor }}
+              style={{ background: isContainer && containerStyle ? containerStyle.accent : accentColor }}
             />
-            {lodLevel === 'compact' ? (
+            {isContainer && containerStyle && unit ? (
+              <div className="flex min-h-[6.5rem] flex-col items-center justify-center gap-1.5">
+                <span className="text-3xl leading-none" aria-hidden>{containerStyle.glyph}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${containerStyle.chip}`}>
+                  {unit.type === "facility" ? "Facility" : "Shared service"}
+                </span>
+                <p className="text-sm font-bold text-slate-900 dark:text-slate-50">{unit.label}</p>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{containerCount} people</p>
+                <p className="text-[10px] text-slate-400">{unit.serves}</p>
+              </div>
+            ) : lodLevel === 'compact' ? (
               /* Zoomed way out: counter-scale the name so cards stay legible as chips */
               <div className="flex min-h-[7rem] flex-col items-center justify-center gap-1 overflow-hidden">
                 <p

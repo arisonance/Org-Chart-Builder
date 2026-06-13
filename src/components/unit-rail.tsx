@@ -80,11 +80,20 @@ export function UnitRail({
                 const style = TYPE_STYLE[unit.def.type];
                 const isOpen = expanded.has(unit.def.id);
                 return (
-                  <div
-                    key={unit.def.id}
-                    data-testid={`unit-card-${unit.def.id}`}
-                    className={`mb-1.5 overflow-hidden rounded-lg border border-slate-200 border-l-[3px] ${style.border} bg-white dark:border-white/10 dark:bg-slate-950/40`}
-                  >
+                  <div key={unit.def.id} className="relative mb-3">
+                    {/* Stacked-paper layers: signals "a group of people," not one person */}
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-2 -bottom-1.5 h-3 rounded-b-lg border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-slate-800"
+                    />
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-1 -bottom-0.5 h-3 rounded-b-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900"
+                    />
+                    <div
+                      data-testid={`unit-card-${unit.def.id}`}
+                      className={`relative overflow-hidden rounded-lg border border-slate-200 border-l-[3px] ${style.border} bg-white dark:border-white/10 dark:bg-slate-950/60`}
+                    >
                     <div className="flex items-start gap-2 px-2.5 py-2">
                       <span className="text-base leading-none" aria-hidden>
                         {style.glyph}
@@ -133,6 +142,7 @@ export function UnitRail({
                       >
                         Open <ArrowTopRightIcon className="h-3 w-3" />
                       </button>
+                    </div>
                     </div>
                   </div>
                 );

@@ -91,6 +91,7 @@ type GraphStoreActions = {
   cleanupCanvas: (lens?: LensId, mode?: "compact" | "spacious") => void;
   toggleNodeLock: (nodeId: string) => void;
   toggleCollapse: (nodeId: string) => void;
+  addCollapsed: (nodeIds: string[]) => void;
   reassignToLane: (
     nodeId: string,
     dimension: "brand" | "channel" | "department",
@@ -654,6 +655,33 @@ export const useGraphStore = create<GraphStore>()(
             }
             // Re-flow the hierarchy with only the visible people so the gaps
             // left by folded subtrees close up
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
+      },
+      // Fold many nodes at once (e.g. default facility/shared-service containers) and
+      // reflow the hierarchy tight. No history entry — this is a default presentation.
+      addCollapsed: (nodeIds) => {
+        set(
+          produce((state: GraphStoreState) => {
+            let changed = false;
+            nodeIds.forEach((id) => {
+              if (!state.collapsedIds.includes(id)) {
+                state.collapsedIds.push(id);
+                changed = true;
+              }
+            });
+            if (!changed) return;
             ensureLensState(state.document, "hierarchy");
             const positions = calculateCleanupLayout(
               visibleHierarchyNodes(state),

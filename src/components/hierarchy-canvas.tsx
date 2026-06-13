@@ -50,7 +50,7 @@ import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
-import { computeOrgUnits, unitMemberIdSet, type ComputedUnit } from "@/lib/graph/org-units";
+import { computeOrgUnits, unitMemberIdSet, computeUnitAnchors, type ComputedUnit } from "@/lib/graph/org-units";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -132,6 +132,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const toggleMirrorLanes = useGraphStore((state) => state.toggleMirrorLanes);
   const collapsedIds = useGraphStore((state) => state.collapsedIds);
   const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
+  const addCollapsed = useGraphStore((state) => state.addCollapsed);
   const setLensStore = useGraphStore((state) => state.setLens);
   const setLensFilters = useGraphStore((state) => state.setLensFilters);
   const undo = useGraphStore((state) => state.undo);
@@ -267,6 +268,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const isCrossCutting = lens === "brand" || lens === "channel" || isGridLens(lens);
   const orgUnits = useMemo(() => computeOrgUnits(personNodes), [personNodes]);
   const unitMemberIds = useMemo(() => unitMemberIdSet(personNodes), [personNodes]);
+
   const showUnitRail =
     isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
 
@@ -301,7 +303,31 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return map;
   }, [edgesData]);
 
-  // Hierarchy view: people folded away under collapsed managers
+  // Hierarchy view: roll each facility / shared service into one container card at the
+  // point it enters the reporting tree. Collapsed by default; expandable per anchor.
+  const unitAnchors = useMemo(
+    () => computeUnitAnchors(personNodes, parentMap, childMap),
+    [personNodes, parentMap, childMap],
+  );
+  const unitAnchorMap = useMemo(
+    () => new Map(unitAnchors.map((a) => [a.id, a.def])),
+    [unitAnchors],
+  );
+  // Default facilities/shared services to collapsed containers, once per load, then
+  // reflow the hierarchy tight. Routed through the real collapse set so the layout folds.
+  const seededAnchorsRef = useRef(false);
+  useEffect(() => {
+    if (seededAnchorsRef.current) return;
+    // Wait until the reporting tree is loaded, or anchors compute wrong
+    if (personNodes.length === 0 || Object.keys(parentMap).length === 0) return;
+    if (unitAnchors.length === 0) return;
+    seededAnchorsRef.current = true;
+    const current = useGraphStore.getState().collapsedIds;
+    const toAdd = unitAnchors.map((a) => a.id).filter((id) => !current.includes(id));
+    if (toAdd.length > 0) addCollapsed(toAdd);
+  }, [personNodes.length, parentMap, unitAnchors, addCollapsed]);
+
+  // Hierarchy view: people folded away under collapsed managers (incl. facility anchors)
   const hiddenByCollapse = useMemo(
     () =>
       lens === "hierarchy" && collapsedIds.length > 0
@@ -512,6 +538,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         hiddenCount: descendantCounts[node.id] ?? 0,
         isCollapsed: collapsedIds.includes(node.id),
         onToggleCollapse: lens === "hierarchy" ? toggleCollapse : undefined,
+        // When this node is a facility / shared-service anchor, render it as a container
+        unit: lens === "hierarchy" ? unitAnchorMap.get(node.id) : undefined,
         actions: {
           addDirectReport: (managerId) => {
             const manager = personNodes.find((n) => n.id === managerId);
@@ -633,6 +661,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     isCrossCutting,
     orgUnits,
     unitMemberIds,
+    unitAnchorMap,
     filters?.focusIds,
     filters?.hiddenIds,
     hiddenByCollapse,
