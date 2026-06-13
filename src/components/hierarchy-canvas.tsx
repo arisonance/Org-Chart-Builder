@@ -50,6 +50,7 @@ import { GridColNode, GridRowNode } from "@/components/grid-frame-node";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
+import { UnitFoundation } from "@/components/unit-foundation";
 import { computeOrgUnits, unitMemberIdSet, computeUnitAnchors, type ComputedUnit } from "@/lib/graph/org-units";
 import {
   BRAND_COLORS,
@@ -269,8 +270,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const orgUnits = useMemo(() => computeOrgUnits(personNodes), [personNodes]);
   const unitMemberIds = useMemo(() => unitMemberIdSet(personNodes), [personNodes]);
 
+  const noFocus = (filters?.focusIds?.length ?? 0) === 0;
+  // Brand/Channel get the left rail; the Grid gets a full-width foundation band instead
   const showUnitRail =
-    isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
+    (lens === "brand" || lens === "channel") && noFocus && orgUnits.length > 0;
+  const showUnitFoundation = isGridLens(lens) && noFocus && orgUnits.length > 0;
 
   // Dedicated Shared Services view: focus the reporting tree on everyone in the
   // shared-service units (Finance + Admin/HR + IT) at once.
@@ -1218,7 +1222,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           
           <OrgHealthPanel open={healthOpen} onClose={() => setHealthOpen(false)} />
 
-          {/* Fixed rail of rolled-up facilities & shared services (cross-cutting lenses) */}
+          {/* Fixed rail of rolled-up facilities & shared services (brand/channel lenses) */}
           {showUnitRail && (
             <UnitRail
               units={orgUnits}
@@ -1226,6 +1230,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               onToggleExpand={toggleUnitExpand}
               onJump={jumpToUnit}
               onSelectMember={selectNode}
+              onOpenSharedServices={openSharedServices}
+            />
+          )}
+
+          {/* Grid lens: shared services & facilities as the foundation beneath the matrix */}
+          {showUnitFoundation && (
+            <UnitFoundation
+              units={orgUnits}
+              onJump={jumpToUnit}
               onOpenSharedServices={openSharedServices}
             />
           )}
