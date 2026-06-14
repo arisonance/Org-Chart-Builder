@@ -44,6 +44,7 @@ type GraphStoreState = {
   document: GraphDocument;
   selection: SelectionState;
   clipboard: ClipboardPayload | null;
+  settingsClipboard: PersonSettingsClipboard | null;
   history: HistoryStack;
   scenarios: Record<string, Scenario>;
   activeScenarioId: string | null;
@@ -74,6 +75,8 @@ type GraphStoreActions = {
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
   applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
+  copyPersonSettings: (nodeId: string) => void;
+  clearPersonSettings: () => void;
   addRelationship: (sourceId: string, targetId: string, type: RelationshipType, meta?: Partial<GraphEdge["metadata"]>) => string | null;
   updateRelationship: (edgeId: string, updates: Partial<GraphEdge["metadata"]>) => void;
   removeRelationship: (edgeId: string) => void;
@@ -140,6 +143,41 @@ type UpdatePersonOptions = {
   recordHistory?: boolean;
 };
 
+// Copyable "settings" (org dimensions), Lightroom-style — not name/title/job
+export type PersonSettingsField = "brand" | "channel" | "department" | "tier" | "location";
+export type PersonSettingsClipboard = {
+  sourceId: string;
+  sourceName: string;
+  attrs: Pick<
+    PersonAttributes,
+    "brands" | "primaryBrand" | "channels" | "primaryChannel" | "departments" | "primaryDepartment" | "tier" | "location"
+  >;
+};
+
+// Which attribute keys each field controls when pasting
+export const SETTINGS_FIELD_KEYS: Record<PersonSettingsField, Array<keyof PersonAttributes>> = {
+  brand: ["brands", "primaryBrand"],
+  channel: ["channels", "primaryChannel"],
+  department: ["departments", "primaryDepartment"],
+  tier: ["tier"],
+  location: ["location"],
+};
+
+/** Build the attribute patch for pasting the chosen settings fields from a clipboard. */
+export const buildSettingsPatch = (
+  clip: PersonSettingsClipboard,
+  fields: PersonSettingsField[],
+): Partial<PersonAttributes> => {
+  const patch: Partial<PersonAttributes> = {};
+  fields.forEach((f) => {
+    SETTINGS_FIELD_KEYS[f].forEach((k) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (patch as any)[k] = clip.attrs[k as keyof typeof clip.attrs];
+    });
+  });
+  return patch;
+};
+
 const cloneDocument = (document: GraphDocument): GraphDocument => cloneDeep(document);
 
 const createSnapshot = (state: GraphStoreState): GraphSnapshot => ({
@@ -157,6 +195,7 @@ const initialState: GraphStoreState = {
     edgeIds: [],
   },
   clipboard: null,
+  settingsClipboard: null,
   history: {
     past: [],
     future: [],
@@ -409,6 +448,28 @@ export const useGraphStore = create<GraphStore>()(
           });
         });
       },
+      copyPersonSettings: (nodeId) => {
+        const node = get().document.nodes.find((n) => n.id === nodeId && n.kind === "person");
+        if (!node || node.kind !== "person") return;
+        const a = node.attributes;
+        set({
+          settingsClipboard: {
+            sourceId: node.id,
+            sourceName: node.name,
+            attrs: {
+              brands: [...a.brands],
+              primaryBrand: a.primaryBrand,
+              channels: [...a.channels],
+              primaryChannel: a.primaryChannel,
+              departments: [...a.departments],
+              primaryDepartment: a.primaryDepartment,
+              tier: a.tier,
+              location: a.location,
+            },
+          },
+        });
+      },
+      clearPersonSettings: () => set({ settingsClipboard: null }),
       addRelationship: (sourceId, targetId, type, meta) => {
         if (sourceId === targetId) return null;
         const id = `edge-${type}-${nanoid(8)}`;

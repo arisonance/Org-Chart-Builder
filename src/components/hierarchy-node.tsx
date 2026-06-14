@@ -24,6 +24,8 @@ type NodeActions = {
   lockToggle: (nodeId: string) => void;
   colorTag: (nodeId: string, token: string) => void;
   openEditor: (nodeId: string) => void;
+  copySettings: (nodeId: string) => void;
+  pasteSettings: (nodeId: string) => void;
 };
 
 export type HierarchyNodeData = {
@@ -290,6 +292,11 @@ function Component({ data }: { data: HierarchyNodeData }) {
         <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
         <MenuItem onSelect={() => actions.addSponsor(node.id)}>Add executive sponsor</MenuItem>
         <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
+        <MenuSeparator />
+        <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
+          Copy settings
+        </MenuItem>
+        <MenuItem onSelect={() => actions.pasteSettings(node.id)}>Paste settings</MenuItem>
         <MenuSeparator />
         <ContextMenu.Sub>
           <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">

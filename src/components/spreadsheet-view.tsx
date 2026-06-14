@@ -2,10 +2,61 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Cross2Icon, MagnifyingGlassIcon, CaretSortIcon, ChevronDownIcon, PlusIcon, CheckIcon } from "@radix-ui/react-icons";
+import { Cross2Icon, MagnifyingGlassIcon, CaretSortIcon, ChevronDownIcon, PlusIcon, CheckIcon, ClipboardIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useGraphStore } from "@/store/graph-store";
+import { buildSettingsPatch, type PersonSettingsField } from "@/store/graph-store";
 import type { PersonNode } from "@/lib/schema/types";
+
+const SETTINGS_FIELDS: Array<{ key: PersonSettingsField; label: string }> = [
+  { key: "brand", label: "Brand (primary + all)" },
+  { key: "channel", label: "Channel (primary + all)" },
+  { key: "department", label: "Department" },
+  { key: "tier", label: "Tier" },
+  { key: "location", label: "Location" },
+];
+
+// Lightroom-style "paste settings" — choose which fields, then apply to the selection
+function PasteSettingsMenu({ sourceName, count, onApply }: { sourceName: string; count: number; onApply: (fields: PersonSettingsField[]) => void }) {
+  const [on, setOn] = useState<Record<PersonSettingsField, boolean>>({ brand: true, channel: true, department: true, tier: true, location: true });
+  const chosen = SETTINGS_FIELDS.filter((f) => on[f.key]).map((f) => f.key);
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700">
+          <ClipboardIcon className="h-3.5 w-3.5" /> Paste settings <ChevronDownIcon className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content side="top" sideOffset={6} className="z-[70] w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl dark:border-white/10 dark:bg-slate-800">
+          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">From {sourceName} · which settings?</p>
+          {SETTINGS_FIELDS.map((f) => (
+            <DropdownMenu.CheckboxItem
+              key={f.key}
+              checked={on[f.key]}
+              onCheckedChange={(v) => setOn((p) => ({ ...p, [f.key]: !!v }))}
+              onSelect={(e) => e.preventDefault()}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-700 outline-none hover:bg-slate-50 focus:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5"
+            >
+              <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${on[f.key] ? "border-violet-500 bg-violet-500 text-white" : "border-slate-300"}`}>
+                {on[f.key] && <CheckIcon className="h-3 w-3" />}
+              </span>
+              {f.label}
+            </DropdownMenu.CheckboxItem>
+          ))}
+          <DropdownMenu.Separator className="my-1 h-px bg-slate-100 dark:bg-white/10" />
+          <DropdownMenu.Item
+            disabled={chosen.length === 0}
+            onSelect={() => onApply(chosen)}
+            className="cursor-pointer rounded-lg bg-violet-600 px-2 py-1.5 text-center text-xs font-semibold text-white outline-none hover:bg-violet-700 data-[disabled]:opacity-40"
+          >
+            Apply to {count} {count === 1 ? "person" : "people"}
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 type SpreadsheetViewProps = { open: boolean; onClose: () => void };
 
@@ -252,6 +303,9 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
   const edges = useGraphStore((s) => s.document.edges);
   const updatePerson = useGraphStore((s) => s.updatePerson);
   const applyToPeople = useGraphStore((s) => s.applyToPeople);
+  const settingsClipboard = useGraphStore((s) => s.settingsClipboard);
+  const copyPersonSettings = useGraphStore((s) => s.copyPersonSettings);
+  const clearPersonSettings = useGraphStore((s) => s.clearPersonSettings);
   const addRelationship = useGraphStore((s) => s.addRelationship);
   const removeRelationship = useGraphStore((s) => s.removeRelationship);
 
@@ -393,6 +447,20 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] dark:border-white/10 dark:bg-slate-900">
           <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700 dark:bg-sky-500/20 dark:text-sky-200">{selected.size} selected</span>
+
+          {/* Copy / paste settings (Lightroom-style) */}
+          {selected.size === 1 && (
+            <button onClick={() => copyPersonSettings([...selected][0])} className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50 dark:border-violet-400/30 dark:bg-slate-800 dark:text-violet-200">
+              <ClipboardCopyIcon className="h-3.5 w-3.5" /> Copy settings
+            </button>
+          )}
+          {settingsClipboard && (
+            <>
+              <PasteSettingsMenu sourceName={settingsClipboard.sourceName} count={selected.size} onApply={(fields) => applyToPeople([...selected], () => buildSettingsPatch(settingsClipboard, fields))} />
+              <button onClick={clearPersonSettings} title="Clear copied settings" className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"><Cross2Icon className="h-3.5 w-3.5" /></button>
+            </>
+          )}
+
           <span className="text-[11px] text-slate-400">Bulk:</span>
           <BulkMenu label="Add channel" options={opts.channels} onPick={bulkAddChannel} accent />
           <BulkMenu label="Add brand" options={opts.brands} onPick={bulkAddBrand} />

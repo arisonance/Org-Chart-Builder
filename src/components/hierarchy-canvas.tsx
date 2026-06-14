@@ -28,7 +28,7 @@ import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
-import { useGraphStore } from "@/store/graph-store";
+import { useGraphStore, buildSettingsPatch } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
 import {
@@ -139,6 +139,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const collapsedIds = useGraphStore((state) => state.collapsedIds);
   const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
   const addCollapsed = useGraphStore((state) => state.addCollapsed);
+  const applyToPeople = useGraphStore((state) => state.applyToPeople);
+  const copyPersonSettings = useGraphStore((state) => state.copyPersonSettings);
   const setLensStore = useGraphStore((state) => state.setLens);
   const setLensFilters = useGraphStore((state) => state.setLensFilters);
   const undo = useGraphStore((state) => state.undo);
@@ -622,6 +624,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           lockToggle: toggleNodeLock,
           colorTag: addTagToNode,
           openEditor: (nodeId) => selectNode(nodeId),
+          copySettings: (nodeId) => {
+            copyPersonSettings(nodeId);
+            showToast("Settings copied — right-click another person to paste");
+          },
+          pasteSettings: (nodeId) => {
+            const clip = useGraphStore.getState().settingsClipboard;
+            if (!clip) {
+              showToast("Copy a person's settings first");
+              return;
+            }
+            // Paste onto the multi-selection if this node is part of it, else just this one
+            const sel = useGraphStore.getState().selection.nodeIds;
+            const targets = sel.includes(nodeId) && sel.length > 1 ? sel : [nodeId];
+            applyToPeople(targets, () => buildSettingsPatch(clip, ["brand", "channel", "department", "tier", "location"]));
+            showToast(`Pasted ${clip.sourceName}'s settings onto ${targets.length} ${targets.length === 1 ? "person" : "people"}`);
+          },
         },
         onSelect: (id, additive) => {
           selectNode(id, additive);
