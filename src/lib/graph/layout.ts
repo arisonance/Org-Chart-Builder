@@ -447,13 +447,19 @@ const TIER_ORDER: Record<string, number> = {
   ic: 4,
 };
 
-const computeGrid = (people: PersonNode[]) => {
+const computeGrid = (people: PersonNode[], collapsed: Set<string> = new Set()) => {
   const rowCounts = new Map<string, number>();
   const colCounts = new Map<string, number>();
   const cells = new Map<string, PersonNode[]>();
+  // When a channel's group is collapsed, everyone in it shares one group column
+  const colKeyOf = (p: PersonNode) => {
+    const c = gridColKey(p);
+    const g = channelTopGroup(c);
+    return g && collapsed.has(g) ? g : c;
+  };
   people.forEach((p) => {
     const r = gridRowKey(p);
-    const c = gridColKey(p);
+    const c = colKeyOf(p);
     rowCounts.set(r, (rowCounts.get(r) ?? 0) + 1);
     colCounts.set(c, (colCounts.get(c) ?? 0) + 1);
     const k = `${r}|||${c}`;
@@ -521,9 +527,10 @@ const computeGrid = (people: PersonNode[]) => {
 
 export const calculateGridLayout = (
   nodes: GraphNode[],
+  collapsed: Set<string> = new Set(),
 ): Record<string, { x: number; y: number }> => {
   const people = nodes.filter((n): n is PersonNode => n.kind === "person");
-  const g = computeGrid(people);
+  const g = computeGrid(people, collapsed);
   const positions: Record<string, { x: number; y: number }> = {};
   g.rows.forEach((r) => {
     g.cols.forEach((c) => {
@@ -542,9 +549,9 @@ export const calculateGridLayout = (
   return positions;
 };
 
-export const getGridGeometry = (nodes: GraphNode[]): GridGeometry => {
+export const getGridGeometry = (nodes: GraphNode[], collapsed: Set<string> = new Set()): GridGeometry => {
   const people = nodes.filter((n): n is PersonNode => n.kind === "person");
-  const g = computeGrid(people);
+  const g = computeGrid(people, collapsed);
   const cells: GridGeometry["cells"] = [];
   let maxCell = 0;
   g.rows.forEach((r) => {

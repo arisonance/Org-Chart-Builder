@@ -59,15 +59,27 @@ CHANNEL_TAXONOMY.forEach((g) => walk(g, []));
 /** Leaf channels in canonical (taxonomy) order. */
 export const CHANNEL_LEAVES: string[] = leaves;
 
-/** Top-level group ("Residential" | "Commercial" | "Other") for a leaf channel. */
-export const channelTopGroup = (channel: string): string | null => topGroupOf[channel] ?? null;
+/** Top-level group ("Residential" | "Commercial" | "Other") for a leaf channel,
+ *  or the label itself if a group label is passed in. */
+export const channelTopGroup = (channel: string): string | null =>
+  topGroupOf[channel] ?? (GROUP_LABELS.has(channel) ? channel : null);
 /** Immediate parent group ("Residential" | "Professional" | "Commercial" | "Other"). */
 export const channelSubGroup = (channel: string): string | null => subGroupOf[channel] ?? null;
 /** Ancestor labels, outermost first. */
 export const channelPath = (channel: string): string[] => pathOf[channel] ?? [];
 
+const GROUP_LABELS = new Set(CHANNEL_TAXONOMY.map((g) => g.label));
+export const isChannelGroupLabel = (s: string) => GROUP_LABELS.has(s);
+
 const orderIndex: Record<string, number> = {};
 CHANNEL_LEAVES.forEach((c, i) => (orderIndex[c] = i));
-/** Sort key that keeps a group's channels adjacent and in taxonomy order; shared/unknown last. */
+// A collapsed group's column/lane sorts to where its first channel would sit
+const groupMinIndex: Record<string, number> = {};
+CHANNEL_TAXONOMY.forEach((g) => {
+  const idxs = CHANNEL_LEAVES.filter((leaf) => topGroupOf[leaf] === g.label).map((leaf) => orderIndex[leaf]);
+  groupMinIndex[g.label] = idxs.length ? Math.min(...idxs) : 999;
+});
+/** Sort key that keeps a group's channels adjacent and in taxonomy order; handles
+ *  collapsed group labels; shared/unknown last. */
 export const channelSortKey = (channel: string): number =>
-  channel in orderIndex ? orderIndex[channel] : 999;
+  channel in orderIndex ? orderIndex[channel] : channel in groupMinIndex ? groupMinIndex[channel] : 999;

@@ -129,24 +129,41 @@ function CellComponent({ data }: { data: GridCellNodeData }) {
   );
 }
 
-export type GridGroupNodeData = { label: string; count: number; width: number; color: string; zoom: number };
+export type GridGroupNodeData = {
+  label: string;
+  count: number;
+  width: number;
+  color: string;
+  zoom: number;
+  collapsed?: boolean;
+  onToggle?: (label: string) => void;
+};
 
-// Top-level channel-group header spanning its member columns
+// Top-level channel-group header spanning its member columns; click to collapse/expand
 function GroupComponent({ data }: { data: GridGroupNodeData }) {
-  const { label, count, width, color, zoom } = data;
+  const { label, count, width, color, zoom, collapsed, onToggle } = data;
   const safeZoom = Math.max(zoom || 1, 0.12);
   const labelFont = Math.min(64, 26 / safeZoom);
   const chipFont = Math.min(34, 12 / safeZoom);
+  const toggleFont = Math.min(48, 20 / safeZoom);
   return (
-    <div
-      className="pointer-events-none flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border-2"
-      style={{ width, borderColor: `${color}55`, background: `${color}14` }}
+    <button
+      type="button"
+      onClick={onToggle ? () => onToggle(label) : undefined}
+      title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 transition ${onToggle ? "cursor-pointer hover:brightness-95" : ""}`}
+      style={{ width, borderColor: `${color}66`, background: `${color}${collapsed ? "22" : "14"}` }}
     >
-      <span className="font-extrabold uppercase tracking-wider" style={{ color, fontSize: labelFont, lineHeight: 1 }}>{label}</span>
-      <span className="rounded-full bg-white/85 px-3 py-0.5 font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-white/10" style={{ fontSize: chipFont }}>
-        {count} {count === 1 ? "person" : "people"}
+      <span className="flex items-center gap-2 font-extrabold uppercase tracking-wider" style={{ color, fontSize: labelFont, lineHeight: 1 }}>
+        {onToggle && (
+          <span className="font-mono" style={{ fontSize: toggleFont }} aria-hidden>{collapsed ? "▸" : "▾"}</span>
+        )}
+        {label}
       </span>
-    </div>
+      <span className="rounded-full bg-white/85 px-3 py-0.5 font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-white/10" style={{ fontSize: chipFont }}>
+        {count} {count === 1 ? "person" : "people"}{collapsed ? " · collapsed" : ""}
+      </span>
+    </button>
   );
 }
 

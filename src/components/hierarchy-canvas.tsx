@@ -40,6 +40,7 @@ import {
   lensToDimension,
   isGridLens,
   getGridGeometry,
+  calculateGridLayout,
   collectDescendants,
   UNASSIGNED_GROUP_KEY,
   NODE_WIDTH,
@@ -150,6 +151,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
   const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
+  const [collapsedChannelGroups, setCollapsedChannelGroups] = useState<Set<string>>(new Set());
+  const toggleChannelGroup = useCallback((label: string) => {
+    setCollapsedChannelGroups((prev) => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  }, []);
 
   const toggleUnitExpand = useCallback((unitId: string) => {
     setExpandedUnitIds((prev) => {
@@ -508,7 +517,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   }, [filters?.activeTokens, personNodes, lens]);
 
   const computedNodes = useMemo<Node[]>(() => {
-    const positions = lensLayout?.positions ?? {};
+    // Grid lens recomputes positions fresh when a channel group is collapsed so the
+    // cards land in the merged group column (matching the recomputed geometry).
+    const positions =
+      isGridLens(lens) && collapsedChannelGroups.size > 0
+        ? calculateGridLayout(nodesData, collapsedChannelGroups)
+        : lensLayout?.positions ?? {};
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
     
@@ -632,7 +646,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     // Brand × Channel grid: draw row bands (brands) and column bands (channels)
     if (isGridLens(lens)) {
-      const frame = buildGridFrameNodes(personNodes, lodZoom);
+      const frame = buildGridFrameNodes(personNodes, lodZoom, collapsedChannelGroups, toggleChannelGroup);
       return [...frame, ...personFlowNodes];
     }
 
@@ -673,6 +687,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     orgUnits,
     unitMemberIds,
     unitAnchorMap,
+    collapsedChannelGroups,
+    toggleChannelGroup,
+    nodesData,
     filters?.focusIds,
     filters?.hiddenIds,
     hiddenByCollapse,
@@ -1749,9 +1766,14 @@ const MIRROR_SECTION_GAP = 90;
 // full grid height. Rows render first so the translucent channel columns layer
 // over them, producing the matrix grid feel; person cards sit on top.
 const GRID_GROUP_BAND_H = 96;
-const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
-  const geo = getGridGeometry(people);
-  // Channel-group header bands, sitting above the column headers
+const buildGridFrameNodes = (
+  people: PersonNode[],
+  zoom: number,
+  collapsedGroups: Set<string>,
+  onToggleGroup: (label: string) => void,
+): Node[] => {
+  const geo = getGridGeometry(people, collapsedGroups);
+  // Channel-group header bands, sitting above the column headers; click to collapse
   const groupNodes: Node[] = geo.colGroups.map((grp) => ({
     id: `gridgroup:${grp.label}`,
     type: "gridGroupNode",
@@ -1762,10 +1784,12 @@ const buildGridFrameNodes = (people: PersonNode[], zoom: number): Node[] => {
       width: grp.width,
       color: CHANNEL_GROUP_COLORS[grp.label] ?? UNASSIGNED_LANE_COLOR,
       zoom,
+      collapsed: collapsedGroups.has(grp.label),
+      onToggle: onToggleGroup,
     },
     style: { width: grp.width, height: GRID_GROUP_BAND_H },
     draggable: false,
-    selectable: false,
+    selectable: true,
     focusable: false,
     zIndex: 2,
   }));
