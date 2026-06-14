@@ -51,7 +51,7 @@ export const DEPARTMENT_COLORS: Record<string, string> = {
 export const UNASSIGNED_LANE_COLOR = "#94a3b8";
 
 export const RELATIONSHIP_COLORS: Record<string, string> = {
-  manager: "#0ea5e9",
+  manager: "#0284c7",
   sponsor: "#f59e0b",
   dotted: "#a855f7",
 };

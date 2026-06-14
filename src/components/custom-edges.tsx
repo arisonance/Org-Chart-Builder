@@ -35,6 +35,8 @@ function ManagerEdgeComponent({
     () => ({
       stroke: RELATIONSHIP_COLORS.manager,
       strokeWidth: selected ? 3 : 2.5,
+      // Keep the line a constant width on screen so it stays visible when zoomed out
+      vectorEffect: 'non-scaling-stroke' as const,
       ...(style || {}),
     }),
     [selected, style]
@@ -79,6 +81,7 @@ function SponsorEdgeComponent({
     () => ({
       stroke: RELATIONSHIP_COLORS.sponsor,
       strokeWidth: selected ? 3 : 2.5,
+      vectorEffect: 'non-scaling-stroke' as const,
       ...(style || {}),
     }),
     [selected, style]
@@ -145,6 +148,7 @@ function DottedEdgeComponent({
       stroke: RELATIONSHIP_COLORS.dotted,
       strokeWidth: selected ? 3 : 2.5,
       strokeDasharray: '6 6',
+      vectorEffect: 'non-scaling-stroke' as const,
       ...(style || {}),
     }),
     [selected, style]
