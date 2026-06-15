@@ -59,6 +59,9 @@ type GraphStoreState = {
   mirrorLanes: boolean;
   // Hierarchy view: managers whose subtree is folded away
   collapsedIds: string[];
+  // Header search → canvas: ask the canvas to fly to a person. The nonce lets the
+  // same person be re-requested (it always changes), and is not persisted.
+  focusRequest: { id: string; nonce: number } | null;
 };
 
 type GraphStoreActions = {
@@ -72,6 +75,7 @@ type GraphStoreActions = {
   selectNode: (nodeId: string, additive?: boolean) => void;
   selectEdge: (edgeId: string, additive?: boolean) => void;
   clearSelection: () => void;
+  requestFocus: (nodeId: string) => void;
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
   applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
@@ -211,6 +215,7 @@ const initialState: GraphStoreState = {
   },
   mirrorLanes: true,
   collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
+  focusRequest: null,
 };
 
 // Hierarchy layout/cleanup should only place people not folded away under a
@@ -382,6 +387,10 @@ export const useGraphStore = create<GraphStore>()(
             state.selection = { nodeIds: [], edgeIds: [] };
           }),
         );
+      },
+      requestFocus: (nodeId) => {
+        // Bump nonce so the canvas effect re-fires even for the same person.
+        set({ focusRequest: { id: nodeId, nonce: Date.now() } });
       },
       addPerson: (payload) => {
         const id = `person-${nanoid(10)}`;

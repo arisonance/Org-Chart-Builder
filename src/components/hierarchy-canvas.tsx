@@ -20,13 +20,14 @@ import {
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { MixerHorizontalIcon } from "@radix-ui/react-icons";
+import { MixerHorizontalIcon, QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
 import { LaneNode, type LaneNodeData } from "@/components/lane-node";
 import { MirrorNode, type MirrorNodeData } from "@/components/mirror-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { CanvasContextBar } from "@/components/canvas-context-bar";
+import { HelpDialog } from "@/components/help-dialog";
 import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
 import { useGraphStore, buildSettingsPatch } from "@/store/graph-store";
@@ -154,6 +155,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const focusRequest = useGraphStore((state) => state.focusRequest);
   const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
   const [collapsedChannelGroups, setCollapsedChannelGroups] = useState<Set<string>>(new Set());
   const toggleChannelGroup = useCallback((label: string) => {
@@ -254,6 +257,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       { id: "fit", label: "Fit view", hint: "0", run: () => rfInstance?.fitView({ padding: 0.2, duration: 300 }) },
       { id: "cleanup", label: "Clean up layout", run: () => cleanupCanvas(lens, "spacious") },
       { id: "health", label: "Open Org Health X-ray", run: () => setHealthOpen(true) },
+      { id: "help", label: "Show keyboard shortcuts & guide", hint: "?", run: () => setHelpOpen(true) },
       {
         id: "add-person",
         label: "Add person",
@@ -467,6 +471,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [parentMap, selectNode, rfInstance],
   );
+
+  // Header "Find anyone" search asks the canvas to fly to a person; the nonce
+  // changes on every request so re-picking the same person still flies there.
+  useEffect(() => {
+    if (!focusRequest) return;
+    jumpToPerson(focusRequest.id);
+  }, [focusRequest, jumpToPerson]);
 
   // Person focus mode: selecting a single person spotlights their matrix web
   // (manager line, reports, dotted team, sponsor) and dims everyone else.
@@ -1053,6 +1064,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // "?" opens the shortcuts & guide
+      if (event.key === "?") {
+        event.preventDefault();
+        setHelpOpen(true);
+        return;
+      }
+
       // Cmd/Ctrl + D to duplicate
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
@@ -1314,45 +1332,52 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 </button>
               </div>
             )}
-            {/* Cleanup Canvas Button */}
+            {/* Unified top-right tools dock: one labeled home for the canvas
+                actions instead of buttons scattered around every corner */}
             {personNodes.length > 0 && (
-              <CleanupButton
-                onCleanup={(mode) => {
-                  cleanupCanvas(lens, mode);
-                  // Fit view after cleanup with smooth animation
-                  setTimeout(() => {
-                    rfInstance?.fitView({ padding: 0.2, duration: 400, maxZoom: 1.5 });
-                  }, 100);
-                }}
-              />
-            )}
-            {/* Org Health X-ray toggle */}
-            {personNodes.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setHealthOpen((v) => !v)}
-                className={[
-                  "absolute right-6 top-6 z-30 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-400",
-                  healthOpen
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-800 ring-emerald-200 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-500/20 dark:text-emerald-200 dark:ring-emerald-400/20"
-                    : "border-slate-200 bg-white/90 text-slate-600 ring-slate-200 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10",
-                ].join(" ")}
-                title="Span outliers, matrix overload, coverage gaps"
-              >
-                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                Org Health
-              </button>
-            )}
-            {/* Persistent link to the dedicated Shared Services view (all lenses) */}
-            {personNodes.length > 0 && (
-              <button
-                type="button"
-                onClick={openSharedServices}
-                className="absolute right-[8.75rem] top-6 z-30 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white/90 px-4 py-2 text-xs font-semibold text-violet-700 shadow-sm ring-1 ring-violet-100 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 dark:border-violet-400/30 dark:bg-slate-900/70 dark:text-violet-200 dark:ring-violet-400/20 dark:hover:bg-violet-500/10"
-                title="See all shared services (Finance, HR, IT) together"
-              >
-                🔗 Shared Services
-              </button>
+              <div className="absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  title="Shortcuts & guide (?)"
+                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  <QuestionMarkCircledIcon className="h-3.5 w-3.5" />
+                  Help
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={() => setHealthOpen((v) => !v)}
+                  title="Span outliers, matrix overload, coverage gaps"
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
+                    healthOpen
+                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                      : "hover:bg-slate-100 dark:hover:bg-white/10",
+                  ].join(" ")}
+                >
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                  Org Health
+                </button>
+                <button
+                  type="button"
+                  onClick={openSharedServices}
+                  title="See all shared services (Finance, HR, IT) together"
+                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-500/10"
+                >
+                  🔗 Shared Services
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <CleanupButton
+                  onCleanup={(mode) => {
+                    cleanupCanvas(lens, mode);
+                    setTimeout(() => {
+                      rfInstance?.fitView({ padding: 0.2, duration: 400, maxZoom: 1.5 });
+                    }, 100);
+                  }}
+                />
+              </div>
             )}
           </ReactFlow>
           <EdgeContextMenu
@@ -1362,6 +1387,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           />
           
           <OrgHealthPanel open={healthOpen} onClose={() => setHealthOpen(false)} />
+
+          <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
 
           {/* Fixed rail of rolled-up facilities & shared services (brand/channel lenses) */}
           {showUnitRail && (
@@ -1722,10 +1749,10 @@ const CleanupButton = ({
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="absolute bottom-6 right-[180px] z-30 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-900 dark:focus-visible:ring-slate-500"
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:text-slate-300 dark:hover:bg-white/10"
           title="Clean up canvas layout"
         >
-          <MixerHorizontalIcon className="h-4 w-4" />
+          <MixerHorizontalIcon className="h-3.5 w-3.5" />
           Clean Up
         </button>
       </Popover.Trigger>
@@ -1734,7 +1761,7 @@ const CleanupButton = ({
         <Popover.Content
           className="z-50 w-64 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
           sideOffset={12}
-          side="top"
+          side="bottom"
           align="end"
         >
           <div className="space-y-1">

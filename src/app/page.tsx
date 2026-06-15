@@ -12,6 +12,7 @@ import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import { SpreadsheetView } from '@/components/spreadsheet-view';
 import { SearchFilterBar } from '@/components/search-filter-bar';
+import { PersonSearch } from '@/components/person-search';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
 import { parseGraphDocument } from '@/lib/schema/validation';
@@ -147,6 +148,7 @@ export default function Home() {
             </h1>
             <LensSwitcher activeLens={lens} onChange={setLens} />
             <ScenarioManager />
+            <PersonSearch />
           </div>
           <div className="flex items-center gap-2">
             <button
