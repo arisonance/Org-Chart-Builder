@@ -96,6 +96,19 @@ function Component({ data }: { data: HierarchyNodeData }) {
   // Level of detail based on zoom - less aggressive for better initial render
   const lodLevel = getLodLevel(zoom);
 
+  // Connection affordances (handle dots + the Dotted/Sponsor labels) are only
+  // useful when you're close enough to actually wire a relationship. Hide them
+  // when zoomed out so they don't turn into noise on every card; at full zoom
+  // reveal them on hover or when the card is selected. Handles stay mounted
+  // either way (opacity only) so existing edges keep attaching.
+  const connectorClass = `transition-opacity duration-150 ${
+    lodLevel !== "full"
+      ? "opacity-0"
+      : isSelected
+        ? "opacity-100"
+        : "opacity-0 group-hover:opacity-100"
+  }`;
+
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
     onSelect(node.id, additive || event.metaKey || event.ctrlKey || event.shiftKey);
@@ -118,7 +131,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
             position={Position.Top}
             id={`${node.id}-manager-target`}
             data-handle-type="manager"
-            className={`${HANDLE_BASE_CLASS} !bg-slate-400 dark:!bg-slate-600`}
+            className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-slate-400 dark:!bg-slate-600`}
           />
           <button
             type="button"
@@ -189,6 +202,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
                     </p>
                   )}
                 </div>
+                {lodLevel === 'full' && (
                 <div className="flex flex-wrap items-center justify-center gap-1">
                   {tierBadge ? (
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tierBadge.className}`}>
@@ -222,6 +236,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
                     </span>
                   ))}
                 </div>
+                )}
               </>
             )}
           </button>
@@ -231,9 +246,9 @@ function Component({ data }: { data: HierarchyNodeData }) {
               position={Position.Left}
               id={`${node.id}-dotted-source`}
               data-handle-type="dotted"
-              className={`${HANDLE_BASE_CLASS} !bg-indigo-400 dark:!bg-indigo-500`}
+              className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-indigo-400 dark:!bg-indigo-500`}
             />
-            <span className="text-[9px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300">
+            <span className={`${connectorClass} text-[9px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300`}>
               Dotted
             </span>
           </div>
@@ -243,19 +258,19 @@ function Component({ data }: { data: HierarchyNodeData }) {
               position={Position.Right}
               id={`${node.id}-sponsor-source`}
               data-handle-type="sponsor"
-              className={`${HANDLE_BASE_CLASS} !bg-amber-400 dark:!bg-amber-500`}
+              className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-amber-400 dark:!bg-amber-500`}
             />
-            <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500 dark:text-amber-300">
+            <span className={`${connectorClass} text-[9px] font-medium uppercase tracking-wide text-amber-500 dark:text-amber-300`}>
               Sponsor
             </span>
           </div>
-          
+
           <Handle
             type="source"
             position={Position.Bottom}
             id={`${node.id}-manager-source`}
             data-handle-type="manager"
-            className={`${HANDLE_BASE_CLASS} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
+            className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
           />
 
           {/* Subtree fold chip, People Finder style: "6 ⌄" expanded, "+12 ▸" collapsed */}
