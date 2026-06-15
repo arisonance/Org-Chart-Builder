@@ -26,6 +26,7 @@ import { LaneNode, type LaneNodeData } from "@/components/lane-node";
 import { MirrorNode, type MirrorNodeData } from "@/components/mirror-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
+import { CanvasContextBar } from "@/components/canvas-context-bar";
 import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
 import { useGraphStore, buildSettingsPatch } from "@/store/graph-store";
@@ -139,6 +140,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const collapsedIds = useGraphStore((state) => state.collapsedIds);
   const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
   const addCollapsed = useGraphStore((state) => state.addCollapsed);
+  const expandAll = useGraphStore((state) => state.expandAll);
   const applyToPeople = useGraphStore((state) => state.applyToPeople);
   const copyPersonSettings = useGraphStore((state) => state.copyPersonSettings);
   const setLensStore = useGraphStore((state) => state.setLens);
@@ -369,6 +371,61 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return counts;
   }, [childMap, personNodes]);
 
+  // Depth of each person below their root (root = 0), for the "land collapsed"
+  // default view and the global Collapse-all control.
+  const collapseTargets = useMemo(() => {
+    const depthOf = (id: string) => {
+      let depth = 0;
+      let cur = parentMap[id];
+      const seen = new Set<string>([id]);
+      while (cur && !seen.has(cur)) {
+        depth += 1;
+        seen.add(cur);
+        cur = parentMap[cur];
+      }
+      return depth;
+    };
+    const top: string[] = []; // depth >= 1 with reports → fold to the top tiers
+    const deep: string[] = []; // depth >= 2 with reports → the default landing depth
+    personNodes.forEach((person) => {
+      if ((childMap[person.id]?.length ?? 0) === 0) return;
+      const depth = depthOf(person.id);
+      if (depth >= 1) top.push(person.id);
+      if (depth >= 2) deep.push(person.id);
+    });
+    return { top, deep };
+  }, [personNodes, parentMap, childMap]);
+
+  // Land on a digestible top-down view the very first time: fold every subtree
+  // below the third level so the canvas opens as a clean skeleton, not 250 cards.
+  // Gated to once per browser so it never stomps a user's own expand/collapse choices.
+  const seededDepthRef = useRef(false);
+  useEffect(() => {
+    if (seededDepthRef.current) return;
+    if (personNodes.length === 0 || Object.keys(parentMap).length === 0) return;
+    if (collapseTargets.deep.length === 0) return;
+    seededDepthRef.current = true;
+    let alreadySeeded = false;
+    try {
+      alreadySeeded = !!localStorage.getItem("org-chart-default-collapse-v1");
+      if (!alreadySeeded) localStorage.setItem("org-chart-default-collapse-v1", "1");
+    } catch {
+      alreadySeeded = true; // no storage access → don't surprise-collapse
+    }
+    if (!alreadySeeded) addCollapsed(collapseTargets.deep);
+  }, [personNodes.length, parentMap, collapseTargets.deep, addCollapsed]);
+
+  // "Reset view": clear the active subset (search/filter/focus), drop any
+  // single-person focus, unfold everything, and reframe the whole org.
+  const resetView = useCallback(() => {
+    setLensFilters(lens, { focusIds: [], hiddenIds: [], activeTokens: [] });
+    clearSelection();
+    expandAll();
+    setTimeout(() => {
+      rfInstance?.fitView({ padding: 0.15, duration: 400, minZoom: 0.42, maxZoom: 1.2 });
+    }, 80);
+  }, [lens, setLensFilters, clearSelection, expandAll, rfInstance]);
+
   // Action confirmation toast with one-click Undo
   const [toast, setToast] = useState<{ message: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -416,12 +473,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       if (edge.source === focusedNodeId) set.add(edge.target);
       if (edge.target === focusedNodeId) set.add(edge.source);
     });
+    // Light up the whole manager chain to the top, not just the direct manager,
+    // so a focused person's place in the hierarchy reads at a glance.
+    let ancestor = parentMap[focusedNodeId];
+    const seen = new Set<string>([focusedNodeId]);
+    while (ancestor && !seen.has(ancestor)) {
+      set.add(ancestor);
+      seen.add(ancestor);
+      ancestor = parentMap[ancestor];
+    }
     return set;
-  }, [focusedNodeId, edgesData]);
-  const focusedPerson = useMemo(
-    () => (focusedNodeId ? personNodes.find((n) => n.id === focusedNodeId) ?? null : null),
-    [focusedNodeId, personNodes],
-  );
+  }, [focusedNodeId, edgesData, parentMap]);
 
   // Horizontal extent of each lane in the active matrix view, used to detect
   // which lane a card was dropped into for drag-to-reassign
@@ -757,10 +819,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const dimmedManager = isMatrixView && edge.metadata.type === "manager";
       let opacity = isGhost || edge.metadata.ghost ? 0.3 : dimmedManager ? 0.18 : 0.9;
 
-      // Focus mode: spotlight the selected person's relationships, fade the rest
+      // Focus mode: spotlight the selected person's relationships and the manager
+      // chain they sit in (both endpoints in the focus set), fade everything else.
       const isIncidentToFocus =
-        !!focusedNodeId &&
-        (edge.source === focusedNodeId || edge.target === focusedNodeId);
+        !!focusSet && focusSet.has(edge.source) && focusSet.has(edge.target);
       if (focusedNodeId) {
         opacity = isIncidentToFocus ? 0.95 : 0.05;
       }
@@ -799,6 +861,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     selection.edgeIds,
     lodZoom,
     focusedNodeId,
+    focusSet,
     hiddenByCollapse,
     isCrossCutting,
     orgUnits,
@@ -1221,6 +1284,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 Show in all lanes: {mirrorLanes ? "On" : "Off"}
               </button>
             )}
+            {/* Hierarchy view: global fold control so the whole org can collapse to
+                its top tiers or expand back out in one click */}
+            {lens === "hierarchy" && personNodes.length > 0 && (
+              <div className="absolute left-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+                <button
+                  type="button"
+                  onClick={() => addCollapsed(collapseTargets.top)}
+                  title="Fold every team down to the top levels"
+                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  Collapse all
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={() => expandAll()}
+                  disabled={collapsedIds.length === 0}
+                  title="Show every report"
+                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40 dark:hover:bg-white/10"
+                >
+                  Expand all
+                </button>
+              </div>
+            )}
             {/* Cleanup Canvas Button */}
             {personNodes.length > 0 && (
               <CleanupButton
@@ -1406,28 +1493,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             />
           )}
 
-          {/* Focus mode banner */}
-          {focusedPerson && (
-            <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
-              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-sky-200 bg-white px-4 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10">
-                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-sky-500" />
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  Focusing on {focusedPerson.name}
-                </span>
-                <span className="text-slate-400 dark:text-slate-500">
-                  {focusSet ? focusSet.size - 1 : 0} connection
-                  {focusSet && focusSet.size - 1 === 1 ? "" : "s"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => clearSelection()}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 transition hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
-                >
-                  Exit
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Focus breadcrumb + active-view context strip (top-center) */}
+          {personNodes.length > 0 && <CanvasContextBar onResetView={resetView} />}
         </div>
       </ContextMenu.Trigger>
       

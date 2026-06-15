@@ -96,6 +96,7 @@ type GraphStoreActions = {
   toggleNodeLock: (nodeId: string) => void;
   toggleCollapse: (nodeId: string) => void;
   addCollapsed: (nodeIds: string[]) => void;
+  expandAll: () => void;
   reassignToLane: (
     nodeId: string,
     dimension: "brand" | "channel" | "department",
@@ -755,6 +756,27 @@ export const useGraphStore = create<GraphStore>()(
               }
             });
             if (!changed) return;
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
+      },
+      // Unfold every collapsed subtree at once and reflow the hierarchy.
+      // No history entry — this is a view-level presentation toggle.
+      expandAll: () => {
+        set(
+          produce((state: GraphStoreState) => {
+            if (state.collapsedIds.length === 0) return;
+            state.collapsedIds = [];
             ensureLensState(state.document, "hierarchy");
             const positions = calculateCleanupLayout(
               visibleHierarchyNodes(state),
