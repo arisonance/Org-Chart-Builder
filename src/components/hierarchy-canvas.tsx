@@ -734,10 +734,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         data,
         draggable: !node.locked,
         selected: selection.nodeIds.includes(node.id),
-        style: {
-          opacity: dimmed ? 0.12 : 1,
-          transition: "opacity 0.3s ease-in-out",
-        },
+        // Only carry an opacity/transition when focus mode is actually dimming
+        // cards. Leaving a transition on all 250 nodes promotes each to its own
+        // GPU layer, which the compositor evicts (cards/text blank) while the
+        // viewport transforms during pan/zoom.
+        style: focusSet
+          ? { opacity: dimmed ? 0.12 : 1, transition: "opacity 0.3s ease-in-out" }
+          : undefined,
       };
     });
 
@@ -1256,6 +1259,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             elementsSelectable
             selectNodesOnDrag={false}
             elevateEdgesOnSelect={false}
+            onlyRenderVisibleElements
             connectionMode={ConnectionMode.Loose}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1.5, minZoom: 0.5 }}
