@@ -371,8 +371,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return counts;
   }, [childMap, personNodes]);
 
-  // Depth of each person below their root (root = 0), for the "land collapsed"
-  // default view and the global Collapse-all control.
+  // People with reports below the top tier (depth >= 1), used both for the
+  // "land collapsed" default and the global Collapse-all control. Folding these
+  // leaves the CEO + their direct execs — a narrow skeleton that frames cleanly.
   const collapseTargets = useMemo(() => {
     const depthOf = (id: string) => {
       let depth = 0;
@@ -385,35 +386,40 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }
       return depth;
     };
-    const top: string[] = []; // depth >= 1 with reports → fold to the top tiers
-    const deep: string[] = []; // depth >= 2 with reports → the default landing depth
+    const top: string[] = [];
     personNodes.forEach((person) => {
       if ((childMap[person.id]?.length ?? 0) === 0) return;
-      const depth = depthOf(person.id);
-      if (depth >= 1) top.push(person.id);
-      if (depth >= 2) deep.push(person.id);
+      if (depthOf(person.id) >= 1) top.push(person.id);
     });
-    return { top, deep };
+    return { top };
   }, [personNodes, parentMap, childMap]);
 
   // Land on a digestible top-down view the very first time: fold every subtree
-  // below the third level so the canvas opens as a clean skeleton, not 250 cards.
-  // Gated to once per browser so it never stomps a user's own expand/collapse choices.
+  // below the top tier so the canvas opens as a clean, well-framed skeleton
+  // (CEO + execs) instead of 250 cards. Gated to once per browser so it never
+  // stomps a user's own expand/collapse choices. Re-fits once the collapse
+  // reflow settles so the first frame shows the folded view, not a stale crop.
   const seededDepthRef = useRef(false);
   useEffect(() => {
     if (seededDepthRef.current) return;
+    if (!rfInstance) return;
     if (personNodes.length === 0 || Object.keys(parentMap).length === 0) return;
-    if (collapseTargets.deep.length === 0) return;
+    if (collapseTargets.top.length === 0) return;
     seededDepthRef.current = true;
     let alreadySeeded = false;
     try {
-      alreadySeeded = !!localStorage.getItem("org-chart-default-collapse-v1");
-      if (!alreadySeeded) localStorage.setItem("org-chart-default-collapse-v1", "1");
+      alreadySeeded = !!localStorage.getItem("org-chart-default-collapse-v2");
+      if (!alreadySeeded) localStorage.setItem("org-chart-default-collapse-v2", "1");
     } catch {
       alreadySeeded = true; // no storage access → don't surprise-collapse
     }
-    if (!alreadySeeded) addCollapsed(collapseTargets.deep);
-  }, [personNodes.length, parentMap, collapseTargets.deep, addCollapsed]);
+    if (!alreadySeeded) {
+      addCollapsed(collapseTargets.top);
+      window.setTimeout(() => {
+        rfInstance.fitView({ padding: 0.2, duration: 400, maxZoom: 1.2 });
+      }, 450);
+    }
+  }, [rfInstance, personNodes.length, parentMap, collapseTargets.top, addCollapsed]);
 
   // "Reset view": clear the active subset (search/filter/focus), drop any
   // single-person focus, unfold everything, and reframe the whole org.
