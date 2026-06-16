@@ -669,18 +669,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             addRelationship(newId, targetId, "manager");
             setSelection({ nodeIds: [newId], edgeIds: [] });
           },
-          addSponsor: (targetId) => {
-            const newId = addPerson({
-              name: "New sponsor",
-              title: "Executive Sponsor",
-              brands: [],
-              channels: [],
-              departments: [],
-              position: offsetPosition(position, { x: 180, y: -120 }),
-            });
-            addRelationship(newId, targetId, "sponsor");
-            setSelection({ nodeIds: [newId], edgeIds: [] });
-          },
           addDotted: (targetId) => {
             const newId = addPerson({
               name: "New dotted-line",

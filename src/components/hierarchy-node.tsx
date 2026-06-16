@@ -15,7 +15,6 @@ const BADGE_BASE_CLASS = "inline-flex items-center rounded-full border border-sl
 type NodeActions = {
   addDirectReport: (managerId: string) => void;
   addManager: (nodeId: string) => void;
-  addSponsor: (nodeId: string) => void;
   addDotted: (nodeId: string) => void;
   convertToGroup: (nodeId: string) => void;
   duplicate: (nodeId: string) => void;
@@ -240,30 +239,16 @@ function Component({ data }: { data: HierarchyNodeData }) {
               </>
             )}
           </button>
-          <div className="pointer-events-none absolute left-[-18px] top-1/2 flex flex-col items-center gap-1">
-            <Handle
-              type="source"
-              position={Position.Left}
-              id={`${node.id}-dotted-source`}
-              data-handle-type="dotted"
-              className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-indigo-400 dark:!bg-indigo-500`}
-            />
-            <span className={`${connectorClass} text-[9px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300`}>
-              Dotted
-            </span>
-          </div>
-          <div className="pointer-events-none absolute right-[-18px] top-1/2 flex flex-col items-center gap-1">
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={`${node.id}-sponsor-source`}
-              data-handle-type="sponsor"
-              className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-amber-400 dark:!bg-amber-500`}
-            />
-            <span className={`${connectorClass} text-[9px] font-medium uppercase tracking-wide text-amber-500 dark:text-amber-300`}>
-              Sponsor
-            </span>
-          </div>
+          {/* Dotted-line connector: a subtle dot at the left edge, revealed on
+              hover. No protruding text label (it bled past the card), and the
+              Sponsor connector has been removed. */}
+          <Handle
+            type="source"
+            position={Position.Left}
+            id={`${node.id}-dotted-source`}
+            data-handle-type="dotted"
+            className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-indigo-400 dark:!bg-indigo-500`}
+          />
 
           <Handle
             type="source"
@@ -305,7 +290,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
         <MenuSeparator />
         <MenuItem onSelect={() => actions.addDirectReport(node.id)}>Add direct report</MenuItem>
         <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
-        <MenuItem onSelect={() => actions.addSponsor(node.id)}>Add executive sponsor</MenuItem>
         <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
         <MenuSeparator />
         <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
