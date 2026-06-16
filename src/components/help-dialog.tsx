@@ -29,6 +29,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["M"], label: "Add a manager above the selected person" },
       { keys: ["⌘", "D"], label: "Duplicate the selection" },
       { keys: ["Delete"], label: "Remove the selection" },
+      { keys: ["⌘", "Z"], label: "Undo" },
+      { keys: ["⌘", "⇧", "Z"], label: "Redo" },
       { keys: ["?"], label: "Open this help" },
     ],
   },

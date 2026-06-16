@@ -147,6 +147,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const setLensStore = useGraphStore((state) => state.setLens);
   const setLensFilters = useGraphStore((state) => state.setLensFilters);
   const undo = useGraphStore((state) => state.undo);
+  const redo = useGraphStore((state) => state.redo);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuState | null>(null);
@@ -1062,6 +1063,19 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return;
       }
 
+      // Cmd/Ctrl + Z undo, Cmd/Ctrl + Shift + Z (or Cmd/Ctrl + Y) redo
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
       // Cmd/Ctrl + D to duplicate
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
@@ -1152,6 +1166,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       lensLayout,
       addRelationship,
       setSelection,
+      undo,
+      redo,
     ],
   );
 

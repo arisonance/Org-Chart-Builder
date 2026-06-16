@@ -334,7 +334,11 @@ const MenuLabel = ({ text }: { text: string }) => (
 );
 
 const emphsizedLabelOrFirst = (values: Array<string | undefined | null>) => {
-  return values.find((value) => value && value.trim().length > 0);
+  // Skip empties and generic "All Brands" / "All Channels" buckets — they mean
+  // "not specialized" and just add noise. Only surface a specific affiliation.
+  return values.find(
+    (value) => value && value.trim().length > 0 && !/^all\s/i.test(value.trim()),
+  );
 };
 
 // Level of detail buckets: full cards zoomed in, no badges at medium zoom,
