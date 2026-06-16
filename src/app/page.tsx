@@ -264,7 +264,7 @@ export default function Home() {
             {/* Floating Editor Panel - Only for single selections; multi-select
                 uses the canvas bulk-assign toolbar instead */}
             {selection.nodeIds.length === 1 && (
-              <div className="absolute right-4 top-4 bottom-4 z-30 w-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
+              <div className="absolute right-4 top-4 bottom-4 z-30 w-[min(360px,calc(100%_-_2rem))] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>
                   <button
@@ -385,7 +385,7 @@ const FullScreenOverlay = ({ lens, onClose, onTogglePanel, panelVisible }: FullS
             <HierarchyCanvas className="h-full" />
           </div>
           {panelVisible ? (
-            <div className="w-[360px] overflow-y-auto rounded-3xl bg-white p-4 text-slate-900 shadow-xl [transform:translateZ(0)] dark:bg-slate-900">
+            <div className="w-[min(360px,calc(100vw_-_2rem))] overflow-y-auto overflow-x-hidden rounded-3xl bg-white p-4 text-slate-900 shadow-xl [transform:translateZ(0)] dark:bg-slate-900">
               <EditorPanel />
             </div>
           ) : null}
