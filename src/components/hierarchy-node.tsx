@@ -47,14 +47,6 @@ export type HierarchyNodeData = {
 };
 
 // Tier badges configuration
-const TIER_BADGES: Record<string, { label: string; className: string }> = {
-  "c-suite": { label: "C-Suite", className: "bg-amber-100 text-amber-800" },
-  vp: { label: "VP", className: "bg-indigo-100 text-indigo-700" },
-  director: { label: "Director", className: "bg-teal-100 text-teal-700" },
-  manager: { label: "Manager", className: "bg-sky-100 text-sky-700" },
-  ic: { label: "Individual Contributor", className: "bg-slate-100 text-slate-600" },
-};
-
 const UNIT_CONTAINER_STYLE = {
   facility: { glyph: "🏭", accent: "#0f766e", chip: "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200" },
   "shared-service": { glyph: "🔗", accent: "#7c3aed", chip: "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200" },
@@ -81,16 +73,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
         .toUpperCase(),
     [node.name],
   );
-
-  const tierBadge = node.attributes.tier ? TIER_BADGES[node.attributes.tier] : undefined;
-
-  // Matrix load: how many brands + channels this person straddles. People living
-  // in 2+ brands AND 2+ channels carry conflicting-priorities risk (see Org Health X-ray).
-  const brandCount = node.attributes.brands.length;
-  const channelCount = node.attributes.channels.length;
-  const matrixLoad = brandCount + channelCount;
-  const isHeavyMatrix = brandCount >= 2 && channelCount >= 2;
-  const matrixSevere = matrixLoad >= 6;
 
   // Level of detail based on zoom - less aggressive for better initial render
   const lodLevel = getLodLevel(zoom);
@@ -203,25 +185,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
                 </div>
                 {lodLevel === 'full' && (
                 <div className="flex flex-wrap items-center justify-center gap-1">
-                  {tierBadge ? (
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tierBadge.className}`}>
-                      {tierBadge.label}
-                    </span>
-                  ) : null}
-                  {/* Matrix-load badge: flag people straddling many brands/channels */}
-                  {lodLevel === 'full' && isHeavyMatrix ? (
-                    <span
-                      title={`Matrix load ${matrixLoad}: in ${brandCount} brands and ${channelCount} channels — conflicting-priorities risk`}
-                      className={[
-                        "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                        matrixSevere
-                          ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
-                      ].join(" ")}
-                    >
-                      ⚡ Matrix ×{matrixLoad}
-                    </span>
-                  ) : null}
                   {/* Show context badge only at full zoom */}
                   {lodLevel === 'full' && primaryContextBadge ? (
                     <span className={`${BADGE_BASE_CLASS} border-transparent bg-slate-900/10 text-[10px]`}>

@@ -50,14 +50,6 @@ export function OrgHealthPanel({ open, onClose }: OrgHealthPanelProps) {
       tone: "text-rose-600",
     },
     {
-      key: "heavy",
-      label: "Heavy matrix load",
-      detail: "In 2+ brands and 2+ channels — conflicting-priorities / burnout risk",
-      count: metrics.heavyMatrix.length,
-      ids: metrics.heavyMatrix,
-      tone: "text-amber-600",
-    },
-    {
       key: "thin",
       label: "Single-report managers",
       detail: "Exactly one report — candidate layers to flatten",
