@@ -13,6 +13,7 @@ import { AIImportWizard } from '@/components/ai-import-wizard';
 import { SpreadsheetView } from '@/components/spreadsheet-view';
 import { SearchFilterBar } from '@/components/search-filter-bar';
 import { PersonSearch } from '@/components/person-search';
+import { SaveStatus } from '@/components/save-status';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
 import { parseGraphDocument } from '@/lib/schema/validation';
@@ -146,6 +147,7 @@ export default function Home() {
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               {documentMeta.name}
             </h1>
+            <SaveStatus />
             <LensSwitcher activeLens={lens} onChange={setLens} />
             <ScenarioManager />
             <PersonSearch />
@@ -165,7 +167,15 @@ export default function Home() {
             >
               <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import
             </button>
-            
+            <button
+              type="button"
+              onClick={handleExport}
+              title="Download this org chart as a JSON file you can share or back up"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <DownloadIcon className="inline h-4 w-4 mr-1" /> Export
+            </button>
+
             {/* More Actions Menu */}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
@@ -201,12 +211,6 @@ export default function Home() {
                     Redo
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
-                  <DropdownMenu.Item
-                    onSelect={handleExport}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <DownloadIcon className="h-4 w-4" /> Export JSON
-                  </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={() => fileInputRef.current?.click()}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"

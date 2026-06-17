@@ -194,6 +194,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [currentZoom, setCurrentZoom] = useState(1);
   const lodBucketRef = useRef<"full" | "medium" | "compact">("full");
+  // The floating Edit panel overlays the right of the canvas; this lets us
+  // measure the canvas and pan a freshly selected card out from under it.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  // True while jumpToPerson is animating the camera, so the reveal effect
+  // doesn't fight it with a second pan.
+  const cameraBusyRef = useRef(false);
   // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
   // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
   const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
@@ -464,14 +470,56 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const position =
         fresh.document.lens_state[fresh.document.lens]?.layout.positions[id];
       if (position && rfInstance) {
+        cameraBusyRef.current = true;
         rfInstance.setCenter(position.x + NODE_WIDTH / 2, position.y + NODE_HEIGHT / 2, {
           zoom: Math.max(rfInstance.getViewport().zoom, 0.8),
           duration: 500,
         });
+        setTimeout(() => {
+          cameraBusyRef.current = false;
+        }, 600);
       }
     },
     [parentMap, selectNode, rfInstance],
   );
+
+  // Keep a freshly selected card from hiding under the Edit panel: if the panel
+  // is open (single selection) and the card sits under it or off-screen, gently
+  // pan it into the clear area to the left. Cards already in view are left put.
+  useEffect(() => {
+    if (!rfInstance || cameraBusyRef.current) return;
+    if (selection.nodeIds.length !== 1) return;
+    const id = selection.nodeIds[0];
+    const wrap = wrapperRef.current;
+    if (!wrap) return;
+    const fresh = useGraphStore.getState();
+    const pos = fresh.document.lens_state[fresh.document.lens]?.layout.positions[id];
+    if (!pos) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const center = rfInstance.flowToScreenPosition({
+      x: pos.x + NODE_WIDTH / 2,
+      y: pos.y + NODE_HEIGHT / 2,
+    });
+    const panelWidth = Math.min(360, rect.width - 32); // mirrors the page.tsx panel
+    const panelLeft = rect.right - panelWidth - 16; // panel sits at right-4
+    const margin = 56;
+    const occluded =
+      center.x > panelLeft - margin ||
+      center.x < rect.left + margin ||
+      center.y < rect.top + margin ||
+      center.y > rect.bottom - margin;
+    if (!occluded) return;
+
+    const targetX = rect.left + Math.max(140, (panelLeft - rect.left) / 2);
+    const targetY = rect.top + rect.height / 2;
+    const vp = rfInstance.getViewport();
+    rfInstance.setViewport(
+      { x: vp.x + (targetX - center.x), y: vp.y + (targetY - center.y), zoom: vp.zoom },
+      { duration: 300 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection.nodeIds, rfInstance]);
 
   // Header "Find anyone" search asks the canvas to fly to a person; the nonce
   // changes on every request so re-picking the same person still flies there.
@@ -1218,6 +1266,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
+          ref={wrapperRef}
           className={[
             "relative h-full min-h-[720px] w-full overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-md ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10",
             lensTransition ? "lens-transition" : "",
