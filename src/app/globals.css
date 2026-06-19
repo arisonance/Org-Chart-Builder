@@ -83,12 +83,12 @@ body {
   filter: drop-shadow(0 0 6px currentColor);
 }
 
-/* GPU-accelerated smooth transitions for all react-flow elements */
+/* Let React Flow composite the viewport (below) as the single transformed
+   layer. Do NOT promote every node to its own GPU layer — with hundreds of
+   cards plus the large swim-lane/grid backgrounds that exhausts the
+   compositor's tile budget and blanks content while panning/zooming. */
 .react-flow__node {
-  will-change: transform;
-  transform: translateZ(0);
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  backface-visibility: hidden;
   -webkit-font-smoothing: subpixel-antialiased;
 }
 
@@ -98,7 +98,6 @@ body {
 }
 
 .react-flow__edge {
-  will-change: opacity;
   transition: opacity 0.35s ease-in-out;
 }
 
