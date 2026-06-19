@@ -97,6 +97,14 @@ body {
   transition: none;
 }
 
+/* During an active pan/zoom gesture, cards that mount fresh
+   (onlyRenderVisibleElements) would otherwise animate their transform into
+   place and read as flicker. Suppress the transition only while navigating;
+   the lens-switch glide (.lens-transition) is unaffected. */
+.is-navigating .react-flow__node {
+  transition: none !important;
+}
+
 .react-flow__edge {
   transition: opacity 0.35s ease-in-out;
 }
