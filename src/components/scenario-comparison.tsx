@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { useGraphStore } from '@/store/graph-store';
 import { computeScenarioDiff, categorizeChanges, getChangeDescription } from '@/lib/scenario/diff';
+import { computeOrgMetrics } from '@/lib/graph/org-metrics';
 
 export function ScenarioComparison() {
   const scenarios = useGraphStore((state) => state.scenarios);
@@ -24,6 +25,33 @@ export function ScenarioComparison() {
     if (!diff) return [];
     return categorizeChanges(diff);
   }, [diff]);
+
+  // Org-health delta between the two scenarios (the "reorg consequences")
+  const { impact, impact_gaps } = useMemo(() => {
+    const base = activeScenarioId ? scenarios[activeScenarioId] : null;
+    const target = comparisonScenarioId ? scenarios[comparisonScenarioId] : null;
+    if (!base || !target) {
+      return { impact: null, impact_gaps: { opened: [], closed: [] } };
+    }
+    const a = computeOrgMetrics(base.document.nodes, base.document.edges);
+    const b = computeOrgMetrics(target.document.nodes, target.document.edges);
+    const gapKey = (g: { brand: string; channel: string }) => `${g.brand} × ${g.channel}`;
+    const aGaps = new Set(a.coverageGaps.map(gapKey));
+    const bGaps = new Set(b.coverageGaps.map(gapKey));
+    return {
+      impact: [
+        { label: "Largest span", before: a.spanMax, after: b.spanMax, delta: b.spanMax - a.spanMax, good: b.spanMax <= a.spanMax },
+        { label: "Overloaded mgrs", before: a.overloadedManagers.length, after: b.overloadedManagers.length, delta: b.overloadedManagers.length - a.overloadedManagers.length, good: b.overloadedManagers.length <= a.overloadedManagers.length },
+        { label: "Heavy matrix load", before: a.heavyMatrix.length, after: b.heavyMatrix.length, delta: b.heavyMatrix.length - a.heavyMatrix.length, good: b.heavyMatrix.length <= a.heavyMatrix.length },
+        { label: "Coverage gaps", before: a.coverageGaps.length, after: b.coverageGaps.length, delta: b.coverageGaps.length - a.coverageGaps.length, good: b.coverageGaps.length <= a.coverageGaps.length },
+        { label: "Org depth", before: a.maxDepth, after: b.maxDepth, delta: b.maxDepth - a.maxDepth, good: b.maxDepth <= a.maxDepth },
+      ],
+      impact_gaps: {
+        opened: [...bGaps].filter((g) => !aGaps.has(g)),
+        closed: [...aGaps].filter((g) => !bGaps.has(g)),
+      },
+    };
+  }, [scenarios, activeScenarioId, comparisonScenarioId]);
 
   if (!comparisonScenarioId || !diff) {
     return null;
@@ -97,8 +125,56 @@ export function ScenarioComparison() {
           </div>
         </div>
 
+        {/* Structural impact: how the reorg moves the org-health needle */}
+        {impact && (
+          <div className="border-b border-slate-200 px-6 py-4 dark:border-white/10">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Structural Impact
+            </h3>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+              {impact.map((row) => (
+                <div
+                  key={row.label}
+                  className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-slate-900/50"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-bold text-slate-900 dark:text-white">{row.after}</span>
+                    {row.delta !== 0 && (
+                      <span
+                        className={`text-xs font-semibold ${
+                          row.good ? "text-emerald-600" : "text-rose-600"
+                        }`}
+                      >
+                        {row.delta > 0 ? "+" : ""}
+                        {row.delta}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {row.label} <span className="text-slate-300 dark:text-slate-600">· was {row.before}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(impact_gaps.opened.length > 0 || impact_gaps.closed.length > 0) && (
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+                {impact_gaps.closed.map((g) => (
+                  <span key={`c-${g}`} className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    Closed gap: {g}
+                  </span>
+                ))}
+                {impact_gaps.opened.map((g) => (
+                  <span key={`o-${g}`} className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 font-medium text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-300">
+                    Opened gap: {g}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Change Details */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 [transform:translateZ(0)]">
           <div className="space-y-6">
             {categories.map((category) => (
               <div key={category.type}>

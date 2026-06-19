@@ -83,27 +83,70 @@ body {
   filter: drop-shadow(0 0 6px currentColor);
 }
 
-/* GPU-accelerated smooth transitions for all react-flow elements */
+/* Let React Flow composite the viewport (below) as the single transformed
+   layer. Do NOT promote every node to its own GPU layer — with hundreds of
+   cards plus the large swim-lane/grid backgrounds that exhausts the
+   compositor's tile budget and blanks content while panning/zooming. */
 .react-flow__node {
-  will-change: transform;
-  transform: translateZ(0);
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  backface-visibility: hidden;
   -webkit-font-smoothing: subpixel-antialiased;
 }
 
+/* Don't fight the pointer while dragging */
+.react-flow__node.dragging {
+  transition: none;
+}
+
 .react-flow__edge {
-  will-change: opacity;
+  transition: opacity 0.35s ease-in-out;
+}
+
+/* Lens transitions: cards glide to their new positions when switching views.
+   Edges are hidden while cards move (their paths only follow committed
+   positions, so they'd detach from gliding cards), then fade back in. */
+.lens-transition .react-flow__node {
+  transition: transform 0.7s cubic-bezier(0.25, 1, 0.3, 1);
+}
+
+.lens-transition .react-flow__edge {
+  opacity: 0 !important;
+}
+
+/* Lanes and mirror cards fade in fresh — but only during a lens transition.
+   Unscoped, the animation replayed (0.45s invisible) every time React
+   re-mounted a lane, which read as flickering while panning/zooming. */
+.lens-transition .lane-fade-in {
+  animation: lane-fade-in 0.5s ease-out 0.45s backwards;
+}
+
+@keyframes lane-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lens-transition .react-flow__node {
+    transition: none;
+  }
+  .lens-transition .lane-fade-in {
+    animation: none;
+  }
 }
 
 .react-flow__edge path {
   transition: stroke-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-in-out;
 }
 
-/* Optimize panning and zooming */
+/* Optimize panning and zooming.
+   Do NOT force will-change/translateZ on the viewport: it pins the whole
+   transformed content as one persistent compositing layer, and on the wide
+   matrix lanes that layer exceeds Chrome's 16384px max texture size (measured
+   up to ~38000px). Chrome then tiles it and leaves tiles outside the immediate
+   view BLANK while panning. Let the browser composite the viewport on demand
+   (it still promotes during an active gesture) — keeps layers viewport-sized. */
 .react-flow__viewport {
-  will-change: transform;
-  transform: translateZ(0);
+  transform-origin: 0 0;
 }
 
 /* Smooth zoom transitions */

@@ -245,7 +245,7 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+        <div className="overflow-y-auto p-6 [transform:translateZ(0)]" style={{ maxHeight: 'calc(90vh - 140px)' }}>
           {step === 'upload' && (
             <UploadStep
               selectedFiles={selectedFiles}

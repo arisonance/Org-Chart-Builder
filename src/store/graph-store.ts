@@ -3,8 +3,17 @@ import { persist, subscribeWithSelector } from "zustand/middleware";
 import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
-import { DEMO_GRAPH_DOCUMENT } from "@/data/demo-graph";
-import { calculateLayout, calculateCleanupLayout } from "@/lib/graph/layout";
+import { DEMO_GRAPH_DOCUMENT, DEMO_DEFAULT_COLLAPSED } from "@/data/demo-graph";
+import {
+  buildChildMap,
+  calculateLayout,
+  calculateCleanupLayout,
+  calculateMatrixLayout,
+  calculateGridLayout,
+  collectDescendants,
+  isGridLens,
+  lensToDimension,
+} from "@/lib/graph/layout";
 import type {
   ClipboardPayload,
   GraphDocument,
@@ -35,6 +44,7 @@ type GraphStoreState = {
   document: GraphDocument;
   selection: SelectionState;
   clipboard: ClipboardPayload | null;
+  settingsClipboard: PersonSettingsClipboard | null;
   history: HistoryStack;
   scenarios: Record<string, Scenario>;
   activeScenarioId: string | null;
@@ -45,6 +55,13 @@ type GraphStoreState = {
     y: number;
     zoom: number;
   };
+  // Matrix views: show mirror cards for people in every lane they're assigned to
+  mirrorLanes: boolean;
+  // Hierarchy view: managers whose subtree is folded away
+  collapsedIds: string[];
+  // Header search → canvas: ask the canvas to fly to a person. The nonce lets the
+  // same person be re-requested (it always changes), and is not persisted.
+  focusRequest: { id: string; nonce: number } | null;
 };
 
 type GraphStoreActions = {
@@ -58,8 +75,12 @@ type GraphStoreActions = {
   selectNode: (nodeId: string, additive?: boolean) => void;
   selectEdge: (edgeId: string, additive?: boolean) => void;
   clearSelection: () => void;
+  requestFocus: (nodeId: string) => void;
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
+  applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
+  copyPersonSettings: (nodeId: string) => void;
+  clearPersonSettings: () => void;
   addRelationship: (sourceId: string, targetId: string, type: RelationshipType, meta?: Partial<GraphEdge["metadata"]>) => string | null;
   updateRelationship: (edgeId: string, updates: Partial<GraphEdge["metadata"]>) => void;
   removeRelationship: (edgeId: string) => void;
@@ -71,11 +92,25 @@ type GraphStoreActions = {
   updateViewport: (lens: LensId, viewport: LayoutState["viewport"]) => void;
   setCurrentViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   toggleSnap: (lens: LensId) => void;
+  toggleMirrorLanes: () => void;
   toggleGrid: (lens: LensId) => void;
   setLensFilters: (lens: LensId, filters: Partial<LensState["filters"]>) => void;
   autoLayout: (lens?: LensId) => void;
   cleanupCanvas: (lens?: LensId, mode?: "compact" | "spacious") => void;
   toggleNodeLock: (nodeId: string) => void;
+  toggleCollapse: (nodeId: string) => void;
+  addCollapsed: (nodeIds: string[]) => void;
+  expandAll: () => void;
+  reassignToLane: (
+    nodeId: string,
+    dimension: "brand" | "channel" | "department",
+    laneKey: string,
+  ) => void;
+  reassignManyToLane: (
+    nodeIds: string[],
+    dimension: "brand" | "channel" | "department",
+    laneKey: string,
+  ) => void;
   addTagToNode: (nodeId: string, tag: string) => void;
   copyNodesById: (nodeIds: string[], edgeIds?: string[]) => void;
   undo: () => void;
@@ -113,6 +148,41 @@ type UpdatePersonOptions = {
   recordHistory?: boolean;
 };
 
+// Copyable "settings" (org dimensions), Lightroom-style — not name/title/job
+export type PersonSettingsField = "brand" | "channel" | "department" | "tier" | "location";
+export type PersonSettingsClipboard = {
+  sourceId: string;
+  sourceName: string;
+  attrs: Pick<
+    PersonAttributes,
+    "brands" | "primaryBrand" | "channels" | "primaryChannel" | "departments" | "primaryDepartment" | "tier" | "location"
+  >;
+};
+
+// Which attribute keys each field controls when pasting
+export const SETTINGS_FIELD_KEYS: Record<PersonSettingsField, Array<keyof PersonAttributes>> = {
+  brand: ["brands", "primaryBrand"],
+  channel: ["channels", "primaryChannel"],
+  department: ["departments", "primaryDepartment"],
+  tier: ["tier"],
+  location: ["location"],
+};
+
+/** Build the attribute patch for pasting the chosen settings fields from a clipboard. */
+export const buildSettingsPatch = (
+  clip: PersonSettingsClipboard,
+  fields: PersonSettingsField[],
+): Partial<PersonAttributes> => {
+  const patch: Partial<PersonAttributes> = {};
+  fields.forEach((f) => {
+    SETTINGS_FIELD_KEYS[f].forEach((k) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (patch as any)[k] = clip.attrs[k as keyof typeof clip.attrs];
+    });
+  });
+  return patch;
+};
+
 const cloneDocument = (document: GraphDocument): GraphDocument => cloneDeep(document);
 
 const createSnapshot = (state: GraphStoreState): GraphSnapshot => ({
@@ -130,6 +200,7 @@ const initialState: GraphStoreState = {
     edgeIds: [],
   },
   clipboard: null,
+  settingsClipboard: null,
   history: {
     past: [],
     future: [],
@@ -142,6 +213,20 @@ const initialState: GraphStoreState = {
     y: 0,
     zoom: 1,
   },
+  mirrorLanes: true,
+  collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
+  focusRequest: null,
+};
+
+// Hierarchy layout/cleanup should only place people not folded away under a
+// collapsed manager, so visible cards re-flow tight
+const visibleHierarchyNodes = (state: GraphStoreState) => {
+  if (state.collapsedIds.length === 0) return state.document.nodes;
+  const hidden = collectDescendants(
+    buildChildMap(state.document.edges),
+    state.collapsedIds,
+  );
+  return state.document.nodes.filter((node) => !hidden.has(node.id));
 };
 
 const withHistory = (
@@ -162,6 +247,30 @@ const withHistory = (
       state.document.metadata.updatedAt = now();
     }),
   );
+};
+
+const applyLaneAssignment = (
+  state: GraphStoreState,
+  nodeId: string,
+  dimension: "brand" | "channel" | "department",
+  laneKey: string,
+) => {
+  const node = state.document.nodes.find(
+    (item) => item.id === nodeId && item.kind === "person",
+  );
+  if (!node || node.kind !== "person") return;
+  const attr = node.attributes;
+  if (dimension === "brand") {
+    if (!attr.brands.includes(laneKey)) attr.brands.unshift(laneKey);
+    attr.primaryBrand = laneKey;
+  } else if (dimension === "channel") {
+    if (!attr.channels.includes(laneKey)) attr.channels.unshift(laneKey);
+    attr.primaryChannel = laneKey;
+  } else {
+    if (!attr.departments.includes(laneKey)) attr.departments.unshift(laneKey);
+    attr.primaryDepartment = laneKey;
+  }
+  node.updatedAt = now();
 };
 
 const ensureLensState = (document: GraphDocument, lens: LensId) => {
@@ -279,6 +388,10 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
+      requestFocus: (nodeId) => {
+        // Bump nonce so the canvas effect re-fires even for the same person.
+        set({ focusRequest: { id: nodeId, nonce: Date.now() } });
+      },
       addPerson: (payload) => {
         const id = `person-${nanoid(10)}`;
         withHistory(set, get, (state) => {
@@ -334,6 +447,39 @@ export const useGraphStore = create<GraphStore>()(
 
         withHistory(set, get, applyUpdates);
       },
+      applyToPeople: (nodeIds, patch) => {
+        if (nodeIds.length === 0) return;
+        const ids = new Set(nodeIds);
+        withHistory(set, get, (state) => {
+          state.document.nodes.forEach((node) => {
+            if (node.kind !== "person" || !ids.has(node.id)) return;
+            Object.assign(node.attributes, patch(node.attributes));
+            node.updatedAt = now();
+          });
+        });
+      },
+      copyPersonSettings: (nodeId) => {
+        const node = get().document.nodes.find((n) => n.id === nodeId && n.kind === "person");
+        if (!node || node.kind !== "person") return;
+        const a = node.attributes;
+        set({
+          settingsClipboard: {
+            sourceId: node.id,
+            sourceName: node.name,
+            attrs: {
+              brands: [...a.brands],
+              primaryBrand: a.primaryBrand,
+              channels: [...a.channels],
+              primaryChannel: a.primaryChannel,
+              departments: [...a.departments],
+              primaryDepartment: a.primaryDepartment,
+              tier: a.tier,
+              location: a.location,
+            },
+          },
+        });
+      },
+      clearPersonSettings: () => set({ settingsClipboard: null }),
       addRelationship: (sourceId, targetId, type, meta) => {
         if (sourceId === targetId) return null;
         const id = `edge-${type}-${nanoid(8)}`;
@@ -496,6 +642,13 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
+      toggleMirrorLanes: () => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.mirrorLanes = !state.mirrorLanes;
+          }),
+        );
+      },
       toggleSnap: (lens) => {
         set(
           produce((state: GraphStoreState) => {
@@ -531,10 +684,16 @@ export const useGraphStore = create<GraphStore>()(
         withHistory(set, get, (state) => {
           const targetLens = lens ?? state.document.lens;
           ensureLensState(state.document, targetLens);
-          
-          // Use basic hierarchical layout for all lenses
-          const positions = calculateLayout(state.document.nodes, state.document.edges);
-          
+
+          // Grid lens lays people into a brand×channel matrix; dimension lenses
+          // group into swim lanes; hierarchy uses a plain tree
+          const dimension = lensToDimension(targetLens);
+          const positions = isGridLens(targetLens)
+            ? calculateGridLayout(state.document.nodes)
+            : dimension
+            ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
+            : calculateLayout(visibleHierarchyNodes(state), state.document.edges);
+
           Object.entries(positions).forEach(([nodeId, position]) => {
             state.document.lens_state[targetLens].layout.positions[nodeId] = position;
           });
@@ -548,20 +707,98 @@ export const useGraphStore = create<GraphStore>()(
           
           // Get existing positions to preserve locked nodes if needed
           const existingPositions = state.document.lens_state[targetLens].layout.positions;
-          
-          // Use cleanup layout for elegant spacing and alignment
-          const positions = calculateCleanupLayout(
-            state.document.nodes,
-            state.document.edges,
-            existingPositions,
-            mode
-          );
-          
+
+          // Grid lens → brand×channel matrix; dimension lenses → swim lanes
+          const dimension = lensToDimension(targetLens);
+          const positions = isGridLens(targetLens)
+            ? calculateGridLayout(state.document.nodes)
+            : dimension
+            ? calculateMatrixLayout(state.document.nodes, state.document.edges, dimension)
+            : calculateCleanupLayout(
+                visibleHierarchyNodes(state),
+                state.document.edges,
+                existingPositions,
+                mode
+              );
+
           Object.entries(positions).forEach(([nodeId, position]) => {
             state.document.lens_state[targetLens].layout.positions[nodeId] = position;
           });
           state.document.lens_state[targetLens].layout.lastUpdated = now();
         });
+      },
+      toggleCollapse: (nodeId) => {
+        set(
+          produce((state: GraphStoreState) => {
+            const index = state.collapsedIds.indexOf(nodeId);
+            if (index >= 0) {
+              state.collapsedIds.splice(index, 1);
+            } else {
+              state.collapsedIds.push(nodeId);
+            }
+            // Re-flow the hierarchy with only the visible people so the gaps
+            // left by folded subtrees close up
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
+      },
+      // Fold many nodes at once (e.g. default facility/shared-service containers) and
+      // reflow the hierarchy tight. No history entry — this is a default presentation.
+      addCollapsed: (nodeIds) => {
+        set(
+          produce((state: GraphStoreState) => {
+            let changed = false;
+            nodeIds.forEach((id) => {
+              if (!state.collapsedIds.includes(id)) {
+                state.collapsedIds.push(id);
+                changed = true;
+              }
+            });
+            if (!changed) return;
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
+      },
+      // Unfold every collapsed subtree at once and reflow the hierarchy.
+      // No history entry — this is a view-level presentation toggle.
+      expandAll: () => {
+        set(
+          produce((state: GraphStoreState) => {
+            if (state.collapsedIds.length === 0) return;
+            state.collapsedIds = [];
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
       },
       toggleNodeLock: (nodeId) => {
         withHistory(set, get, (state) => {
@@ -569,6 +806,19 @@ export const useGraphStore = create<GraphStore>()(
           if (!node || node.kind !== "person") return;
           node.locked = !node.locked;
           node.updatedAt = now();
+        });
+      },
+      reassignToLane: (nodeId, dimension, laneKey) => {
+        withHistory(set, get, (state) => {
+          applyLaneAssignment(state, nodeId, dimension, laneKey);
+        });
+      },
+      reassignManyToLane: (nodeIds, dimension, laneKey) => {
+        if (nodeIds.length === 0) return;
+        withHistory(set, get, (state) => {
+          nodeIds.forEach((nodeId) => {
+            applyLaneAssignment(state, nodeId, dimension, laneKey);
+          });
         });
       },
       addTagToNode: (nodeId, tag) => {
@@ -725,13 +975,15 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 3,
+      version: 8,
       partialize: (state) => ({
         document: state.document,
         selection: state.selection,
         clipboard: state.clipboard,
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        mirrorLanes: state.mirrorLanes,
+        collapsedIds: state.collapsedIds,
       }),
       migrate: (persistedState: unknown) => {
         if (!persistedState || typeof persistedState !== "object") {
@@ -745,9 +997,38 @@ export const useGraphStore = create<GraphStore>()(
 
         try {
           const sanitizedDocument = parseGraphDocument(maybeState.document);
+
+          // Pre-CSV copies of the bundled demo (identified by name but missing
+          // the real org's people) get refreshed wholesale. Docs already on the
+          // real org keep all their data/edits.
+          const isDemoDoc =
+            sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
+          const hasCsvOrg = sanitizedDocument.nodes.some(
+            (node) => node.id === "person-stephanie-parra",
+          );
+          if (isDemoDoc && !hasCsvOrg) {
+            return {
+              ...initialState,
+              document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+            };
+          }
+
           const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
           const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
           const documentClone = cloneDocument(sanitizedDocument);
+
+          // Migration runs once per version bump: drop all saved layouts so the
+          // latest layout algorithms (lane ranks, grid geometry, collapse-aware
+          // hierarchy) re-run, while people, edges, and scenarios are preserved.
+          (["hierarchy", "brand", "channel", "department", "matrix"] as const).forEach(
+            (lensId) => {
+              const lensState = documentClone.lens_state[lensId];
+              if (lensState) {
+                lensState.layout.positions = {};
+                lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
+              }
+            },
+          );
 
           const sanitizedSelection: SelectionState = {
             nodeIds: Array.isArray(maybeState.selection?.nodeIds)
@@ -767,6 +1048,13 @@ export const useGraphStore = create<GraphStore>()(
             document: documentClone,
             selection: sanitizedSelection,
             clipboard: null,
+            scenarios: maybeState.scenarios ?? {},
+            activeScenarioId: maybeState.activeScenarioId ?? null,
+            mirrorLanes:
+              typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
+            collapsedIds: Array.isArray(maybeState.collapsedIds)
+              ? maybeState.collapsedIds
+              : [...initialState.collapsedIds],
           };
         } catch (error) {
           console.warn("Failed to restore persisted org chart state; falling back to demo.", error);

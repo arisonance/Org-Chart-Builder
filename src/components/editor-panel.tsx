@@ -1,6 +1,5 @@
 'use client';
 
-import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEMO_LENS_LABELS } from "@/data/demo-graph";
 import { useGraphStore } from "@/store/graph-store";
@@ -58,9 +57,9 @@ export function EditorPanel() {
             Tips
           </p>
           <ul className="list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400">
-            <li>Double-click a card to edit inline.</li>
+            <li>Click a card to edit it here; right-click for quick actions.</li>
             <li>Drag handles to create manager, sponsor, or dotted-line relationships.</li>
-            <li>Press 1-4 to switch between lenses.</li>
+            <li>Press 1-5 to switch between lenses.</li>
           </ul>
         </div>
       </aside>
@@ -145,9 +144,7 @@ export function EditorPanel() {
           </div>
         </div>
         {activeTab === "details" ? (
-          <ScrollArea.Root className="h-[520px] w-full">
-            <ScrollArea.Viewport className="h-full w-full">
-              <div className="flex flex-col gap-5 pr-4">
+          <div className="flex min-w-0 flex-col gap-5">
                 <fieldset className="flex flex-col gap-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     Name
@@ -234,12 +231,7 @@ export function EditorPanel() {
                     />
                   </label>
                 </fieldset>
-              </div>
-            </ScrollArea.Viewport>
-            <ScrollArea.Scrollbar orientation="vertical" className="w-1.5 bg-transparent">
-              <ScrollArea.Thumb className="rounded-full bg-slate-300/50 dark:bg-slate-700" />
-            </ScrollArea.Scrollbar>
-          </ScrollArea.Root>
+          </div>
         ) : (
           <div className="flex flex-col gap-4 text-sm text-slate-600 dark:text-slate-300">
             <RelationshipGroup
@@ -292,15 +284,15 @@ const TokenSelector = ({
   primary?: string;
 }) => {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
           {label}
         </p>
         <select
           value={primary ?? ""}
           onChange={(event) => onPrimaryChange(event.target.value)}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300"
+          className="max-w-[55%] shrink-0 truncate rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300"
         >
           <option value="">Primary</option>
           {values.map((value) => (

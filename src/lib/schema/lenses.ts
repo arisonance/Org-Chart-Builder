@@ -1,4 +1,4 @@
-export type LensId = "hierarchy" | "brand" | "channel" | "department";
+export type LensId = "hierarchy" | "brand" | "channel" | "department" | "matrix";
 
 export type LensDefinition = {
   id: LensId;
@@ -36,6 +36,13 @@ export const LENSES: LensDefinition[] = [
     description: "Compare functional org structures across teams.",
     shortcut: "4",
     accent: "#9333ea",
+  },
+  {
+    id: "matrix",
+    label: "Brand × Channel Grid",
+    description: "See people at each brand-and-channel intersection.",
+    shortcut: "5",
+    accent: "#0891b2",
   },
 ];
 

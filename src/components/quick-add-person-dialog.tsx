@@ -119,7 +119,7 @@ export function QuickAddPersonDialog({
           className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900"
           onEscapeKeyDown={onClose}
         >
-          <div className="max-h-[85vh] overflow-y-auto p-6">
+          <div className="max-h-[85vh] overflow-y-auto p-6 [transform:translateZ(0)]">
             {/* Header */}
             <div className="mb-6 flex items-start justify-between">
               <div>
@@ -251,6 +251,32 @@ export function QuickAddPersonDialog({
                 </div>
               </div>
 
+              {/* Brand assignment (matrix dimension) */}
+              <DimensionPicker
+                label="Brand"
+                accent="sky"
+                options={DEMO_LENS_LABELS.brand}
+                primary={primaryBrand}
+                onPrimaryChange={setPrimaryBrand}
+                secondary={secondaryBrands}
+                onToggleSecondary={(item) =>
+                  toggleSecondary(secondaryBrands, item, setSecondaryBrands)
+                }
+              />
+
+              {/* Channel assignment (matrix dimension) */}
+              <DimensionPicker
+                label="Channel"
+                accent="teal"
+                options={DEMO_LENS_LABELS.channel}
+                primary={primaryChannel}
+                onPrimaryChange={setPrimaryChannel}
+                secondary={secondaryChannels}
+                onToggleSecondary={(item) =>
+                  toggleSecondary(secondaryChannels, item, setSecondaryChannels)
+                }
+              />
+
               {/* Secondary Departments */}
               {primaryDepartment && (
                 <div className="space-y-3">
@@ -313,6 +339,128 @@ export function QuickAddPersonDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+type DimensionAccent = 'sky' | 'teal';
+
+const ACCENT_STYLES: Record<
+  DimensionAccent,
+  { selected: string; idle: string; radio: string; chipOn: string; chipOff: string }
+> = {
+  sky: {
+    selected:
+      'border-sky-500 bg-sky-50 text-sky-900 dark:border-sky-400 dark:bg-sky-500/20 dark:text-sky-100',
+    idle:
+      'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50/50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-sky-400/30 dark:hover:bg-sky-500/10',
+    radio: 'border-sky-500 bg-sky-500 dark:border-sky-400 dark:bg-sky-400',
+    chipOn:
+      'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-400/30 dark:bg-sky-500/20 dark:text-sky-200',
+    chipOff:
+      'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-sky-400/20',
+  },
+  teal: {
+    selected:
+      'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-500/20 dark:text-teal-100',
+    idle:
+      'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:bg-teal-50/50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-400/30 dark:hover:bg-teal-500/10',
+    radio: 'border-teal-500 bg-teal-500 dark:border-teal-400 dark:bg-teal-400',
+    chipOn:
+      'border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-400/30 dark:bg-teal-500/20 dark:text-teal-200',
+    chipOff:
+      'border-slate-200 bg-white text-slate-600 hover:border-teal-200 hover:bg-teal-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-400/20',
+  },
+};
+
+function DimensionPicker({
+  label,
+  accent,
+  options,
+  primary,
+  onPrimaryChange,
+  secondary,
+  onToggleSecondary,
+}: {
+  label: string;
+  accent: DimensionAccent;
+  options: string[];
+  primary: string;
+  onPrimaryChange: (value: string) => void;
+  secondary: string[];
+  onToggleSecondary: (item: string) => void;
+}) {
+  const styles = ACCENT_STYLES[accent];
+  if (options.length === 0) return null;
+
+  return (
+    <>
+      <div className="h-px w-full bg-slate-200 dark:bg-white/10" />
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Primary {label}
+          </h3>
+          <span className="text-xs text-slate-400">Select one</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onPrimaryChange(option === primary ? '' : option)}
+              className={`group relative flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition ${
+                primary === option ? styles.selected : styles.idle
+              }`}
+            >
+              <div
+                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 transition ${
+                  primary === option
+                    ? styles.radio
+                    : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'
+                }`}
+              >
+                {primary === option && <CheckIcon className="h-3 w-3 text-white" />}
+              </div>
+              <span className="flex-1 truncate">{option}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {primary && options.length > 1 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Secondary {label}s
+            </h3>
+            <span className="text-xs text-slate-400">Optional</span>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {options
+              .filter((option) => option !== primary)
+              .map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => onToggleSecondary(option)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                    secondary.includes(option) ? styles.chipOn : styles.chipOff
+                  }`}
+                >
+                  {secondary.includes(option) ? (
+                    <CheckIcon className="h-3 w-3" />
+                  ) : (
+                    <PlusIcon className="h-3 w-3" />
+                  )}
+                  {option}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

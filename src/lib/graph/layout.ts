@@ -1,13 +1,15 @@
 import { graphlib, layout as dagreLayout } from "@dagrejs/dagre";
 import type { GraphDocument, GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
 import type { LensId } from "@/lib/schema/lenses";
+import { channelSortKey, channelTopGroup } from "@/lib/org/channels";
 
 export type ChildMap = Record<string, string[]>;
 
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 150;
-const NODE_SEPARATION = 240;
-const RANK_SEPARATION = 300;
+export const NODE_WIDTH = 260;
+export const NODE_HEIGHT = 150;
+// Edge-to-edge gaps between cards (dagre semantics), not center pitches
+const NODE_SEPARATION = 120;
+const RANK_SEPARATION = 220;
 const MARGIN_X = 150;
 const MARGIN_Y = 150;
 
@@ -24,6 +26,22 @@ export const buildChildMap = (edges: GraphEdge[]): ChildMap => {
       map[edge.source].push(edge.target);
     });
   return map;
+};
+
+// All descendants of the given roots (the roots themselves are not included)
+export const collectDescendants = (
+  childMap: ChildMap,
+  rootIds: string[],
+): Set<string> => {
+  const hidden = new Set<string>();
+  const queue = rootIds.flatMap((id) => childMap[id] ?? []);
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (hidden.has(current)) continue;
+    hidden.add(current);
+    queue.push(...(childMap[current] ?? []));
+  }
+  return hidden;
 };
 
 export const isDescendant = (
@@ -100,54 +118,130 @@ export const autoLayoutDocument = (document: GraphDocument) => {
 };
 
 // Matrix-aware layout functions
-export const calculateMatrixLayout = (
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  lens: LensId,
-  dimension: 'brand' | 'channel' | 'department',
-): Record<string, { x: number; y: number }> => {
-  const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
-  
-  // Group nodes by primary dimension
+export type LensDimension = "brand" | "channel" | "department";
+
+export const lensToDimension = (lens: LensId): LensDimension | null =>
+  lens === "brand" || lens === "channel" || lens === "department" ? lens : null;
+
+export const UNASSIGNED_GROUP_KEY = "Unassigned";
+
+export const getGroupKey = (node: PersonNode, dimension: LensDimension): string => {
+  if (dimension === "brand") {
+    return node.attributes.primaryBrand || node.attributes.brands[0] || UNASSIGNED_GROUP_KEY;
+  }
+  if (dimension === "channel") {
+    return node.attributes.primaryChannel || node.attributes.channels[0] || UNASSIGNED_GROUP_KEY;
+  }
+  return node.attributes.primaryDepartment || node.attributes.departments[0] || UNASSIGNED_GROUP_KEY;
+};
+
+export const getAssignments = (node: PersonNode, dimension: LensDimension): string[] => {
+  if (dimension === "brand") return node.attributes.brands;
+  if (dimension === "channel") return node.attributes.channels;
+  return node.attributes.departments;
+};
+
+export const groupNodesByDimension = (
+  nodes: PersonNode[],
+  dimension: LensDimension,
+): Map<string, PersonNode[]> => {
   const groups = new Map<string, PersonNode[]>();
-  
-  personNodes.forEach((node) => {
-    const key = dimension === 'brand' 
-      ? (node.attributes.primaryBrand || node.attributes.brands[0] || 'unassigned')
-      : dimension === 'channel'
-        ? (node.attributes.primaryChannel || node.attributes.channels[0] || 'unassigned')
-        : (node.attributes.primaryDepartment || node.attributes.departments[0] || 'unassigned');
-    
+  nodes.forEach((node) => {
+    const key = getGroupKey(node, dimension);
     if (!groups.has(key)) {
       groups.set(key, []);
     }
     groups.get(key)!.push(node);
   });
-  
-  // Layout within each group using hierarchy
+  return groups;
+};
+
+const sortGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
+  Array.from(groups.keys()).sort((a, b) => {
+    if (a === UNASSIGNED_GROUP_KEY) return 1;
+    if (b === UNASSIGNED_GROUP_KEY) return -1;
+    const sizeDiff = groups.get(b)!.length - groups.get(a)!.length;
+    return sizeDiff !== 0 ? sizeDiff : a.localeCompare(b);
+  });
+
+// Channel lanes follow the taxonomy order so a group's channels stay adjacent
+const sortChannelGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
+  Array.from(groups.keys()).sort((a, b) => {
+    const sa = a === UNASSIGNED_GROUP_KEY || a.startsWith("All ");
+    const sb = b === UNASSIGNED_GROUP_KEY || b.startsWith("All ");
+    if (sa !== sb) return sa ? 1 : -1;
+    const diff = channelSortKey(a) - channelSortKey(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
+/**
+ * Swim-lane layout for matrix views: people are grouped into vertical lanes by
+ * brand/channel/department, and the reporting hierarchy is laid out within each lane.
+ * Lane widths adapt to their content so lanes never overlap.
+ */
+export const calculateMatrixLayout = (
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  dimension: LensDimension,
+): Record<string, { x: number; y: number }> => {
+  const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
+  const groups = groupNodesByDimension(personNodes, dimension);
+  const groupKeys = dimension === "channel" ? sortChannelGroupKeys(groups) : sortGroupKeys(groups);
+
   const positions: Record<string, { x: number; y: number }> = {};
-  const groupKeys = Array.from(groups.keys());
-  const COLUMN_WIDTH = 800;
-  
-  groupKeys.forEach((groupKey, groupIndex) => {
+  const LANE_GAP = 360;
+  let offsetX = 0;
+
+  // Global reporting chain, used to rank people whose direct manager sits in
+  // a different lane: link them to their nearest ancestor inside the lane so
+  // they don't get promoted to lane roots next to the actual leaders.
+  const parentOf: Record<string, string> = {};
+  edges.filter(isManagerEdge).forEach((edge) => {
+    if (!(edge.target in parentOf)) parentOf[edge.target] = edge.source;
+  });
+
+  groupKeys.forEach((groupKey) => {
     const groupNodes = groups.get(groupKey)!;
-    const groupEdges = edges.filter((edge) => {
-      const sourceInGroup = groupNodes.some((n) => n.id === edge.source);
-      const targetInGroup = groupNodes.some((n) => n.id === edge.target);
-      return sourceInGroup && targetInGroup;
+    const groupIds = new Set(groupNodes.map((n) => n.id));
+    const laneEdges: GraphEdge[] = [];
+    groupNodes.forEach((member) => {
+      let ancestor = parentOf[member.id];
+      const seen = new Set<string>([member.id]);
+      while (ancestor && !seen.has(ancestor)) {
+        if (groupIds.has(ancestor)) {
+          laneEdges.push({
+            id: `lane-edge-${ancestor}-${member.id}`,
+            source: ancestor,
+            target: member.id,
+            metadata: { type: "manager" },
+            createdAt: "",
+            updatedAt: "",
+          });
+          break;
+        }
+        seen.add(ancestor);
+        ancestor = parentOf[ancestor];
+      }
     });
-    
-    const groupPositions = calculateLayout(groupNodes, groupEdges);
-    
-    // Offset positions for this column
-    Object.keys(groupPositions).forEach((nodeId) => {
+
+    const groupPositions = calculateLayout(groupNodes, laneEdges);
+    const xs = Object.values(groupPositions).map((p) => p.x);
+    const ys = Object.values(groupPositions).map((p) => p.y);
+    if (xs.length === 0) return;
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs) + NODE_WIDTH;
+    const minY = Math.min(...ys);
+
+    Object.entries(groupPositions).forEach(([nodeId, p]) => {
       positions[nodeId] = {
-        x: groupPositions[nodeId].x + groupIndex * COLUMN_WIDTH,
-        y: groupPositions[nodeId].y,
+        x: p.x - minX + offsetX,
+        y: p.y - minY,
       };
     });
+
+    offsetX += maxX - minX + LANE_GAP;
   });
-  
+
   return positions;
 };
 
@@ -276,6 +370,247 @@ export const calculateClusterLayout = (
  * 
  * @param mode - "compact" fits as much as possible on screen (may overlap), "spacious" ensures no overlap (requires more space)
  */
+// ===== Brand × Channel grid (matrix lens) =====
+export const isGridLens = (lens: LensId) => lens === "matrix";
+
+const GRID_GAP = 28;
+const GRID_CELL_PAD = 30;
+const GRID_ROW_LABEL_W = 280;
+const GRID_COL_HEADER_H = 140;
+const GRID_ROW_GAP = 56;
+const GRID_COL_GAP = 48;
+const GRID_CARD_W = NODE_WIDTH + GRID_GAP;
+const GRID_CARD_H = NODE_HEIGHT + GRID_GAP;
+// Cells wrap adaptively: dense cells get more card-columns (aiming ~2.5x wider
+// than tall) so big buckets spread horizontally instead of towering
+const GRID_MIN_CELL_COLS = 3;
+const GRID_MAX_CELL_COLS = 16;
+const cellColsFor = (count: number) =>
+  Math.max(
+    GRID_MIN_CELL_COLS,
+    Math.min(GRID_MAX_CELL_COLS, Math.ceil(Math.sqrt(count * 2.5))),
+  );
+
+export const GRID_ROW_LABEL_WIDTH = GRID_ROW_LABEL_W;
+export const GRID_COL_HEADER_HEIGHT = GRID_COL_HEADER_H;
+
+const gridRowKey = (p: PersonNode) =>
+  p.attributes.primaryBrand || p.attributes.brands[0] || UNASSIGNED_GROUP_KEY;
+const gridColKey = (p: PersonNode) =>
+  p.attributes.primaryChannel || p.attributes.channels[0] || UNASSIGNED_GROUP_KEY;
+const isSharedGridKey = (k: string) => k.startsWith("All ") || k === UNASSIGNED_GROUP_KEY;
+
+const orderGridKeys = (counts: Map<string, number>) =>
+  [...counts.keys()].sort((a, b) => {
+    const sa = isSharedGridKey(a);
+    const sb = isSharedGridKey(b);
+    if (sa !== sb) return sa ? 1 : -1; // shared/unassigned buckets last
+    const diff = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
+// Channel columns follow the taxonomy order so each group's channels stay adjacent
+const orderChannelGridKeys = (counts: Map<string, number>) =>
+  [...counts.keys()].sort((a, b) => {
+    const sa = isSharedGridKey(a);
+    const sb = isSharedGridKey(b);
+    if (sa !== sb) return sa ? 1 : -1;
+    const diff = channelSortKey(a) - channelSortKey(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
+export type GridGeometry = {
+  rows: Array<{ key: string; y: number; height: number; count: number }>;
+  cols: Array<{ key: string; x: number; width: number; count: number }>;
+  cells: Array<{
+    rowKey: string;
+    colKey: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    count: number;
+    shared: boolean;
+  }>;
+  // Top-level channel groups spanning their member columns (for grouped headers)
+  colGroups: Array<{ label: string; x: number; width: number; count: number }>;
+  maxCell: number;
+  width: number;
+  height: number;
+};
+
+const TIER_ORDER: Record<string, number> = {
+  "c-suite": 0,
+  vp: 1,
+  director: 2,
+  manager: 3,
+  ic: 4,
+};
+
+const computeGrid = (people: PersonNode[], collapsed: Set<string> = new Set()) => {
+  const rowCounts = new Map<string, number>();
+  const colCounts = new Map<string, number>();
+  const cells = new Map<string, PersonNode[]>();
+  // When a channel's group is collapsed, everyone in it shares one group column
+  const colKeyOf = (p: PersonNode) => {
+    const c = gridColKey(p);
+    const g = channelTopGroup(c);
+    return g && collapsed.has(g) ? g : c;
+  };
+  people.forEach((p) => {
+    const r = gridRowKey(p);
+    const c = colKeyOf(p);
+    rowCounts.set(r, (rowCounts.get(r) ?? 0) + 1);
+    colCounts.set(c, (colCounts.get(c) ?? 0) + 1);
+    const k = `${r}|||${c}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k)!.push(p);
+  });
+  // Leaders first within each cell so seniority reads top-left to bottom-right
+  cells.forEach((list) =>
+    list.sort(
+      (a, b) =>
+        (TIER_ORDER[a.attributes.tier ?? "ic"] ?? 4) -
+          (TIER_ORDER[b.attributes.tier ?? "ic"] ?? 4) ||
+        a.name.localeCompare(b.name),
+    ),
+  );
+  const rows = orderGridKeys(rowCounts);
+  const cols = orderChannelGridKeys(colCounts);
+
+  // Each channel column is as wide as its busiest cell needs
+  const colCellCols: Record<string, number> = {};
+  const colWidth: Record<string, number> = {};
+  cols.forEach((c) => {
+    let maxN = 1;
+    rows.forEach((r) => {
+      const n = (cells.get(`${r}|||${c}`) ?? []).length;
+      if (n > maxN) maxN = n;
+    });
+    colCellCols[c] = cellColsFor(maxN);
+    colWidth[c] = colCellCols[c] * GRID_CARD_W - GRID_GAP + 2 * GRID_CELL_PAD;
+  });
+
+  const colX: Record<string, number> = {};
+  let x = GRID_ROW_LABEL_W;
+  cols.forEach((c) => {
+    colX[c] = x;
+    x += colWidth[c] + GRID_COL_GAP;
+  });
+  const totalWidth = x - GRID_COL_GAP;
+
+  const rowHeight: Record<string, number> = {};
+  rows.forEach((r) => {
+    let maxH = NODE_HEIGHT + 2 * GRID_CELL_PAD;
+    cols.forEach((c) => {
+      const list = cells.get(`${r}|||${c}`) ?? [];
+      if (list.length) {
+        const innerRows = Math.ceil(list.length / colCellCols[c]);
+        const h = innerRows * GRID_CARD_H - GRID_GAP + 2 * GRID_CELL_PAD;
+        if (h > maxH) maxH = h;
+      }
+    });
+    rowHeight[r] = maxH;
+  });
+  const rowY: Record<string, number> = {};
+  let y = GRID_COL_HEADER_H;
+  rows.forEach((r) => {
+    rowY[r] = y;
+    y += rowHeight[r] + GRID_ROW_GAP;
+  });
+
+  return {
+    rows, cols, colX, totalWidth, rowHeight, rowY, totalHeight: y,
+    cells, rowCounts, colCounts, colCellCols, colWidth,
+  };
+};
+
+export const calculateGridLayout = (
+  nodes: GraphNode[],
+  collapsed: Set<string> = new Set(),
+): Record<string, { x: number; y: number }> => {
+  const people = nodes.filter((n): n is PersonNode => n.kind === "person");
+  const g = computeGrid(people, collapsed);
+  const positions: Record<string, { x: number; y: number }> = {};
+  g.rows.forEach((r) => {
+    g.cols.forEach((c) => {
+      const list = g.cells.get(`${r}|||${c}`) ?? [];
+      const cellCols = g.colCellCols[c];
+      list.forEach((p, idx) => {
+        const ix = idx % cellCols;
+        const iy = Math.floor(idx / cellCols);
+        positions[p.id] = {
+          x: g.colX[c] + GRID_CELL_PAD + ix * GRID_CARD_W,
+          y: g.rowY[r] + GRID_CELL_PAD + iy * GRID_CARD_H,
+        };
+      });
+    });
+  });
+  return positions;
+};
+
+export const getGridGeometry = (nodes: GraphNode[], collapsed: Set<string> = new Set()): GridGeometry => {
+  const people = nodes.filter((n): n is PersonNode => n.kind === "person");
+  const g = computeGrid(people, collapsed);
+  const cells: GridGeometry["cells"] = [];
+  let maxCell = 0;
+  g.rows.forEach((r) => {
+    g.cols.forEach((c) => {
+      const count = (g.cells.get(`${r}|||${c}`) ?? []).length;
+      const shared = isSharedGridKey(r) || isSharedGridKey(c);
+      // Heat scale tracks real brand×channel cells only, so shared "All …" buckets
+      // (which can be huge) don't wash out the gradient
+      if (!shared && count > maxCell) maxCell = count;
+      cells.push({
+        rowKey: r,
+        colKey: c,
+        x: g.colX[c],
+        y: g.rowY[r],
+        width: g.colWidth[c],
+        height: g.rowHeight[r],
+        count,
+        shared,
+      });
+    });
+  });
+  // Collapse adjacent same-group columns into a spanning header band
+  const colGroups: GridGeometry["colGroups"] = [];
+  g.cols.forEach((c) => {
+    if (isSharedGridKey(c)) return;
+    const label = channelTopGroup(c) ?? c;
+    const x = g.colX[c];
+    const w = g.colWidth[c];
+    const n = g.colCounts.get(c) ?? 0;
+    const last = colGroups[colGroups.length - 1];
+    if (last && last.label === label) {
+      last.width = x + w - last.x;
+      last.count += n;
+    } else {
+      colGroups.push({ label, x, width: w, count: n });
+    }
+  });
+
+  return {
+    rows: g.rows.map((key) => ({
+      key,
+      y: g.rowY[key],
+      height: g.rowHeight[key],
+      count: g.rowCounts.get(key) ?? 0,
+    })),
+    cols: g.cols.map((key) => ({
+      key,
+      x: g.colX[key],
+      width: g.colWidth[key],
+      count: g.colCounts.get(key) ?? 0,
+    })),
+    cells,
+    colGroups,
+    maxCell,
+    width: g.totalWidth,
+    height: g.totalHeight,
+  };
+};
+
 export const calculateCleanupLayout = (
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -288,9 +623,10 @@ export const calculateCleanupLayout = (
     return {};
   }
 
-  // Spacing constants based on mode
-  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 180 : 280; // Compact: tighter spacing (may overlap), Spacious: crisp spacing with no overlap
-  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 220 : 350; // Compact: tighter vertical spacing, Spacious: clean vertical space
+  // Spacing constants based on mode. Dagre's nodesep/ranksep are edge-to-edge
+  // gaps between cards, so neither mode can produce overlap.
+  const CLEANUP_NODE_SEPARATION = mode === "compact" ? 60 : 140;
+  const CLEANUP_RANK_SEPARATION = mode === "compact" ? 140 : 240;
   const CLEANUP_MARGIN_X = mode === "compact" ? 120 : 180;
   const CLEANUP_MARGIN_Y = mode === "compact" ? 120 : 180;
 
@@ -333,35 +669,9 @@ export const calculateCleanupLayout = (
     };
   });
 
-  // Post-processing: Align nodes at the same rank level
-  const rankMap = new Map<number, string[]>();
-  g.nodes().forEach((id) => {
-    const node = g.node(id);
-    const rank = node?.y ?? 0;
-    const roundedRank = Math.round(rank / CLEANUP_RANK_SEPARATION) * CLEANUP_RANK_SEPARATION;
-    
-    if (!rankMap.has(roundedRank)) {
-      rankMap.set(roundedRank, []);
-    }
-    rankMap.get(roundedRank)!.push(id);
-  });
-
-  // Align nodes horizontally within each rank
-  rankMap.forEach((nodeIds, rank) => {
-    if (nodeIds.length <= 1) return;
-    
-    // Sort nodes by current x position
-    nodeIds.sort((a, b) => positions[a].x - positions[b].x);
-    
-    // Calculate total width needed
-    const totalWidth = (nodeIds.length - 1) * CLEANUP_NODE_SEPARATION;
-    const startX = positions[nodeIds[0]].x - totalWidth / 2;
-    
-    // Reassign positions with even spacing
-    nodeIds.forEach((nodeId, index) => {
-      positions[nodeId].x = startX + index * CLEANUP_NODE_SEPARATION;
-    });
-  });
+  // NOTE: deliberately no per-rank "even spacing" pass here. Re-spacing a rank
+  // at a uniform pitch narrower than the card width crushed wide ranks into
+  // overlapping stacks and broke dagre's parent-over-children centering.
 
   // Center the entire layout
   if (Object.keys(positions).length > 0) {

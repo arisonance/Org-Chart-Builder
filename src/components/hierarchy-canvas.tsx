@@ -3,39 +3,69 @@
 import "@xyflow/react/dist/style.css";
 
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Connection,
   ConnectionMode,
-  Controls,
   Edge,
   MarkerType,
   MiniMap,
   Node,
   ReactFlow,
   type NodeChange,
+  type OnSelectionChangeParams,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { MixerHorizontalIcon } from "@radix-ui/react-icons";
+import { MixerHorizontalIcon, QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
+import { LaneNode, type LaneNodeData } from "@/components/lane-node";
+import { MirrorNode, type MirrorNodeData } from "@/components/mirror-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
+import { CanvasContextBar } from "@/components/canvas-context-bar";
+import { HelpDialog } from "@/components/help-dialog";
 import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
-import { useGraphStore } from "@/store/graph-store";
+import { useGraphStore, buildSettingsPatch } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
-import { buildChildMap, isDescendant } from "@/lib/graph/layout";
+import {
+  buildChildMap,
+  isDescendant,
+  getAssignments,
+  getGroupKey,
+  groupNodesByDimension,
+  lensToDimension,
+  isGridLens,
+  getGridGeometry,
+  calculateGridLayout,
+  collectDescendants,
+  UNASSIGNED_GROUP_KEY,
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  type LensDimension,
+} from "@/lib/graph/layout";
+import { GridColNode, GridRowNode, GridCellNode, GridGroupNode } from "@/components/grid-frame-node";
+import { CHANNEL_GROUP_COLORS } from "@/lib/theme/palette";
+import { channelTopGroup } from "@/lib/org/channels";
+import { CommandPalette, type PaletteAction } from "@/components/command-palette";
+import { OrgHealthPanel } from "@/components/org-health-panel";
+import { UnitRail } from "@/components/unit-rail";
+import { UnitFoundation } from "@/components/unit-foundation";
+import { computeOrgUnits, unitMemberIdSet, computeUnitAnchors, type ComputedUnit } from "@/lib/graph/org-units";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
   DEPARTMENT_COLORS,
   RELATIONSHIP_COLORS,
+  UNASSIGNED_LANE_COLOR,
 } from "@/lib/theme/palette";
 import { ROLE_TEMPLATES, type RoleTemplate } from "@/lib/schema/templates";
+import { DEMO_LENS_LABELS } from "@/data/demo-graph";
 
 type CanvasMenuState = {
   open: boolean;
@@ -45,6 +75,12 @@ type CanvasMenuState = {
 
 const nodeTypes = {
   hierarchyNode: HierarchyNode,
+  laneNode: LaneNode,
+  mirrorNode: MirrorNode,
+  gridColNode: GridColNode,
+  gridRowNode: GridRowNode,
+  gridCellNode: GridCellNode,
+  gridGroupNode: GridGroupNode,
 } as const;
 
 const edgeTypes = {
@@ -84,6 +120,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const removeNode = useGraphStore((state) => state.removeNode);
   const duplicateNodes = useGraphStore((state) => state.duplicateNodes);
   const toggleNodeLock = useGraphStore((state) => state.toggleNodeLock);
+  const reassignToLane = useGraphStore((state) => state.reassignToLane);
+  const reassignManyToLane = useGraphStore((state) => state.reassignManyToLane);
   const addTagToNode = useGraphStore((state) => state.addTagToNode);
   const copyNodesById = useGraphStore((state) => state.copyNodesById);
   const pasteClipboard = useGraphStore((state) => state.pasteClipboard);
@@ -98,6 +136,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const updateViewport = useGraphStore((state) => state.updateViewport);
   const setCurrentViewport = useGraphStore((state) => state.setCurrentViewport);
   const currentViewportState = useGraphStore((state) => state.currentViewport);
+  const mirrorLanes = useGraphStore((state) => state.mirrorLanes);
+  const toggleMirrorLanes = useGraphStore((state) => state.toggleMirrorLanes);
+  const collapsedIds = useGraphStore((state) => state.collapsedIds);
+  const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
+  const addCollapsed = useGraphStore((state) => state.addCollapsed);
+  const expandAll = useGraphStore((state) => state.expandAll);
+  const applyToPeople = useGraphStore((state) => state.applyToPeople);
+  const copyPersonSettings = useGraphStore((state) => state.copyPersonSettings);
+  const setLensStore = useGraphStore((state) => state.setLens);
+  const setLensFilters = useGraphStore((state) => state.setLensFilters);
+  const undo = useGraphStore((state) => state.undo);
+  const redo = useGraphStore((state) => state.redo);
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuState | null>(null);
@@ -105,8 +155,67 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     null,
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const focusRequest = useGraphStore((state) => state.focusRequest);
+  const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
+  const [collapsedChannelGroups, setCollapsedChannelGroups] = useState<Set<string>>(new Set());
+  const toggleChannelGroup = useCallback((label: string) => {
+    setCollapsedChannelGroups((prev) => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  }, []);
+
+  const toggleUnitExpand = useCallback((unitId: string) => {
+    setExpandedUnitIds((prev) => {
+      const next = new Set(prev);
+      next.has(unitId) ? next.delete(unitId) : next.add(unitId);
+      return next;
+    });
+  }, []);
+
+  // "Open in chart": jump to a focused home view of just this unit's people.
+  // Facilities land in their Department home; shared services in the reporting tree.
+  const jumpToUnit = useCallback(
+    (unit: ComputedUnit) => {
+      const memberIds = unit.members.map((m) => m.id);
+      const targetLens = unit.def.type === "facility" ? "department" : "hierarchy";
+      setLensStore(targetLens);
+      // Apply the focus after the lens-change settles: the search bar resets focusIds
+      // on lens change when its box is empty, so set ours once that effect has run.
+      setTimeout(() => {
+        setLensFilters(targetLens, { focusIds: memberIds });
+        rfInstance?.fitView({ padding: 0.2, duration: 500, maxZoom: 1 });
+      }, 160);
+    },
+    [setLensStore, setLensFilters, rfInstance],
+  );
   const [currentZoom, setCurrentZoom] = useState(1);
+  const lodBucketRef = useRef<"full" | "medium" | "compact">("full");
+  // The floating Edit panel overlays the right of the canvas; this lets us
+  // measure the canvas and pan a freshly selected card out from under it.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  // True while jumpToPerson is animating the camera, so the reveal effect
+  // doesn't fight it with a second pan.
+  const cameraBusyRef = useRef(false);
+  // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
+  // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
+  const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
+  const [lensTransition, setLensTransition] = useState(false);
   const isRestoringViewport = useRef(false);
+  const previousLens = useRef(lens);
+
+  // Briefly enable the glide transition when the lens changes so cards
+  // animate from their old positions to the new grouping
+  useEffect(() => {
+    if (previousLens.current === lens) return;
+    previousLens.current = lens;
+    setLensTransition(true);
+    const timer = setTimeout(() => setLensTransition(false), 850);
+    return () => clearTimeout(timer);
+  }, [lens]);
   const [quickAddDialog, setQuickAddDialog] = useState<{
     open: boolean;
     mode: 'direct-report' | 'new-person';
@@ -114,6 +223,67 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     managerName?: string;
     position?: { x: number; y: number };
   }>({ open: false, mode: 'new-person' });
+
+  // Mouse-wheel behavior: zoom (default, mouse-friendly) or pan (trackpad-friendly)
+  const [scrollZoom, setScrollZoom] = useState<boolean>(true);
+  useEffect(() => {
+    setScrollZoom(localStorage.getItem("org-chart-scroll-mode") !== "pan");
+  }, []);
+  const toggleScrollZoom = useCallback(() => {
+    setScrollZoom((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("org-chart-scroll-mode", next ? "zoom" : "pan");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const zoomOut = useCallback(
+    () => rfInstance?.zoomOut({ duration: 200 }),
+    [rfInstance],
+  );
+  const zoomIn = useCallback(
+    () => rfInstance?.zoomIn({ duration: 200 }),
+    [rfInstance],
+  );
+  const fitToView = useCallback(
+    () => rfInstance?.fitView({ padding: 0.2, duration: 300 }),
+    [rfInstance],
+  );
+
+  const paletteActions = useMemo<PaletteAction[]>(
+    () => [
+      { id: "lens-1", label: "Switch to Classic Hierarchy", hint: "1", run: () => setLensStore("hierarchy") },
+      { id: "lens-2", label: "Switch to Brand Lens", hint: "2", run: () => setLensStore("brand") },
+      { id: "lens-3", label: "Switch to Channel Lens", hint: "3", run: () => setLensStore("channel") },
+      { id: "lens-4", label: "Switch to Department Lens", hint: "4", run: () => setLensStore("department") },
+      { id: "lens-5", label: "Switch to Brand × Channel Grid", hint: "5", run: () => setLensStore("matrix") },
+      { id: "fit", label: "Fit view", hint: "0", run: () => rfInstance?.fitView({ padding: 0.2, duration: 300 }) },
+      { id: "cleanup", label: "Clean up layout", run: () => cleanupCanvas(lens, "spacious") },
+      { id: "health", label: "Open Org Health X-ray", run: () => setHealthOpen(true) },
+      { id: "help", label: "Show keyboard shortcuts & guide", hint: "?", run: () => setHelpOpen(true) },
+      {
+        id: "add-person",
+        label: "Add person",
+        hint: "N",
+        run: () =>
+          setQuickAddDialog({
+            open: true,
+            mode: "new-person",
+            position: rfInstance
+              ? rfInstance.screenToFlowPosition({
+                  x: window.innerWidth / 2,
+                  y: window.innerHeight / 2,
+                })
+              : { x: 400, y: 300 },
+          }),
+      },
+    ],
+    [setLensStore, rfInstance, cleanupCanvas, lens],
+  );
 
   const lensLayout = lensState?.layout;
   const filters = lensState?.filters;
@@ -123,7 +293,283 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [nodesData],
   );
 
+  // Cross-cutting org units (facilities + shared services) roll up in Brand/Channel/Grid
+  // views so dozens of warehouse/production/HR/finance people don't clutter every lane.
+  const isCrossCutting = lens === "brand" || lens === "channel" || isGridLens(lens);
+  const orgUnits = useMemo(() => computeOrgUnits(personNodes), [personNodes]);
+  const unitMemberIds = useMemo(() => unitMemberIdSet(personNodes), [personNodes]);
+
+  const noFocus = (filters?.focusIds?.length ?? 0) === 0;
+  // Brand/Channel get the left rail; the Grid gets a full-width foundation band instead
+  const showUnitRail =
+    (lens === "brand" || lens === "channel") && noFocus && orgUnits.length > 0;
+  const showUnitFoundation = isGridLens(lens) && noFocus && orgUnits.length > 0;
+
+  // Dedicated Shared Services view: focus the reporting tree on everyone in the
+  // shared-service units (Finance + Admin/HR + IT) at once.
+  const openSharedServices = useCallback(() => {
+    const ids = orgUnits
+      .filter((u) => u.def.type === "shared-service")
+      .flatMap((u) => u.members.map((m) => m.id));
+    if (ids.length === 0) return;
+    setLensStore("hierarchy");
+    setTimeout(() => {
+      setLensFilters("hierarchy", { focusIds: ids });
+      rfInstance?.fitView({ padding: 0.2, duration: 500, maxZoom: 1 });
+    }, 160);
+  }, [orgUnits, setLensStore, setLensFilters, rfInstance]);
+
+  // Last rendered position per node, across lenses — used as the glide start
+  // point when a lens hasn't been laid out yet
+  const lastRenderedPositions = useRef<Record<string, { x: number; y: number }>>({});
+
   const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
+
+  // Direct manager of each person (global reporting chain)
+  const parentMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    edgesData.forEach((edge) => {
+      if (edge.metadata.type === "manager" && !(edge.target in map)) {
+        map[edge.target] = edge.source;
+      }
+    });
+    return map;
+  }, [edgesData]);
+
+  // Hierarchy view: roll each facility / shared service into one container card at the
+  // point it enters the reporting tree. Collapsed by default; expandable per anchor.
+  const unitAnchors = useMemo(
+    () => computeUnitAnchors(personNodes, parentMap, childMap),
+    [personNodes, parentMap, childMap],
+  );
+  const unitAnchorMap = useMemo(
+    () => new Map(unitAnchors.map((a) => [a.id, a.def])),
+    [unitAnchors],
+  );
+  // Default facilities/shared services to collapsed containers, once per load, then
+  // reflow the hierarchy tight. Routed through the real collapse set so the layout folds.
+  const seededAnchorsRef = useRef(false);
+  useEffect(() => {
+    if (seededAnchorsRef.current) return;
+    // Wait until the reporting tree is loaded, or anchors compute wrong
+    if (personNodes.length === 0 || Object.keys(parentMap).length === 0) return;
+    if (unitAnchors.length === 0) return;
+    seededAnchorsRef.current = true;
+    const current = useGraphStore.getState().collapsedIds;
+    const toAdd = unitAnchors.map((a) => a.id).filter((id) => !current.includes(id));
+    if (toAdd.length > 0) addCollapsed(toAdd);
+  }, [personNodes.length, parentMap, unitAnchors, addCollapsed]);
+
+  // Hierarchy view: people folded away under collapsed managers (incl. facility anchors)
+  const hiddenByCollapse = useMemo(
+    () =>
+      lens === "hierarchy" && collapsedIds.length > 0
+        ? collectDescendants(childMap, collapsedIds)
+        : null,
+    [lens, collapsedIds, childMap],
+  );
+
+  // Total subtree size per person, for the "+N" chip on collapsed cards
+  const descendantCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const count = (id: string): number => {
+      if (counts[id] !== undefined) return counts[id];
+      counts[id] = 0; // cycle guard
+      counts[id] = (childMap[id] ?? []).reduce((sum, child) => sum + 1 + count(child), 0);
+      return counts[id];
+    };
+    personNodes.forEach((node) => count(node.id));
+    return counts;
+  }, [childMap, personNodes]);
+
+  // People with reports below the top tier (depth >= 1), used both for the
+  // "land collapsed" default and the global Collapse-all control. Folding these
+  // leaves the CEO + their direct execs — a narrow skeleton that frames cleanly.
+  const collapseTargets = useMemo(() => {
+    const depthOf = (id: string) => {
+      let depth = 0;
+      let cur = parentMap[id];
+      const seen = new Set<string>([id]);
+      while (cur && !seen.has(cur)) {
+        depth += 1;
+        seen.add(cur);
+        cur = parentMap[cur];
+      }
+      return depth;
+    };
+    const top: string[] = [];
+    personNodes.forEach((person) => {
+      if ((childMap[person.id]?.length ?? 0) === 0) return;
+      if (depthOf(person.id) >= 1) top.push(person.id);
+    });
+    return { top };
+  }, [personNodes, parentMap, childMap]);
+
+  // Land on a digestible top-down view the very first time: fold every subtree
+  // below the top tier so the canvas opens as a clean, well-framed skeleton
+  // (CEO + execs) instead of 250 cards. Gated to once per browser so it never
+  // stomps a user's own expand/collapse choices. Re-fits once the collapse
+  // reflow settles so the first frame shows the folded view, not a stale crop.
+  const seededDepthRef = useRef(false);
+  useEffect(() => {
+    if (seededDepthRef.current) return;
+    if (!rfInstance) return;
+    if (personNodes.length === 0 || Object.keys(parentMap).length === 0) return;
+    if (collapseTargets.top.length === 0) return;
+    seededDepthRef.current = true;
+    let alreadySeeded = false;
+    try {
+      alreadySeeded = !!localStorage.getItem("org-chart-default-collapse-v2");
+      if (!alreadySeeded) localStorage.setItem("org-chart-default-collapse-v2", "1");
+    } catch {
+      alreadySeeded = true; // no storage access → don't surprise-collapse
+    }
+    if (!alreadySeeded) {
+      addCollapsed(collapseTargets.top);
+      window.setTimeout(() => {
+        rfInstance.fitView({ padding: 0.2, duration: 400, maxZoom: 1.2 });
+      }, 450);
+    }
+  }, [rfInstance, personNodes.length, parentMap, collapseTargets.top, addCollapsed]);
+
+  // "Reset view": clear the active subset (search/filter/focus), drop any
+  // single-person focus, unfold everything, and reframe the whole org.
+  const resetView = useCallback(() => {
+    setLensFilters(lens, { focusIds: [], hiddenIds: [], activeTokens: [] });
+    clearSelection();
+    expandAll();
+    setTimeout(() => {
+      rfInstance?.fitView({ padding: 0.15, duration: 400, minZoom: 0.42, maxZoom: 1.2 });
+    }, 80);
+  }, [lens, setLensFilters, clearSelection, expandAll, rfInstance]);
+
+  // Action confirmation toast with one-click Undo
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((message: string) => {
+    setToast({ message });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 6000);
+  }, []);
+
+  // ⌘K palette: fly to a person in the current lens, expanding any collapsed
+  // ancestors so they're actually visible when the camera arrives
+  const jumpToPerson = useCallback(
+    (id: string) => {
+      let ancestor = parentMap[id];
+      const seen = new Set<string>([id]);
+      while (ancestor && !seen.has(ancestor)) {
+        if (useGraphStore.getState().collapsedIds.includes(ancestor)) {
+          useGraphStore.getState().toggleCollapse(ancestor);
+        }
+        seen.add(ancestor);
+        ancestor = parentMap[ancestor];
+      }
+      selectNode(id);
+      const fresh = useGraphStore.getState();
+      const position =
+        fresh.document.lens_state[fresh.document.lens]?.layout.positions[id];
+      if (position && rfInstance) {
+        cameraBusyRef.current = true;
+        rfInstance.setCenter(position.x + NODE_WIDTH / 2, position.y + NODE_HEIGHT / 2, {
+          zoom: Math.max(rfInstance.getViewport().zoom, 0.8),
+          duration: 500,
+        });
+        setTimeout(() => {
+          cameraBusyRef.current = false;
+        }, 600);
+      }
+    },
+    [parentMap, selectNode, rfInstance],
+  );
+
+  // Keep a freshly selected card from hiding under the Edit panel: if the panel
+  // is open (single selection) and the card sits under it or off-screen, gently
+  // pan it into the clear area to the left. Cards already in view are left put.
+  useEffect(() => {
+    if (!rfInstance || cameraBusyRef.current) return;
+    if (selection.nodeIds.length !== 1) return;
+    const id = selection.nodeIds[0];
+    const wrap = wrapperRef.current;
+    if (!wrap) return;
+    const fresh = useGraphStore.getState();
+    const pos = fresh.document.lens_state[fresh.document.lens]?.layout.positions[id];
+    if (!pos) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const center = rfInstance.flowToScreenPosition({
+      x: pos.x + NODE_WIDTH / 2,
+      y: pos.y + NODE_HEIGHT / 2,
+    });
+    const panelWidth = Math.min(360, rect.width - 32); // mirrors the page.tsx panel
+    const panelLeft = rect.right - panelWidth - 16; // panel sits at right-4
+    const margin = 56;
+    const occluded =
+      center.x > panelLeft - margin ||
+      center.x < rect.left + margin ||
+      center.y < rect.top + margin ||
+      center.y > rect.bottom - margin;
+    if (!occluded) return;
+
+    const targetX = rect.left + Math.max(140, (panelLeft - rect.left) / 2);
+    const targetY = rect.top + rect.height / 2;
+    const vp = rfInstance.getViewport();
+    rfInstance.setViewport(
+      { x: vp.x + (targetX - center.x), y: vp.y + (targetY - center.y), zoom: vp.zoom },
+      { duration: 300 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection.nodeIds, rfInstance]);
+
+  // Header "Find anyone" search asks the canvas to fly to a person; the nonce
+  // changes on every request so re-picking the same person still flies there.
+  useEffect(() => {
+    if (!focusRequest) return;
+    jumpToPerson(focusRequest.id);
+  }, [focusRequest, jumpToPerson]);
+
+  // Person focus mode: selecting a single person spotlights their matrix web
+  // (manager line, reports, dotted team, sponsor) and dims everyone else.
+  const focusedNodeId =
+    selection.nodeIds.length === 1 ? selection.nodeIds[0] : null;
+  const focusSet = useMemo(() => {
+    if (!focusedNodeId) return null;
+    const set = new Set<string>([focusedNodeId]);
+    edgesData.forEach((edge) => {
+      if (edge.source === focusedNodeId) set.add(edge.target);
+      if (edge.target === focusedNodeId) set.add(edge.source);
+    });
+    // Light up the whole manager chain to the top, not just the direct manager,
+    // so a focused person's place in the hierarchy reads at a glance.
+    let ancestor = parentMap[focusedNodeId];
+    const seen = new Set<string>([focusedNodeId]);
+    while (ancestor && !seen.has(ancestor)) {
+      set.add(ancestor);
+      seen.add(ancestor);
+      ancestor = parentMap[ancestor];
+    }
+    return set;
+  }, [focusedNodeId, edgesData, parentMap]);
+
+  // Horizontal extent of each lane in the active matrix view, used to detect
+  // which lane a card was dropped into for drag-to-reassign
+  const laneXRanges = useMemo(() => {
+    const dimension = lensToDimension(lens);
+    if (!dimension) return null;
+    const positions = lensLayout?.positions ?? {};
+    const groups = groupNodesByDimension(personNodes, dimension);
+    const ranges: Array<{ key: string; minX: number; maxX: number; centerX: number }> = [];
+    groups.forEach((members, key) => {
+      const xs = members
+        .map((m) => positions[m.id]?.x)
+        .filter((x): x is number => typeof x === "number");
+      if (xs.length === 0) return;
+      const minX = Math.min(...xs) - 80;
+      const maxX = Math.max(...xs) + NODE_WIDTH + 80;
+      ranges.push({ key, minX, maxX, centerX: (minX + maxX) / 2 });
+    });
+    return { dimension, ranges };
+  }, [lens, lensLayout?.positions, personNodes]);
 
   // Show onboarding for empty canvas
   useEffect(() => {
@@ -141,23 +587,50 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       cleanupCanvas(lens, 'spacious');
       return;
     }
-    const missing = personNodes.some((node) => !lensLayout.positions[node.id]);
+    // People folded under a collapsed manager never get positions; only
+    // visible people count as "missing" or this would relayout forever
+    const missing = personNodes.some(
+      (node) => !hiddenByCollapse?.has(node.id) && !lensLayout.positions[node.id],
+    );
     if (missing) {
       cleanupCanvas(lens, 'spacious');
     }
-  }, [personNodes, lensLayout, cleanupCanvas, lens]);
+  }, [personNodes, lensLayout, cleanupCanvas, lens, hiddenByCollapse]);
 
-  // Fit view after layout is ready
+  // Position the viewport once per lens visit (initial load or lens switch).
+  // Deliberately NOT keyed on the whole lensLayout: that object changes every
+  // time the viewport is persisted, which previously re-fired fitView ~once a
+  // second and yanked the canvas back while the user was panning ("snapping").
+  const positionedLensRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!rfInstance || !lensLayout || personNodes.length === 0) return;
-    
-    // Delay slightly to ensure all nodes are rendered
+    if (!rfInstance || personNodes.length === 0) return;
+    if (positionedLensRef.current === lens) return;
+    positionedLensRef.current = lens;
+
+    const target = lensLayout?.viewport;
+    const isDefault =
+      !target || (target.x === 0 && target.y === 0 && target.zoom === 1);
+
+    isRestoringViewport.current = true;
     const timer = setTimeout(() => {
-      rfInstance.fitView({ padding: 0.2, duration: 300, maxZoom: 1.5 });
-    }, 150);
-    
+      if (isDefault) {
+        // Land at a readable zoom rather than crushing a wide org into a 1px ribbon.
+        // The explicit "Fit" control still fits everything; this is just the first frame.
+        rfInstance.fitView({ padding: 0.15, duration: 350, minZoom: 0.42, maxZoom: 1.2 });
+      } else {
+        rfInstance.setViewport(
+          { x: target.x, y: target.y, zoom: target.zoom },
+          { duration: 300 },
+        );
+      }
+      setTimeout(() => {
+        isRestoringViewport.current = false;
+      }, 400);
+    }, 200);
+
     return () => clearTimeout(timer);
-  }, [rfInstance, lensLayout, personNodes.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfInstance, lens, personNodes.length]);
 
   const highlightTokens = useMemo(() => {
     if (!filters?.activeTokens?.length) return new Map<string, string[]>();
@@ -173,8 +646,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return tokensByNode;
   }, [filters?.activeTokens, personNodes, lens]);
 
-  const nodes = useMemo<Node<HierarchyNodeData>[]>(() => {
-    const positions = lensLayout?.positions ?? {};
+  const computedNodes = useMemo<Node[]>(() => {
+    // Grid lens recomputes positions fresh when a channel group is collapsed so the
+    // cards land in the merged group column (matching the recomputed geometry).
+    const positions =
+      isGridLens(lens) && collapsedChannelGroups.size > 0
+        ? calculateGridLayout(nodesData, collapsedChannelGroups)
+        : lensLayout?.positions ?? {};
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
     
@@ -186,9 +664,21 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (hiddenIds.length > 0) {
       filteredNodes = filteredNodes.filter((node) => !hiddenIds.includes(node.id));
     }
-    
-    return filteredNodes.map((node) => {
-      const position = positions[node.id] ?? { x: 0, y: 0 };
+    if (hiddenByCollapse) {
+      filteredNodes = filteredNodes.filter((node) => !hiddenByCollapse.has(node.id));
+    }
+
+    // Roll up facilities / shared services into single cards in cross-cutting views,
+    // removing their members from the brand/channel lanes. Skipped while focusing.
+    const rollUp = isCrossCutting && focusIds.length === 0 && orgUnits.length > 0;
+    if (rollUp) {
+      filteredNodes = filteredNodes.filter((node) => !unitMemberIds.has(node.id));
+    }
+
+    const personFlowNodes: Node[] = filteredNodes.map((node) => {
+      const position =
+        positions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
+      lastRenderedPositions.current[node.id] = position;
       const accent = getAccentColor(node, lens);
       
       const data: HierarchyNodeData = {
@@ -198,7 +688,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         emphasisLabel: getPrimaryLabel(node, lens),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
-        zoom: currentZoom, // Pass zoom for LOD rendering
+        zoom: lodZoom, // Pass zoom for LOD rendering
+        reportCount: lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0,
+        hiddenCount: descendantCounts[node.id] ?? 0,
+        isCollapsed: collapsedIds.includes(node.id),
+        onToggleCollapse: lens === "hierarchy" ? toggleCollapse : undefined,
+        // When this node is a facility / shared-service anchor, render it as a container
+        unit: lens === "hierarchy" ? unitAnchorMap.get(node.id) : undefined,
         actions: {
           addDirectReport: (managerId) => {
             const manager = personNodes.find((n) => n.id === managerId);
@@ -220,18 +716,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               position: offsetPosition(position, { x: -160, y: -160 }),
             });
             addRelationship(newId, targetId, "manager");
-            setSelection({ nodeIds: [newId], edgeIds: [] });
-          },
-          addSponsor: (targetId) => {
-            const newId = addPerson({
-              name: "New sponsor",
-              title: "Executive Sponsor",
-              brands: [],
-              channels: [],
-              departments: [],
-              position: offsetPosition(position, { x: 180, y: -120 }),
-            });
-            addRelationship(newId, targetId, "sponsor");
             setSelection({ nodeIds: [newId], edgeIds: [] });
           },
           addDotted: (targetId) => {
@@ -256,12 +740,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           lockToggle: toggleNodeLock,
           colorTag: addTagToNode,
           openEditor: (nodeId) => selectNode(nodeId),
+          copySettings: (nodeId) => {
+            copyPersonSettings(nodeId);
+            showToast("Settings copied — right-click another person to paste");
+          },
+          pasteSettings: (nodeId) => {
+            const clip = useGraphStore.getState().settingsClipboard;
+            if (!clip) {
+              showToast("Copy a person's settings first");
+              return;
+            }
+            // Paste onto the multi-selection if this node is part of it, else just this one
+            const sel = useGraphStore.getState().selection.nodeIds;
+            const targets = sel.includes(nodeId) && sel.length > 1 ? sel : [nodeId];
+            applyToPeople(targets, () => buildSettingsPatch(clip, ["brand", "channel", "department", "tier", "location"]));
+            showToast(`Pasted ${clip.sourceName}'s settings onto ${targets.length} ${targets.length === 1 ? "person" : "people"}`);
+          },
         },
         onSelect: (id, additive) => {
           selectNode(id, additive);
         },
       };
       
+      const dimmed = focusSet ? !focusSet.has(node.id) : false;
+
       return {
         id: node.id,
         type: "hierarchyNode",
@@ -269,15 +771,46 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         data,
         draggable: !node.locked,
         selected: selection.nodeIds.includes(node.id),
+        // Only carry an opacity/transition when focus mode is actually dimming
+        // cards. Leaving a transition on all 250 nodes promotes each to its own
+        // GPU layer, which the compositor evicts (cards/text blank) while the
+        // viewport transforms during pan/zoom.
+        style: focusSet
+          ? { opacity: dimmed ? 0.12 : 1, transition: "opacity 0.3s ease-in-out" }
+          : undefined,
       };
     });
+
+    // Brand × Channel grid: draw row bands (brands) and column bands (channels)
+    if (isGridLens(lens)) {
+      const frame = buildGridFrameNodes(personNodes, lodZoom, collapsedChannelGroups, toggleChannelGroup);
+      return [...frame, ...personFlowNodes];
+    }
+
+    // Matrix views: draw a labeled swim lane behind each brand/channel/department group
+    const dimension = lensToDimension(lens);
+    if (!dimension) {
+      return personFlowNodes;
+    }
+    const laneNodes = buildLaneNodes(
+      filteredNodes,
+      positions,
+      dimension,
+      mirrorLanes,
+      selectNode,
+      focusSet,
+      lodZoom,
+    );
+    return [...laneNodes, ...personFlowNodes];
   }, [
+    mirrorLanes,
+    focusSet,
     personNodes,
     selection.nodeIds,
     lensLayout?.positions,
     lens,
     highlightTokens,
-    currentZoom,
+    lodZoom,
     addPerson,
     addRelationship,
     duplicateNodes,
@@ -287,14 +820,45 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addTagToNode,
     selectNode,
     setSelection,
+    isCrossCutting,
+    orgUnits,
+    unitMemberIds,
+    unitAnchorMap,
+    collapsedChannelGroups,
+    toggleChannelGroup,
+    nodesData,
     filters?.focusIds,
     filters?.hiddenIds,
+    hiddenByCollapse,
+    childMap,
+    descendantCounts,
+    collapsedIds,
+    toggleCollapse,
   ]);
+
+  // Local node state so React Flow position changes (dragging) render per
+  // frame; re-synced from the store-derived nodes whenever those change
+  const [rfNodes, setRfNodes] = useState<Node[]>(computedNodes);
+  useEffect(() => {
+    setRfNodes(computedNodes);
+  }, [computedNodes]);
 
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
-    
-    return edgesData.map((edge) => {
+
+    const rollUp = isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
+    let visibleEdges = hiddenByCollapse
+      ? edgesData.filter(
+          (edge) => !hiddenByCollapse.has(edge.source) && !hiddenByCollapse.has(edge.target),
+        )
+      : edgesData;
+    if (rollUp) {
+      // Drop edges that touch rolled-up unit members so no lines dangle to the rail
+      visibleEdges = visibleEdges.filter(
+        (edge) => !unitMemberIds.has(edge.source) && !unitMemberIds.has(edge.target),
+      );
+    }
+    return visibleEdges.map((edge) => {
       const marker = markerByType[edge.metadata.type] ?? markerByType.manager;
       const color = RELATIONSHIP_COLORS[edge.metadata.type] ?? "#94a3b8";
       const isGhost =
@@ -306,9 +870,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                        edge.metadata.type === 'dotted' ? 'dotted' : 
                        'manager';
       
-      // Calculate opacity based on ghost state (keep edges visible at all zoom levels)
-      const opacity = isGhost || edge.metadata.ghost ? 0.3 : 0.85;
-      
+      // In matrix views the dotted/sponsor relationships are the story, so fade
+      // the within-lane reporting lines and let cross-lane links stand out
+      const isMatrixView = lens !== "hierarchy";
+      const dimmedManager = isMatrixView && edge.metadata.type === "manager";
+      let opacity = isGhost || edge.metadata.ghost ? 0.3 : dimmedManager ? 0.18 : 0.9;
+
+      // Focus mode: spotlight the selected person's relationships and the manager
+      // chain they sit in (both endpoints in the focus set), fade everything else.
+      const isIncidentToFocus =
+        !!focusSet && focusSet.has(edge.source) && focusSet.has(edge.target);
+      if (focusedNodeId) {
+        opacity = isIncidentToFocus ? 0.95 : 0.05;
+      }
+
       return {
         id: edge.id,
         source: edge.source,
@@ -317,7 +892,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         data: {
           ...edge,
         },
-        animated: edge.metadata.type === "dotted" && currentZoom > 0.5,
+        animated: edge.metadata.type === "dotted" && lodZoom > 0.5,
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker
           type: MarkerType.ArrowClosed,
           width: marker.width,
@@ -328,27 +903,90 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           ...baseEdgeStyle,
           stroke: color,
           opacity,
+          strokeWidth: isIncidentToFocus ? 3.5 : baseEdgeStyle.strokeWidth,
         },
         selectable: true,
         selected: selection.edgeIds.includes(edge.id),
+        zIndex: isIncidentToFocus ? 10 : 0,
       };
     });
-  }, [edgesData, filters?.activeTokens, personNodes, lens, selection.edgeIds, currentZoom]);
+  }, [
+    edgesData,
+    filters?.activeTokens,
+    personNodes,
+    lens,
+    selection.edgeIds,
+    lodZoom,
+    focusedNodeId,
+    focusSet,
+    hiddenByCollapse,
+    isCrossCutting,
+    orgUnits,
+    unitMemberIds,
+    filters?.focusIds,
+  ]);
 
-  // Handle node drag stop - instant position updates without debouncing
+  // Handle node drag stop - persist positions (the whole dragged selection),
+  // and in matrix views reassign each person to the lane they were dropped into
   const handleNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      updateNodePosition(node.id, node.position);
+    (_event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
+      const moved = draggedNodes?.length ? draggedNodes : [node];
+      moved.forEach((item) => updateNodePosition(item.id, item.position));
+
+      if (!laneXRanges || laneXRanges.ranges.length === 0) return;
+      const reassigned: Array<{ name: string; lane: string }> = [];
+      moved.forEach((item) => {
+        const person = personNodes.find((n) => n.id === item.id);
+        if (!person) return;
+
+        const dropX = item.position.x + NODE_WIDTH / 2;
+        let target = laneXRanges.ranges.find((r) => dropX >= r.minX && dropX <= r.maxX);
+        if (!target) {
+          // Dropped in the gap between lanes — snap to the nearest one
+          target = laneXRanges.ranges.reduce((best, r) =>
+            Math.abs(dropX - r.centerX) < Math.abs(dropX - best.centerX) ? r : best,
+          );
+        }
+        if (!target || target.key === UNASSIGNED_GROUP_KEY) return;
+        if (getGroupKey(person, laneXRanges.dimension) === target.key) return;
+
+        reassignToLane(item.id, laneXRanges.dimension, target.key);
+        reassigned.push({ name: person.name, lane: target.key });
+      });
+      if (reassigned.length === 1) {
+        showToast(`Moved ${reassigned[0].name} → ${reassigned[0].lane}`);
+      } else if (reassigned.length > 1) {
+        showToast(`Moved ${reassigned.length} people → ${reassigned[0].lane}`);
+      }
     },
-    [updateNodePosition],
+    [updateNodePosition, laneXRanges, personNodes, reassignToLane, showToast],
   );
 
-  const handleNodesChange = useCallback(
-    (_changes: NodeChange[]) => {
-      // Let React Flow handle visual updates natively for smooth dragging
-      // Position persistence happens only on drag stop via handleNodeDragStop
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    // Apply changes to the local copy so cards follow the cursor while
+    // dragging; the store is only written on drag stop
+    setRfNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
+
+  // Keep the store's selection in sync with React Flow's (shift+drag box
+  // selection, shift-click), ignoring lane backgrounds and mirror cards
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
+      const ids = selectedNodes
+        .map((n) => n.id)
+        .filter((id) => !id.startsWith("lane:") && !id.startsWith("mirror:"))
+        .sort();
+      const current = [...selection.nodeIds].sort();
+      if (ids.length === current.length && ids.every((id, i) => id === current[i])) {
+        return;
+      }
+      // Only push multi-selections (or shrinking ones) from React Flow; single
+      // clicks are handled by the cards' own onSelect
+      if (ids.length > 1 || (ids.length === 0 && current.length > 1)) {
+        setSelection({ nodeIds: ids, edgeIds: [] });
+      }
     },
-    [],
+    [selection.nodeIds, setSelection],
   );
 
   const handleEdgesChange = useCallback(() => {
@@ -382,9 +1020,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleNodesDelete = useCallback(
     (deleted: Node[]) => {
+      const people = deleted.filter((node) => node.id.startsWith("person-"));
       deleted.forEach((node) => removeNode(node.id));
+      if (people.length === 1) {
+        const person = personNodes.find((n) => n.id === people[0].id);
+        showToast(`Deleted ${person?.name ?? "1 person"}`);
+      } else if (people.length > 1) {
+        showToast(`Deleted ${people.length} people`);
+      }
     },
-    [removeNode],
+    [removeNode, personNodes, showToast],
   );
 
   const handlePaneClick = useCallback(() => {
@@ -457,36 +1102,28 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return () => clearTimeout(timer);
   }, [currentViewportState, rfInstance, lens, lensLayout?.viewport, updateViewport]);
 
-  // Restore viewport when lens layout changes (smooth animation)
-  useEffect(() => {
-    if (!rfInstance || !lensLayout?.viewport) return;
-    
-    const currentViewport = rfInstance.getViewport();
-    const targetViewport = lensLayout.viewport;
-    
-    // Only restore if viewport is significantly different (to avoid conflicts with user interactions)
-    const threshold = 10;
-    const isDifferent = 
-      Math.abs(currentViewport.x - targetViewport.x) > threshold ||
-      Math.abs(currentViewport.y - targetViewport.y) > threshold ||
-      Math.abs(currentViewport.zoom - targetViewport.zoom) > 0.1;
-    
-    if (isDifferent) {
-      isRestoringViewport.current = true;
-      // Smooth viewport restore to avoid jank
-      rfInstance.setViewport(
-        { x: targetViewport.x, y: targetViewport.y, zoom: targetViewport.zoom },
-        { duration: 200 }
-      );
-      // Reset flag after animation
-      setTimeout(() => {
-        isRestoringViewport.current = false;
-      }, 250);
-    }
-  }, [rfInstance, lensLayout?.viewport]);
-
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // "?" opens the shortcuts & guide
+      if (event.key === "?") {
+        event.preventDefault();
+        setHelpOpen(true);
+        return;
+      }
+
+      // Cmd/Ctrl + Z undo, Cmd/Ctrl + Shift + Z (or Cmd/Ctrl + Y) redo
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
       // Cmd/Ctrl + D to duplicate
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
@@ -494,6 +1131,25 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           duplicateNodes(selection.nodeIds);
         }
         return;
+      }
+
+      // Zoom shortcuts: "-" out, "+"/"=" in, "0" fit to view
+      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.key === "-" || event.key === "_") {
+          event.preventDefault();
+          rfInstance?.zoomOut({ duration: 200 });
+          return;
+        }
+        if (event.key === "=" || event.key === "+") {
+          event.preventDefault();
+          rfInstance?.zoomIn({ duration: 200 });
+          return;
+        }
+        if (event.key === "0") {
+          event.preventDefault();
+          rfInstance?.fitView({ padding: 0.2, duration: 300 });
+          return;
+        }
       }
 
       // N to add new person at center
@@ -558,8 +1214,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       lensLayout,
       addRelationship,
       setSelection,
+      undo,
+      redo,
     ],
   );
+
+  // Canvas shortcuts must work without the canvas having DOM focus (clicking the
+  // React Flow pane leaves focus on <body>), so listen at the document level
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      if (quickAddDialog.open) return;
+      handleKeyDown(event as unknown as React.KeyboardEvent);
+    };
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, [handleKeyDown, quickAddDialog.open]);
 
   const handleQuickAddSave = (data: QuickAddPersonData) => {
     const newId = addPerson({
@@ -589,16 +1266,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
+          ref={wrapperRef}
           className={[
             "relative h-full min-h-[720px] w-full overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-md ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10",
+            lensTransition ? "lens-transition" : "",
             className ?? "",
           ].join(" ")}
           style={style}
           onContextMenu={handlePaneContextMenu}
-          onKeyDown={handleKeyDown}
         >
           <ReactFlow
-            nodes={nodes}
+            nodes={rfNodes}
             edges={edges}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             nodeTypes={nodeTypes as any}
@@ -611,35 +1289,45 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
             onPaneClick={handlePaneClick}
+            onSelectionChange={handleSelectionChange}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}
-            onMove={() => {
-              if (rfInstance) {
-                const viewport = rfInstance.getViewport();
+            onMove={(_, viewport) => {
+              // Per-frame React state writes fight React Flow's CSS transform and cause
+              // flicker. During the gesture only re-render when the LOD bucket flips.
+              const bucket =
+                viewport.zoom > 0.6 ? "full" : viewport.zoom >= 0.45 ? "medium" : "compact";
+              if (bucket !== lodBucketRef.current) {
+                lodBucketRef.current = bucket;
                 setCurrentZoom(viewport.zoom);
-                setCurrentViewport(viewport); // Lightweight update
               }
+            }}
+            onMoveEnd={(_, viewport) => {
+              // Settle once when movement stops: exact zoom (counter-scaling, %) + persist
+              setCurrentZoom(viewport.zoom);
+              setCurrentViewport(viewport);
             }}
             nodesDraggable
             nodesConnectable
             elementsSelectable
             selectNodesOnDrag={false}
             elevateEdgesOnSelect={false}
+            onlyRenderVisibleElements
             connectionMode={ConnectionMode.Loose}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1.5, minZoom: 0.5 }}
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            panOnScroll
-            panOnDrag={[1, 2]}
+            panOnScroll={!scrollZoom}
+            zoomOnScroll={scrollZoom}
+            panOnDrag={[0, 1, 2]}
             zoomOnPinch
             deleteKeyCode={["Backspace", "Delete"]}
             proOptions={{ hideAttribution: true }}
-            minZoom={0.25}
+            minZoom={0.04}
             maxZoom={2}
             defaultEdgeOptions={{ type: "manager" }}
             onInit={setRfInstance}
             className="bg-transparent"
-            onlyRenderVisibleElements={personNodes.length > 20}
           >
             <Background
               variant={lensLayout?.showGrid ? BackgroundVariant.Dots : BackgroundVariant.Lines}
@@ -655,18 +1343,98 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               pannable
               zoomable
             />
-            <Controls className="!left-6 !bottom-6 rounded-full bg-white/90 text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10" />
-            {/* Cleanup Canvas Button */}
+            {/* Mirror-lanes toggle, only relevant in matrix views */}
+            {lens !== "hierarchy" && personNodes.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleMirrorLanes}
+                className={[
+                  "absolute left-6 top-6 z-30 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400",
+                  mirrorLanes
+                    ? "border-sky-300 bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100 dark:border-sky-400/30 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20"
+                    : "border-slate-200 bg-white/90 text-slate-600 ring-slate-200 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10",
+                ].join(" ")}
+                title="Show ghost cards for people in every lane they're assigned to, not just their primary lane"
+              >
+                <span
+                  className={[
+                    "inline-block h-2 w-2 rounded-full",
+                    mirrorLanes ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600",
+                  ].join(" ")}
+                />
+                Show in all lanes: {mirrorLanes ? "On" : "Off"}
+              </button>
+            )}
+            {/* Hierarchy view: global fold control so the whole org can collapse to
+                its top tiers or expand back out in one click */}
+            {lens === "hierarchy" && personNodes.length > 0 && (
+              <div className="absolute left-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+                <button
+                  type="button"
+                  onClick={() => addCollapsed(collapseTargets.top)}
+                  title="Fold every team down to the top levels"
+                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  Collapse all
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={() => expandAll()}
+                  disabled={collapsedIds.length === 0}
+                  title="Show every report"
+                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40 dark:hover:bg-white/10"
+                >
+                  Expand all
+                </button>
+              </div>
+            )}
+            {/* Unified top-right tools dock: one labeled home for the canvas
+                actions instead of buttons scattered around every corner */}
             {personNodes.length > 0 && (
-              <CleanupButton
-                onCleanup={(mode) => {
-                  cleanupCanvas(lens, mode);
-                  // Fit view after cleanup with smooth animation
-                  setTimeout(() => {
-                    rfInstance?.fitView({ padding: 0.2, duration: 400, maxZoom: 1.5 });
-                  }, 100);
-                }}
-              />
+              <div className="absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  title="Shortcuts & guide (?)"
+                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  <QuestionMarkCircledIcon className="h-3.5 w-3.5" />
+                  Help
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={() => setHealthOpen((v) => !v)}
+                  title="Span outliers, matrix overload, coverage gaps"
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
+                    healthOpen
+                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                      : "hover:bg-slate-100 dark:hover:bg-white/10",
+                  ].join(" ")}
+                >
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                  Org Health
+                </button>
+                <button
+                  type="button"
+                  onClick={openSharedServices}
+                  title="See all shared services (Finance, HR, IT) together"
+                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-500/10"
+                >
+                  🔗 Shared Services
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <CleanupButton
+                  onCleanup={(mode) => {
+                    cleanupCanvas(lens, mode);
+                    setTimeout(() => {
+                      rfInstance?.fitView({ padding: 0.2, duration: 400, maxZoom: 1.5 });
+                    }, 100);
+                  }}
+                />
+              </div>
             )}
           </ReactFlow>
           <EdgeContextMenu
@@ -675,11 +1443,148 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onAction={handleEdgeMenuAction}
           />
           
+          <OrgHealthPanel open={healthOpen} onClose={() => setHealthOpen(false)} />
+
+          <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+          {/* Fixed rail of rolled-up facilities & shared services (brand/channel lenses) */}
+          {showUnitRail && (
+            <UnitRail
+              units={orgUnits}
+              expanded={expandedUnitIds}
+              onToggleExpand={toggleUnitExpand}
+              onJump={jumpToUnit}
+              onSelectMember={selectNode}
+              onOpenSharedServices={openSharedServices}
+            />
+          )}
+
+          {/* Grid lens: shared services & facilities as the foundation beneath the matrix */}
+          {showUnitFoundation && (
+            <UnitFoundation
+              units={orgUnits}
+              onJump={jumpToUnit}
+              onOpenSharedServices={openSharedServices}
+            />
+          )}
+
           {/* Onboarding overlay for empty canvas */}
           <OnboardingOverlay show={showOnboarding} onDismiss={() => setShowOnboarding(false)} />
           
+          {/* Zoom controls: explicit buttons, %, fit, and scroll-mode toggle */}
+          {personNodes.length > 0 && (
+            <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 -translate-x-1/2">
+              <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-slate-200 bg-white p-1 text-slate-600 shadow-lg ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10">
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  title="Zoom out (−)"
+                  aria-label="Zoom out"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => rfInstance?.zoomTo(1, { duration: 200 })}
+                  title="Reset to 100%"
+                  aria-label="Reset zoom to 100%"
+                  className="min-w-[3.25rem] rounded-full px-2 py-1 text-center text-xs font-semibold tabular-nums transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  {Math.round(currentZoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  title="Zoom in (+)"
+                  aria-label="Zoom in"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  +
+                </button>
+                <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={fitToView}
+                  title="Fit to view (0)"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  Fit
+                </button>
+                <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={toggleScrollZoom}
+                  title={
+                    scrollZoom
+                      ? "Mouse wheel zooms. Click to switch to scroll-to-pan (trackpad-friendly)."
+                      : "Mouse wheel pans. Click to switch to scroll-to-zoom (mouse-friendly)."
+                  }
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  <span
+                    className={[
+                      "inline-block h-1.5 w-1.5 rounded-full",
+                      scrollZoom ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600",
+                    ].join(" ")}
+                  />
+                  Scroll: {scrollZoom ? "Zoom" : "Pan"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Relationship legend - compact button in corner */}
           {personNodes.length > 0 && <RelationshipLegend />}
+
+          {/* ⌘K command palette: jump to anyone, run common actions */}
+          <CommandPalette
+            people={personNodes}
+            actions={paletteActions}
+            onSelectPerson={jumpToPerson}
+          />
+
+          {/* Action confirmation toast with one-click Undo */}
+          {toast && (
+            <div className="pointer-events-none absolute bottom-20 left-1/2 z-40 -translate-x-1/2">
+              <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-slate-900/95 px-4 py-2 text-xs text-white shadow-xl ring-1 ring-white/10">
+                <span>{toast.message}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    undo();
+                    setToast(null);
+                  }}
+                  className="font-bold text-sky-300 transition hover:text-sky-200"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setToast(null)}
+                  className="text-slate-400 transition hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk assignment toolbar for multi-selections */}
+          {selection.nodeIds.length > 1 && (
+            <BulkAssignToolbar
+              count={selection.nodeIds.length}
+              onAssign={(dimension, laneKey) => {
+                reassignManyToLane(selection.nodeIds, dimension, laneKey);
+                showToast(`Assigned ${selection.nodeIds.length} people → ${laneKey}`);
+              }}
+              onClear={() => clearSelection()}
+            />
+          )}
+
+          {/* Focus breadcrumb + active-view context strip (top-center) */}
+          {personNodes.length > 0 && <CanvasContextBar onResetView={resetView} />}
         </div>
       </ContextMenu.Trigger>
       
@@ -901,10 +1806,10 @@ const CleanupButton = ({
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="absolute bottom-6 right-[180px] z-30 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-900 dark:focus-visible:ring-slate-500"
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:text-slate-300 dark:hover:bg-white/10"
           title="Clean up canvas layout"
         >
-          <MixerHorizontalIcon className="h-4 w-4" />
+          <MixerHorizontalIcon className="h-3.5 w-3.5" />
           Clean Up
         </button>
       </Popover.Trigger>
@@ -913,7 +1818,7 @@ const CleanupButton = ({
         <Popover.Content
           className="z-50 w-64 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
           sideOffset={12}
-          side="top"
+          side="bottom"
           align="end"
         >
           <div className="space-y-1">
@@ -957,6 +1862,316 @@ const CleanupButton = ({
       </Popover.Portal>
     </Popover.Root>
   );
+};
+
+const BulkAssignToolbar = ({
+  count,
+  onAssign,
+  onClear,
+}: {
+  count: number;
+  onAssign: (dimension: LensDimension, laneKey: string) => void;
+  onClear: () => void;
+}) => {
+  const pickers: Array<{ dimension: LensDimension; label: string; options: string[] }> = [
+    { dimension: "brand", label: "Brand", options: DEMO_LENS_LABELS.brand },
+    { dimension: "channel", label: "Channel", options: DEMO_LENS_LABELS.channel },
+    { dimension: "department", label: "Department", options: DEMO_LENS_LABELS.department },
+  ];
+
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
+      <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-4 py-2.5 text-xs shadow-lg ring-1 ring-indigo-100 dark:border-indigo-400/20 dark:bg-slate-900 dark:ring-indigo-400/10">
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          {count} people selected
+        </span>
+        <span className="text-slate-300 dark:text-slate-600">|</span>
+        <span className="text-slate-500 dark:text-slate-400">Assign all to:</span>
+        {pickers.map(({ dimension, label, options }) => (
+          <select
+            key={dimension}
+            value=""
+            aria-label={`Assign selected people to a ${label.toLowerCase()}`}
+            onChange={(event) => {
+              if (event.target.value) {
+                onAssign(dimension, event.target.value);
+              }
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-medium text-slate-700 focus:border-indigo-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-slate-200"
+          >
+            <option value="" disabled>
+              {label}…
+            </option>
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ))}
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 transition hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const LANE_PALETTES: Record<LensDimension, Record<string, string>> = {
+  brand: BRAND_COLORS,
+  channel: CHANNEL_COLORS,
+  department: DEPARTMENT_COLORS,
+};
+
+const getLaneColor = (key: string, dimension: LensDimension) =>
+  LANE_PALETTES[dimension][key] ?? UNASSIGNED_LANE_COLOR;
+
+const LANE_PAD_X = 70;
+const LANE_PAD_TOP = 130;
+const LANE_PAD_BOTTOM = 70;
+const MIRROR_HEIGHT = 120;
+const MIRROR_GAP = 40;
+const MIRROR_SECTION_GAP = 90;
+
+// Row bands (brands) span the full grid width; column bands (channels) span the
+// full grid height. Rows render first so the translucent channel columns layer
+// over them, producing the matrix grid feel; person cards sit on top.
+const GRID_GROUP_BAND_H = 96;
+const buildGridFrameNodes = (
+  people: PersonNode[],
+  zoom: number,
+  collapsedGroups: Set<string>,
+  onToggleGroup: (label: string) => void,
+): Node[] => {
+  const geo = getGridGeometry(people, collapsedGroups);
+  // Channel-group header bands, sitting above the column headers; click to collapse
+  const groupNodes: Node[] = geo.colGroups.map((grp) => ({
+    id: `gridgroup:${grp.label}`,
+    type: "gridGroupNode",
+    position: { x: grp.x, y: -(GRID_GROUP_BAND_H + 24) },
+    data: {
+      label: grp.label,
+      count: grp.count,
+      width: grp.width,
+      color: CHANNEL_GROUP_COLORS[grp.label] ?? UNASSIGNED_LANE_COLOR,
+      zoom,
+      collapsed: collapsedGroups.has(grp.label),
+      onToggle: onToggleGroup,
+    },
+    style: { width: grp.width, height: GRID_GROUP_BAND_H },
+    draggable: false,
+    selectable: true,
+    focusable: false,
+    zIndex: 2,
+  }));
+  // Heat tiles behind the cards: one per brand×channel intersection
+  const cellNodes: Node[] = geo.cells.map((cell) => ({
+    id: `gridcell:${cell.rowKey}|||${cell.colKey}`,
+    type: "gridCellNode",
+    position: { x: cell.x, y: cell.y },
+    data: {
+      count: cell.count,
+      maxCell: geo.maxCell,
+      width: cell.width,
+      height: cell.height,
+      color: BRAND_COLORS[cell.rowKey] ?? UNASSIGNED_LANE_COLOR,
+      shared: cell.shared,
+      zoom,
+    },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 0,
+  }));
+  const rowNodes: Node[] = geo.rows.map((row) => ({
+    id: `gridrow:${row.key}`,
+    type: "gridRowNode",
+    position: { x: 0, y: row.y },
+    data: {
+      label: row.key,
+      color: BRAND_COLORS[row.key] ?? UNASSIGNED_LANE_COLOR,
+      count: row.count,
+      width: geo.width,
+      zoom,
+    },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 0,
+  }));
+  const colNodes: Node[] = geo.cols.map((col) => ({
+    id: `gridcol:${col.key}`,
+    type: "gridColNode",
+    position: { x: col.x, y: 0 },
+    data: {
+      label: col.key,
+      color: CHANNEL_COLORS[col.key] ?? UNASSIGNED_LANE_COLOR,
+      count: col.count,
+      width: col.width,
+      height: geo.height,
+      zoom,
+    },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: 1,
+  }));
+  return [...cellNodes, ...rowNodes, ...colNodes, ...groupNodes];
+};
+
+const isVacantRole = (person: PersonNode) =>
+  person.name.toLowerCase().includes("vacant") ||
+  person.attributes.title.toLowerCase().includes("vacant");
+
+const buildLaneNodes = (
+  people: PersonNode[],
+  positions: Record<string, { x: number; y: number }>,
+  dimension: LensDimension,
+  showMirrors: boolean,
+  onSelectMirror: (id: string) => void,
+  focusSet: Set<string> | null,
+  zoom: number,
+): Node[] => {
+  const groups = groupNodesByDimension(people, dimension);
+  const laneNodes: Node[] = [];
+  const mirrorNodes: Node[] = [];
+  const laneRects: Array<{ key: string; minX: number; maxX: number; minY: number; count: number }> = [];
+
+  groups.forEach((members, key) => {
+    const points = members
+      .map((member) => positions[member.id])
+      .filter((point): point is { x: number; y: number } => Boolean(point));
+    if (points.length === 0) return;
+    const minX = Math.min(...points.map((p) => p.x)) - LANE_PAD_X;
+    const maxX = Math.max(...points.map((p) => p.x)) + NODE_WIDTH + LANE_PAD_X;
+    const minY = Math.min(...points.map((p) => p.y)) - LANE_PAD_TOP;
+    let maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
+
+    // Mirror cards: people whose secondary assignments include this lane,
+    // stacked in a grid below the lane's primary members
+    if (showMirrors) {
+      const mirrors = people.filter(
+        (person) =>
+          getGroupKey(person, dimension) !== key &&
+          getAssignments(person, dimension).includes(key),
+      );
+      if (mirrors.length > 0) {
+        const laneInnerWidth = maxX - minX - 2 * LANE_PAD_X;
+        const cols = Math.max(1, Math.floor((laneInnerWidth + MIRROR_GAP) / (NODE_WIDTH + MIRROR_GAP)));
+        const mirrorTop = maxY - LANE_PAD_BOTTOM + MIRROR_SECTION_GAP;
+        mirrors.forEach((person, index) => {
+          const row = Math.floor(index / cols);
+          const col = index % cols;
+          const homeLane = getGroupKey(person, dimension);
+          const data: MirrorNodeData = {
+            node: person,
+            accentColor: getLaneColor(homeLane, dimension),
+            homeLane,
+            onSelect: onSelectMirror,
+          };
+          const dimmed = focusSet ? !focusSet.has(person.id) : false;
+          mirrorNodes.push({
+            id: `mirror:${person.id}:${key}`,
+            type: "mirrorNode",
+            position: {
+              x: minX + LANE_PAD_X + col * (NODE_WIDTH + MIRROR_GAP),
+              y: mirrorTop + row * (MIRROR_HEIGHT + MIRROR_GAP),
+            },
+            data,
+            draggable: false,
+            focusable: false,
+            selectable: false,
+            style: {
+              opacity: dimmed ? 0.12 : 1,
+              transition: "opacity 0.3s ease-in-out",
+            },
+          });
+        });
+        const rows = Math.ceil(mirrors.length / cols);
+        maxY = mirrorTop + rows * (MIRROR_HEIGHT + MIRROR_GAP) - MIRROR_GAP + LANE_PAD_BOTTOM;
+      }
+    }
+
+    // Tier mix so each lane communicates its shape at a glance
+    const tierTally: Record<string, number> = {};
+    members.forEach((m) => {
+      const t = m.attributes.tier ?? "ic";
+      tierTally[t] = (tierTally[t] ?? 0) + 1;
+    });
+    const TIER_ORDER: Array<[string, string]> = [
+      ["c-suite", "Exec"],
+      ["vp", "VP"],
+      ["director", "Dir"],
+      ["manager", "Mgr"],
+      ["ic", "IC"],
+    ];
+    const tiers = TIER_ORDER.filter(([key]) => tierTally[key]).map(([key, label]) => ({
+      label,
+      count: tierTally[key],
+    }));
+
+    const data: LaneNodeData = {
+      label: key,
+      color: getLaneColor(key, dimension),
+      count: members.length,
+      crossAssigned: members.filter(
+        (member) => getAssignments(member, dimension).length > 1,
+      ).length,
+      vacancies: members.filter(isVacantRole).length,
+      tiers,
+      zoom,
+    };
+    laneNodes.push({
+      id: `lane:${key}`,
+      type: "laneNode",
+      position: { x: minX, y: minY },
+      data,
+      style: { width: maxX - minX, height: maxY - minY },
+      zIndex: -1,
+      draggable: false,
+      selectable: false,
+      focusable: false,
+    });
+    laneRects.push({ key, minX, maxX, minY, count: members.length });
+  });
+
+  // Channel lens: draw a group band above each cluster of same-group channel lanes
+  const groupBandNodes: Node[] = [];
+  if (dimension === "channel") {
+    const topMinY = Math.min(...laneRects.map((r) => r.minY), 0);
+    const byGroup = new Map<string, { minX: number; maxX: number; count: number }>();
+    laneRects.forEach((r) => {
+      const g = channelTopGroup(r.key);
+      if (!g) return; // shared "All Channels" / unassigned — no group band
+      const cur = byGroup.get(g);
+      if (cur) {
+        cur.minX = Math.min(cur.minX, r.minX);
+        cur.maxX = Math.max(cur.maxX, r.maxX);
+        cur.count += r.count;
+      } else {
+        byGroup.set(g, { minX: r.minX, maxX: r.maxX, count: r.count });
+      }
+    });
+    byGroup.forEach((span, label) => {
+      groupBandNodes.push({
+        id: `chgroup:${label}`,
+        type: "gridGroupNode",
+        position: { x: span.minX, y: topMinY - 180 },
+        data: { label, count: span.count, width: span.maxX - span.minX, color: CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR, zoom },
+        style: { width: span.maxX - span.minX, height: 120 },
+        zIndex: -1,
+        draggable: false,
+        selectable: false,
+        focusable: false,
+      });
+    });
+  }
+
+  return [...groupBandNodes, ...laneNodes, ...mirrorNodes];
 };
 
 const getAccentColor = (node: PersonNode, lens: LensId) => {
