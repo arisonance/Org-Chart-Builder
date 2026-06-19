@@ -138,10 +138,15 @@ body {
   transition: stroke-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-in-out;
 }
 
-/* Optimize panning and zooming */
+/* Optimize panning and zooming.
+   Do NOT force will-change/translateZ on the viewport: it pins the whole
+   transformed content as one persistent compositing layer, and on the wide
+   matrix lanes that layer exceeds Chrome's 16384px max texture size (measured
+   up to ~38000px). Chrome then tiles it and leaves tiles outside the immediate
+   view BLANK while panning. Let the browser composite the viewport on demand
+   (it still promotes during an active gesture) — keeps layers viewport-sized. */
 .react-flow__viewport {
-  will-change: transform;
-  transform: translateZ(0);
+  transform-origin: 0 0;
 }
 
 /* Smooth zoom transitions */
