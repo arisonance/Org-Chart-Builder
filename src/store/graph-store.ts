@@ -297,6 +297,88 @@ const ensureLensState = (document: GraphDocument, lens: LensId) => {
   }
 };
 
+// Exported for unit testing the version-gated persistence migration in isolation.
+// Keep this in sync with the `migrate` reference in the persist config below.
+export const migrateGraphState = (persistedState: unknown) => {
+  if (!persistedState || typeof persistedState !== "object") {
+    return { ...initialState };
+  }
+
+  const maybeState = persistedState as Partial<GraphStoreState>;
+  if (!maybeState.document) {
+    return { ...initialState };
+  }
+
+  try {
+    const sanitizedDocument = parseGraphDocument(maybeState.document);
+
+    // Pre-CSV copies of the bundled demo (identified by name but missing
+    // the real org's people) get refreshed wholesale. Docs already on the
+    // real org keep all their data/edits.
+    const isDemoDoc =
+      sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
+    const hasCsvOrg = sanitizedDocument.nodes.some(
+      (node) => node.id === "person-stephanie-parra",
+    );
+    if (isDemoDoc && !hasCsvOrg) {
+      return {
+        ...initialState,
+        document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+      };
+    }
+
+    const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
+    const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
+    const documentClone = cloneDocument(sanitizedDocument);
+
+    // Migration runs once per version bump: drop all saved layouts so the
+    // latest layout algorithms (lane ranks, grid geometry, collapse-aware
+    // hierarchy) re-run, while people, edges, and scenarios are preserved.
+    (["hierarchy", "brand", "channel", "department", "matrix"] as const).forEach(
+      (lensId) => {
+        const lensState = documentClone.lens_state[lensId];
+        if (lensState) {
+          lensState.layout.positions = {};
+          lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
+        }
+      },
+    );
+
+    const sanitizedSelection: SelectionState = {
+      nodeIds: Array.isArray(maybeState.selection?.nodeIds)
+        ? maybeState.selection.nodeIds.filter(
+            (id): id is string => typeof id === "string" && nodeIds.has(id),
+          )
+        : [],
+      edgeIds: Array.isArray(maybeState.selection?.edgeIds)
+        ? maybeState.selection.edgeIds.filter(
+            (id): id is string => typeof id === "string" && edgeIds.has(id),
+          )
+        : [],
+    };
+
+    return {
+      ...initialState,
+      document: documentClone,
+      selection: sanitizedSelection,
+      clipboard: null,
+      scenarios: maybeState.scenarios ?? {},
+      activeScenarioId: maybeState.activeScenarioId ?? null,
+      mirrorLanes:
+        typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
+      collapsedIds: Array.isArray(maybeState.collapsedIds)
+        ? maybeState.collapsedIds
+        : [...initialState.collapsedIds],
+    };
+  } catch (error) {
+    console.warn("Failed to restore persisted org chart state; falling back to demo.", error);
+    return {
+      ...initialState,
+      document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+    };
+  }
+};
+
 export const useGraphStore = create<GraphStore>()(
   persist(
     subscribeWithSelector((set, get) => ({
@@ -985,85 +1067,7 @@ export const useGraphStore = create<GraphStore>()(
         mirrorLanes: state.mirrorLanes,
         collapsedIds: state.collapsedIds,
       }),
-      migrate: (persistedState: unknown) => {
-        if (!persistedState || typeof persistedState !== "object") {
-          return { ...initialState };
-        }
-
-        const maybeState = persistedState as Partial<GraphStoreState>;
-        if (!maybeState.document) {
-          return { ...initialState };
-        }
-
-        try {
-          const sanitizedDocument = parseGraphDocument(maybeState.document);
-
-          // Pre-CSV copies of the bundled demo (identified by name but missing
-          // the real org's people) get refreshed wholesale. Docs already on the
-          // real org keep all their data/edits.
-          const isDemoDoc =
-            sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
-          const hasCsvOrg = sanitizedDocument.nodes.some(
-            (node) => node.id === "person-stephanie-parra",
-          );
-          if (isDemoDoc && !hasCsvOrg) {
-            return {
-              ...initialState,
-              document: cloneDocument(DEMO_GRAPH_DOCUMENT),
-            };
-          }
-
-          const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
-          const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
-          const documentClone = cloneDocument(sanitizedDocument);
-
-          // Migration runs once per version bump: drop all saved layouts so the
-          // latest layout algorithms (lane ranks, grid geometry, collapse-aware
-          // hierarchy) re-run, while people, edges, and scenarios are preserved.
-          (["hierarchy", "brand", "channel", "department", "matrix"] as const).forEach(
-            (lensId) => {
-              const lensState = documentClone.lens_state[lensId];
-              if (lensState) {
-                lensState.layout.positions = {};
-                lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
-              }
-            },
-          );
-
-          const sanitizedSelection: SelectionState = {
-            nodeIds: Array.isArray(maybeState.selection?.nodeIds)
-              ? maybeState.selection.nodeIds.filter(
-                  (id): id is string => typeof id === "string" && nodeIds.has(id),
-                )
-              : [],
-            edgeIds: Array.isArray(maybeState.selection?.edgeIds)
-              ? maybeState.selection.edgeIds.filter(
-                  (id): id is string => typeof id === "string" && edgeIds.has(id),
-                )
-              : [],
-          };
-
-          return {
-            ...initialState,
-            document: documentClone,
-            selection: sanitizedSelection,
-            clipboard: null,
-            scenarios: maybeState.scenarios ?? {},
-            activeScenarioId: maybeState.activeScenarioId ?? null,
-            mirrorLanes:
-              typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
-            collapsedIds: Array.isArray(maybeState.collapsedIds)
-              ? maybeState.collapsedIds
-              : [...initialState.collapsedIds],
-          };
-        } catch (error) {
-          console.warn("Failed to restore persisted org chart state; falling back to demo.", error);
-          return {
-            ...initialState,
-            document: cloneDocument(DEMO_GRAPH_DOCUMENT),
-          };
-        }
-      },
+      migrate: migrateGraphState,
     },
   ),
 );
