@@ -28,6 +28,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
         type="button"
         onClick={() => onJump(unit)}
         title={`${unit.def.label} — ${unit.members.length} people. Open in chart`}
+        aria-label={`Open ${unit.def.label} in chart, ${unit.members.length} people`}
         className={`flex items-center gap-1.5 rounded-lg border-l-[3px] border border-slate-200 px-2.5 py-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow dark:border-white/10 ${style.dot}`}
       >
         <span className="text-sm leading-none" aria-hidden>{style.glyph}</span>
@@ -53,7 +54,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
           onClick={onOpenSharedServices}
           className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-sky-600 transition hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-500/10"
         >
-          Shared Services view <ArrowTopRightIcon className="h-3 w-3" />
+          Shared Services view <ArrowTopRightIcon className="h-3 w-3" aria-hidden />
         </button>
       </div>
       <div className="flex flex-wrap items-stretch gap-3">

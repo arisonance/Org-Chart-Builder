@@ -71,8 +71,9 @@ export function UnitRail({
                     onClick={onOpenSharedServices}
                     className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-sky-600 transition hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-500/10"
                     title="Open a dedicated view of all shared services"
+                    aria-label="View all shared services"
                   >
-                    View all <ArrowTopRightIcon className="h-2.5 w-2.5" />
+                    View all <ArrowTopRightIcon className="h-2.5 w-2.5" aria-hidden />
                   </button>
                 )}
               </div>
@@ -132,15 +133,16 @@ export function UnitRail({
                         onClick={() => onToggleExpand(unit.def.id)}
                         className="flex flex-1 items-center justify-center gap-1 py-1.5 text-slate-500 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5"
                       >
-                        {isOpen ? <ChevronDownIcon className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
+                        {isOpen ? <ChevronDownIcon className="h-3 w-3" aria-hidden /> : <ChevronRightIcon className="h-3 w-3" aria-hidden />}
                         {isOpen ? "Hide" : "People"}
                       </button>
                       <button
                         type="button"
                         onClick={() => onJump(unit)}
+                        aria-label={`Open ${unit.def.label} in chart`}
                         className="flex flex-1 items-center justify-center gap-1 py-1.5 text-sky-600 transition hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-500/10"
                       >
-                        Open <ArrowTopRightIcon className="h-3 w-3" />
+                        Open <ArrowTopRightIcon className="h-3 w-3" aria-hidden />
                       </button>
                     </div>
                     </div>

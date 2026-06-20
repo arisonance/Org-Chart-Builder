@@ -107,6 +107,68 @@ const ORG_CHART_EXTRACTION_PROMPT = `You are an expert at analyzing organization
 - Extract everything visible, even if partial`;
 
 /**
+ * Categories of failure the import flow can surface, each with a distinct
+ * user-facing remedy. Kept as a string union so it can be unit-tested as a
+ * pure status -> message mapping (see importErrorMessage).
+ */
+export type ImportErrorKind =
+  | 'rate-limit' // 429: too many requests
+  | 'service-unavailable' // 503: AI provider keys not configured / provider down
+  | 'server' // 500 (or other 5xx): server failed to process
+  | 'network' // fetch failed / timed out before a response
+  | 'invalid-response' // got a response but it wasn't the expected shape
+  | 'unknown';
+
+/**
+ * Typed error carrying the failure category so the UI can map it to a clear,
+ * actionable message without re-parsing strings.
+ */
+export class ImportError extends Error {
+  readonly kind: ImportErrorKind;
+  readonly status?: number;
+
+  constructor(kind: ImportErrorKind, message: string, status?: number) {
+    super(message);
+    this.name = 'ImportError';
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+/**
+ * Map an HTTP status code from the parse API to an ImportErrorKind.
+ * Pure and exported so it can be unit-tested directly.
+ */
+export function statusToImportErrorKind(status: number): ImportErrorKind {
+  if (status === 429) return 'rate-limit';
+  if (status === 503) return 'service-unavailable';
+  if (status >= 500) return 'server';
+  return 'unknown';
+}
+
+/**
+ * Map an ImportErrorKind to a clear, user-facing message. Pure function —
+ * unit-tested in tests/lib/ai/vision-parser.test.ts.
+ */
+export function importErrorMessage(kind: ImportErrorKind): string {
+  switch (kind) {
+    case 'rate-limit':
+      return 'Too many requests right now. Please wait a moment and try again.';
+    case 'service-unavailable':
+      return 'The AI service is unavailable. No API key is configured, or the provider is down — check your setup or try again later.';
+    case 'server':
+      return 'The server hit an error processing this image. Please try again, or use a clearer image.';
+    case 'network':
+      return 'Could not reach the server. Check your connection and try again.';
+    case 'invalid-response':
+      return 'The AI returned an unexpected response. Please try again or use a clearer image.';
+    case 'unknown':
+    default:
+      return 'Something went wrong importing this org chart. Please try again.';
+  }
+}
+
+/**
  * Parse an image/PDF using AI vision with retry logic
  * Calls the Next.js API route which handles Claude/OpenAI integration
  */
@@ -116,7 +178,7 @@ export async function parseOrgChartImage(
   retries: number = 2,
 ): Promise<ParsedOrgChart> {
   let lastError: Error | null = null;
-  
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch('/api/parse-org-chart', {
@@ -134,53 +196,69 @@ export async function parseOrgChartImage(
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        
+
         // If no API key configured, return mock data for demo
         if (response.status === 503 && errorData.mockData) {
           console.warn('No AI API keys configured - using mock data');
           return errorData.mockData;
         }
-        
+
         // Retry on rate limit or server errors (5xx)
         if (response.status === 429 || response.status >= 500) {
-          lastError = new Error(errorData.error || `Server error (${response.status})`);
+          lastError = new ImportError(
+            statusToImportErrorKind(response.status),
+            errorData.error || `Server error (${response.status})`,
+            response.status,
+          );
           if (attempt < retries) {
             // Exponential backoff: wait 2^attempt seconds
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
             continue;
           }
         }
-        
-        throw new Error(errorData.error || 'Failed to parse org chart');
+
+        throw new ImportError(
+          statusToImportErrorKind(response.status),
+          errorData.error || 'Failed to parse org chart',
+          response.status,
+        );
       }
 
       const data = await response.json();
-      
+
       // Validate we got the expected structure
       if (!data.people || !Array.isArray(data.people)) {
-        throw new Error('Invalid response format from AI');
+        throw new ImportError('invalid-response', 'Invalid response format from AI');
       }
-      
+
       return data as ParsedOrgChart;
     } catch (error) {
-      lastError = error as Error;
-      
-      // Retry on network errors
-      if (error instanceof TypeError && error.message.includes('fetch') && attempt < retries) {
-        console.warn(`Fetch failed (attempt ${attempt + 1}/${retries + 1}), retrying...`);
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-        continue;
+      // Network/timeout failures surface as TypeError (fetch) or DOMException
+      // (AbortSignal timeout); both mean we never got a usable response.
+      const isNetworkError =
+        (error instanceof TypeError && error.message.includes('fetch')) ||
+        (error instanceof DOMException && error.name === 'TimeoutError');
+
+      if (isNetworkError) {
+        lastError = new ImportError('network', 'Could not reach the parse service', undefined);
+        if (attempt < retries) {
+          console.warn(`Fetch failed (attempt ${attempt + 1}/${retries + 1}), retrying...`);
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          continue;
+        }
+      } else {
+        lastError = error as Error;
       }
-      
+
       // Don't retry on timeout or other non-transient errors
       if (attempt === retries) {
         break;
       }
     }
   }
-  
+
   console.error('Vision parsing error after retries:', lastError);
-  throw lastError || new Error('Failed to parse org chart');
+  throw lastError || new ImportError('unknown', 'Failed to parse org chart');
 }
 
 /**

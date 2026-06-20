@@ -1006,14 +1006,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       if (type === "manager") {
         if (connection.source === connection.target) return;
         if (isDescendant(childMap, connection.target, connection.source)) {
-          window.alert("Cannot create a reporting loop. Choose a different manager.");
+          showToast("Cannot create a reporting loop. Choose a different manager.");
           return;
         }
       }
       addRelationship(connection.source, connection.target, type);
       setSelection({ edgeIds: [], nodeIds: [connection.target] });
     },
-    [addRelationship, childMap, setSelection],
+    [addRelationship, childMap, setSelection, showToast],
   );
 
   const handleEdgesDelete = useCallback(
@@ -1346,6 +1346,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               <button
                 type="button"
                 onClick={toggleMirrorLanes}
+                aria-pressed={mirrorLanes}
+                aria-label={`Show people in all assigned lanes: ${mirrorLanes ? "on" : "off"}`}
                 className={[
                   "absolute left-6 top-6 z-30 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400",
                   mirrorLanes
@@ -1371,6 +1373,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   type="button"
                   onClick={() => addCollapsed(collapseTargets.top)}
                   title="Fold every team down to the top levels"
+                  aria-label="Collapse all teams to the top levels"
                   className="rounded-full px-3 py-1 transition hover:bg-slate-100 dark:hover:bg-white/10"
                 >
                   Collapse all
@@ -1381,6 +1384,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   onClick={() => expandAll()}
                   disabled={collapsedIds.length === 0}
                   title="Show every report"
+                  aria-label="Expand all teams to show every report"
                   className="rounded-full px-3 py-1 transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40 dark:hover:bg-white/10"
                 >
                   Expand all
@@ -1395,9 +1399,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   type="button"
                   onClick={() => setHelpOpen(true)}
                   title="Shortcuts & guide (?)"
+                  aria-label="Open keyboard shortcuts and guide"
                   className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-slate-100 dark:hover:bg-white/10"
                 >
-                  <QuestionMarkCircledIcon className="h-3.5 w-3.5" />
+                  <QuestionMarkCircledIcon className="h-3.5 w-3.5" aria-hidden />
                   Help
                 </button>
                 <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
@@ -1405,6 +1410,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   type="button"
                   onClick={() => setHealthOpen((v) => !v)}
                   title="Span outliers, matrix overload, coverage gaps"
+                  aria-label="Toggle Org Health panel"
+                  aria-pressed={healthOpen}
                   className={[
                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
                     healthOpen
@@ -1412,16 +1419,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                       : "hover:bg-slate-100 dark:hover:bg-white/10",
                   ].join(" ")}
                 >
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
                   Org Health
                 </button>
                 <button
                   type="button"
                   onClick={openSharedServices}
                   title="See all shared services (Finance, HR, IT) together"
+                  aria-label="Open Shared Services view"
                   className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-500/10"
                 >
-                  🔗 Shared Services
+                  <span aria-hidden>🔗</span> Shared Services
                 </button>
                 <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
                 <CleanupButton
@@ -1505,6 +1513,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   type="button"
                   onClick={fitToView}
                   title="Fit to view (0)"
+                  aria-label="Fit chart to view"
                   className="rounded-full px-3 py-1.5 text-xs font-semibold transition hover:bg-slate-100 dark:hover:bg-white/10"
                 >
                   Fit
@@ -1513,6 +1522,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 <button
                   type="button"
                   onClick={toggleScrollZoom}
+                  aria-pressed={scrollZoom}
+                  aria-label={`Scroll wheel mode: ${scrollZoom ? "zoom" : "pan"}`}
                   title={
                     scrollZoom
                       ? "Mouse wheel zooms. Click to switch to scroll-to-pan (trackpad-friendly)."
@@ -1521,6 +1532,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition hover:bg-slate-100 dark:hover:bg-white/10"
                 >
                   <span
+                    aria-hidden
                     className={[
                       "inline-block h-1.5 w-1.5 rounded-full",
                       scrollZoom ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600",
@@ -1806,8 +1818,9 @@ const CleanupButton = ({
           type="button"
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:text-slate-300 dark:hover:bg-white/10"
           title="Clean up canvas layout"
+          aria-label="Clean up canvas layout"
         >
-          <MixerHorizontalIcon className="h-3.5 w-3.5" />
+          <MixerHorizontalIcon className="h-3.5 w-3.5" aria-hidden />
           Clean Up
         </button>
       </Popover.Trigger>
@@ -1828,7 +1841,7 @@ const CleanupButton = ({
               }}
               className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-400 to-purple-600 text-lg">
+              <div aria-hidden className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-400 to-purple-600 text-lg">
                 📦
               </div>
               <div className="flex-1">
@@ -1845,7 +1858,7 @@ const CleanupButton = ({
               }}
               className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-lg">
+              <div aria-hidden className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-lg">
                 📐
               </div>
               <div className="flex-1">
