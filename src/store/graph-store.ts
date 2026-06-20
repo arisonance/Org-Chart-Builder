@@ -185,6 +185,25 @@ export const buildSettingsPatch = (
 
 const cloneDocument = (document: GraphDocument): GraphDocument => cloneDeep(document);
 
+const DEFAULT_VIEWPORT: LayoutState["viewport"] = { x: 0, y: 0, zoom: 1 };
+
+// The per-lens viewport churns once per animation frame while the user pans.
+// Persisting it would rewrite the entire document blob to localStorage on every
+// pan tick, which is the IO/jank cost this change exists to remove. Strip it from
+// the persisted copy (resetting to the default) so a pan never dirties the blob;
+// the live viewport is persisted separately and cheaply via `currentViewport`.
+export const stripPersistedViewports = (
+  document: GraphDocument,
+): GraphDocument => {
+  const stripped = cloneDocument(document);
+  for (const lensState of Object.values(stripped.lens_state)) {
+    if (lensState?.layout) {
+      lensState.layout.viewport = { ...DEFAULT_VIEWPORT };
+    }
+  }
+  return stripped;
+};
+
 const createSnapshot = (state: GraphStoreState): GraphSnapshot => ({
   document: cloneDocument(state.document),
   selection: {
@@ -297,6 +316,25 @@ const ensureLensState = (document: GraphDocument, lens: LensId) => {
   }
 };
 
+// Coerce a persisted/unknown viewport into a valid {x,y,zoom}, falling back to
+// the default when any field is missing or non-finite.
+const sanitizeViewport = (
+  value: unknown,
+): GraphStoreState["currentViewport"] => {
+  if (value && typeof value === "object") {
+    const v = value as Partial<GraphStoreState["currentViewport"]>;
+    if (
+      Number.isFinite(v.x) &&
+      Number.isFinite(v.y) &&
+      Number.isFinite(v.zoom) &&
+      (v.zoom as number) > 0
+    ) {
+      return { x: v.x as number, y: v.y as number, zoom: v.zoom as number };
+    }
+  }
+  return { ...DEFAULT_VIEWPORT };
+};
+
 // Exported for unit testing the version-gated persistence migration in isolation.
 // Keep this in sync with the `migrate` reference in the persist config below.
 export const migrateGraphState = (persistedState: unknown) => {
@@ -369,6 +407,9 @@ export const migrateGraphState = (persistedState: unknown) => {
       collapsedIds: Array.isArray(maybeState.collapsedIds)
         ? maybeState.collapsedIds
         : [...initialState.collapsedIds],
+      // Viewport is no longer stored in the document; restore it from the
+      // separately-persisted key so reload lands where the user left off.
+      currentViewport: sanitizeViewport(maybeState.currentViewport),
     };
   } catch (error) {
     console.warn("Failed to restore persisted org chart state; falling back to demo.", error);
@@ -1059,13 +1100,17 @@ export const useGraphStore = create<GraphStore>()(
       name: "org-chart-graph-state",
       version: 8,
       partialize: (state) => ({
-        document: state.document,
+        // Persist the document WITHOUT the volatile per-lens viewport so a pan
+        // gesture never rewrites the whole blob. The viewport rides along in the
+        // small `currentViewport` key instead and is restored on rehydrate.
+        document: stripPersistedViewports(state.document),
         selection: state.selection,
         clipboard: state.clipboard,
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
         mirrorLanes: state.mirrorLanes,
         collapsedIds: state.collapsedIds,
+        currentViewport: state.currentViewport,
       }),
       migrate: migrateGraphState,
     },

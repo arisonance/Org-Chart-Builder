@@ -133,7 +133,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const toggleSnap = useGraphStore((state) => state.toggleSnap);
   const autoLayout = useGraphStore((state) => state.autoLayout);
   const cleanupCanvas = useGraphStore((state) => state.cleanupCanvas);
-  const updateViewport = useGraphStore((state) => state.updateViewport);
   const setCurrentViewport = useGraphStore((state) => state.setCurrentViewport);
   const currentViewportState = useGraphStore((state) => state.currentViewport);
   const mirrorLanes = useGraphStore((state) => state.mirrorLanes);
@@ -607,7 +606,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (positionedLensRef.current === lens) return;
     positionedLensRef.current = lens;
 
-    const target = lensLayout?.viewport;
+    // Viewport is persisted in the small `currentViewport` key (not the document
+    // blob), so prefer it on restore; fall back to any lens-layout viewport.
+    const persisted = currentViewportState;
+    const persistedIsDefault =
+      !persisted ||
+      (persisted.x === 0 && persisted.y === 0 && persisted.zoom === 1);
+    const target = persistedIsDefault ? lensLayout?.viewport : persisted;
     const isDefault =
       !target || (target.x === 0 && target.y === 0 && target.zoom === 1);
 
@@ -1090,17 +1095,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setCurrentViewport(viewport);
   }, [rfInstance, setCurrentViewport]);
   
-  // Persist viewport to document periodically (debounced)
-  useEffect(() => {
-    if (!rfInstance || !lensLayout?.viewport) return;
-    
-    const timer = setTimeout(() => {
-      const viewport = rfInstance.getViewport();
-      updateViewport(lens, viewport);
-    }, 1000); // Debounce persistence to 1 second
-    
-    return () => clearTimeout(timer);
-  }, [currentViewportState, rfInstance, lens, lensLayout?.viewport, updateViewport]);
+  // Viewport persistence happens on settle (onMoveEnd → setCurrentViewport),
+  // which writes the small `currentViewport` key rather than re-serializing the
+  // whole document every second mid-pan. The old 1s interval that rewrote the
+  // document blob during the pan gesture was removed for that reason.
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
