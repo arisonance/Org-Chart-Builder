@@ -23,7 +23,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { MixerHorizontalIcon, QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
 import { LaneNode, type LaneNodeData } from "@/components/lane-node";
-import { MirrorNode, type MirrorNodeData } from "@/components/mirror-node";
+import { MirrorNode } from "@/components/mirror-node";
+import {
+  SharedServiceGroupNode,
+  type SharedServiceGroupNodeData,
+} from "@/components/shared-service-group-node";
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { CanvasContextBar } from "@/components/canvas-context-bar";
@@ -42,6 +46,7 @@ import {
   lensToDimension,
   isGridLens,
   getGridGeometry,
+  calculateMatrixLayout,
   calculateGridLayout,
   calculateTeamTreeLayout,
   collectDescendants,
@@ -58,6 +63,7 @@ import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
 import { UnitFoundation } from "@/components/unit-foundation";
 import { computeOrgUnits, unitMemberIdSet, computeUnitAnchors, type ComputedUnit } from "@/lib/graph/org-units";
+import { groupSharedServiceMirrors } from "@/lib/graph/shared-service-groups";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -78,6 +84,7 @@ const nodeTypes = {
   hierarchyNode: HierarchyNode,
   laneNode: LaneNode,
   mirrorNode: MirrorNode,
+  sharedServiceGroupNode: SharedServiceGroupNode,
   gridColNode: GridColNode,
   gridRowNode: GridRowNode,
   gridCellNode: GridCellNode,
@@ -492,6 +499,21 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     toastTimer.current = setTimeout(() => setToast(null), 6000);
   }, []);
 
+  const openSharedServiceGroup = useCallback(
+    (memberIds: string[], label: string) => {
+      if (memberIds.length === 0) return;
+      setTeamRootId(null);
+      setTeamReturnLens(null);
+      clearSelection();
+      setLensFilters(lens, { focusIds: memberIds, hiddenIds: [], activeTokens: [] });
+      showToast(`Showing ${label}`);
+      setTimeout(() => {
+        rfInstance?.fitView({ padding: 0.2, duration: 450, maxZoom: 1 });
+      }, 80);
+    },
+    [lens, setLensFilters, clearSelection, showToast, rfInstance],
+  );
+
   const closeTeamTree = useCallback(() => {
     const returnLens = teamReturnLens;
     setTeamRootId(null);
@@ -813,13 +835,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const computedNodes = useMemo<Node[]>(() => {
     // Grid lens recomputes positions fresh when a channel group is collapsed so the
     // cards land in the merged group column (matching the recomputed geometry).
-    const positions =
+    const basePositions =
       teamTree?.positions ??
       (isGridLens(lens) && collapsedChannelGroups.size > 0
         ? calculateGridLayout(nodesData, collapsedChannelGroups)
         : lensLayout?.positions ?? {});
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
+    const dimension = lensToDimension(lens);
     
     // Filter nodes based on focusIds or hiddenIds
     let filteredNodes = personNodes;
@@ -835,6 +858,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (hiddenByCollapse) {
       filteredNodes = filteredNodes.filter((node) => !hiddenByCollapse.has(node.id));
     }
+
+    const positions =
+      focusIds.length > 0 && dimension && !teamTree
+        ? calculateMatrixLayout(filteredNodes, edgesData, dimension)
+        : basePositions;
 
     // Roll up facilities / shared services into single cards in cross-cutting views,
     // removing their members from the brand/channel lanes. Skipped while focusing.
@@ -956,7 +984,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     }
 
     // Matrix views: draw a labeled swim lane behind each brand/channel/department group
-    const dimension = lensToDimension(lens);
     if (!dimension) {
       return personFlowNodes;
     }
@@ -964,8 +991,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       filteredNodes,
       positions,
       dimension,
-      mirrorLanes,
-      selectNode,
+      mirrorLanes && focusIds.length === 0,
+      openSharedServiceGroup,
       focusSet,
       lodZoom,
     );
@@ -983,6 +1010,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addPerson,
     addRelationship,
     duplicateNodes,
+    openSharedServiceGroup,
     copyNodesById,
     removeNode,
     toggleNodeLock,
@@ -998,6 +1026,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     nodesData,
     filters?.focusIds,
     filters?.hiddenIds,
+    edgesData,
     hiddenByCollapse,
     childMap,
     descendantCounts,
@@ -2186,7 +2215,7 @@ const getLaneColor = (key: string, dimension: LensDimension) =>
 const LANE_PAD_X = 70;
 const LANE_PAD_TOP = 130;
 const LANE_PAD_BOTTOM = 70;
-const MIRROR_HEIGHT = 120;
+const MIRROR_HEIGHT = 150;
 const MIRROR_GAP = 40;
 const MIRROR_SECTION_GAP = 90;
 
@@ -2285,7 +2314,7 @@ const buildLaneNodes = (
   positions: Record<string, { x: number; y: number }>,
   dimension: LensDimension,
   showMirrors: boolean,
-  onSelectMirror: (id: string) => void,
+  onOpenSharedServiceGroup: (ids: string[], label: string) => void,
   focusSet: Set<string> | null,
   zoom: number,
 ): Node[] => {
@@ -2309,27 +2338,35 @@ const buildLaneNodes = (
     if (showMirrors) {
       const mirrors = people.filter(
         (person) =>
+          person.attributes.tier !== "c-suite" &&
           getGroupKey(person, dimension) !== key &&
           getAssignments(person, dimension).includes(key),
       );
-      if (mirrors.length > 0) {
+      const mirrorGroups = groupSharedServiceMirrors(mirrors, (person) =>
+        getGroupKey(person, dimension),
+      );
+      if (mirrorGroups.length > 0) {
         const laneInnerWidth = maxX - minX - 2 * LANE_PAD_X;
         const cols = Math.max(1, Math.floor((laneInnerWidth + MIRROR_GAP) / (NODE_WIDTH + MIRROR_GAP)));
         const mirrorTop = maxY - LANE_PAD_BOTTOM + MIRROR_SECTION_GAP;
-        mirrors.forEach((person, index) => {
+        mirrorGroups.forEach((group, index) => {
           const row = Math.floor(index / cols);
           const col = index % cols;
-          const homeLane = getGroupKey(person, dimension);
-          const data: MirrorNodeData = {
-            node: person,
-            accentColor: getLaneColor(homeLane, dimension),
-            homeLane,
-            onSelect: onSelectMirror,
+          const data: SharedServiceGroupNodeData = {
+            service: group.service,
+            label: group.label,
+            members: group.members,
+            lead: group.lead,
+            accentColor: getLaneColor(group.homeLane, dimension),
+            homeLane: group.homeLane,
+            onOpen: onOpenSharedServiceGroup,
           };
-          const dimmed = focusSet ? !focusSet.has(person.id) : false;
+          const dimmed = focusSet
+            ? !group.members.some((member) => focusSet.has(member.id))
+            : false;
           mirrorNodes.push({
-            id: `mirror:${person.id}:${key}`,
-            type: "mirrorNode",
+            id: `mirror-group:${group.id}:${key}`,
+            type: "sharedServiceGroupNode",
             position: {
               x: minX + LANE_PAD_X + col * (NODE_WIDTH + MIRROR_GAP),
               y: mirrorTop + row * (MIRROR_HEIGHT + MIRROR_GAP),
@@ -2340,11 +2377,13 @@ const buildLaneNodes = (
             selectable: false,
             style: {
               opacity: dimmed ? 0.12 : 1,
+              pointerEvents: "all",
               transition: "opacity 0.3s ease-in-out",
             },
+            zIndex: 3,
           });
         });
-        const rows = Math.ceil(mirrors.length / cols);
+        const rows = Math.ceil(mirrorGroups.length / cols);
         maxY = mirrorTop + rows * (MIRROR_HEIGHT + MIRROR_GAP) - MIRROR_GAP + LANE_PAD_BOTTOM;
       }
     }
