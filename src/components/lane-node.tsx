@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from "react";
+import { useStore } from "@xyflow/react";
 
 export type LaneNodeData = {
   label: string;
@@ -9,12 +10,14 @@ export type LaneNodeData = {
   crossAssigned: number;
   vacancies: number;
   tiers: { label: string; count: number }[];
-  zoom: number;
 };
 
 function Component({ data }: { data: LaneNodeData }) {
-  const { label, color, count, crossAssigned, vacancies, tiers, zoom } = data;
+  const { label, color, count, crossAssigned, vacancies, tiers } = data;
 
+  // Read live zoom from the store so counter-scaling re-renders only this
+  // (memoized) lane, never the whole Node[] array.
+  const zoom = useStore((s) => s.transform[2]);
   // Counter-scale the header so lane names stay readable when zoomed out
   const safeZoom = Math.max(zoom || 1, 0.15);
   const headerFont = Math.min(76, 20 / safeZoom);

@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useMemo, type ReactNode } from "react";
-import { Handle, Position } from "@xyflow/react";
+import { Handle, Position, useStore } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
 import type { LensId } from "@/lib/schema/lenses";
@@ -36,7 +36,6 @@ export type HierarchyNodeData = {
   highlightTokens: string[];
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
-  zoom?: number; // Current zoom level for LOD rendering
   // Hierarchy view: subtree fold chip (People Finder style)
   reportCount?: number; // direct reports
   hiddenCount?: number; // all descendants (shown when collapsed)
@@ -48,15 +47,20 @@ export type HierarchyNodeData = {
 
 // Tier badges configuration
 const UNIT_CONTAINER_STYLE = {
-  facility: { glyph: "🏭", accent: "#0f766e", chip: "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200" },
+  facility: { glyph: "🏗", accent: "#0f766e", chip: "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200" },
   "shared-service": { glyph: "🔗", accent: "#7c3aed", chip: "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200" },
 } as const;
 
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
-    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
+    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect,
     reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, unit,
   } = data;
+
+  // Read the live zoom from the React Flow store so a zoom change re-renders
+  // only the (memoized) cards via this subscription — it never rebuilds the
+  // whole Node[] array or the per-node action closures.
+  const zoom = useStore((s) => s.transform[2]);
 
   // Facility / shared-service container: stands in for a whole group of people
   const isContainer = !!unit && isCollapsed && hiddenCount > 0;
@@ -354,16 +358,9 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
   const prev = prevProps.data;
   const next = nextProps.data;
 
-  // Re-render whenever the zoom crosses an LOD boundary
-  const prevLod = getLodLevel(prev.zoom ?? 1);
-  const nextLod = getLodLevel(next.zoom ?? 1);
-  if (prevLod !== nextLod) {
-    return false;
-  }
-  // Compact cards counter-scale their text with zoom, so track it continuously there
-  if (nextLod === 'compact' && Math.abs((prev.zoom ?? 1) - (next.zoom ?? 1)) > 0.01) {
-    return false;
-  }
+  // Zoom/LOD is read internally via a useStore subscription, so it is no longer
+  // part of props — a zoom change re-renders this card through that hook, not by
+  // a prop diff. Cards re-render here only when their own data actually changes.
 
   // Collapse chip state must always trigger a re-render
   if (

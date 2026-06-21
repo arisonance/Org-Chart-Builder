@@ -1,6 +1,11 @@
 'use client';
 
 import { memo } from "react";
+import { useStore } from "@xyflow/react";
+
+// Read the live zoom from the React Flow store so counter-scaling re-renders
+// only these (memoized) frame components — it never rebuilds the Node[] array.
+const useZoom = () => useStore((s) => s.transform[2]);
 
 export type GridColNodeData = {
   label: string;
@@ -8,7 +13,6 @@ export type GridColNodeData = {
   count: number;
   width: number;
   height: number;
-  zoom: number;
 };
 
 export type GridRowNodeData = {
@@ -16,13 +20,12 @@ export type GridRowNodeData = {
   color: string;
   count: number;
   width: number;
-  zoom: number;
 };
 
 // Vertical channel band spanning the full grid height, with a header label
 function ColComponent({ data }: { data: GridColNodeData }) {
-  const { label, color, count, width, height, zoom } = data;
-  const safeZoom = Math.max(zoom || 1, 0.12);
+  const { label, color, count, width, height } = data;
+  const safeZoom = Math.max(useZoom() || 1, 0.12);
   const headerFont = Math.min(60, 22 / safeZoom);
   const chipFont = Math.min(34, 12 / safeZoom);
   return (
@@ -50,8 +53,8 @@ function ColComponent({ data }: { data: GridColNodeData }) {
 
 // Horizontal brand band spanning the full grid width, label pinned to the left
 function RowComponent({ data }: { data: GridRowNodeData }) {
-  const { label, color, count, width, zoom } = data;
-  const safeZoom = Math.max(zoom || 1, 0.12);
+  const { label, color, count, width } = data;
+  const safeZoom = Math.max(useZoom() || 1, 0.12);
   const labelFont = Math.min(56, 22 / safeZoom);
   const chipFont = Math.min(30, 11 / safeZoom);
   return (
@@ -81,7 +84,6 @@ export type GridCellNodeData = {
   height: number;
   color: string;
   shared: boolean;
-  zoom: number;
 };
 
 const toAlphaHex = (a: number) =>
@@ -92,8 +94,8 @@ const toAlphaHex = (a: number) =>
 // Per-cell heat: tint each brand×channel intersection by headcount; flag empty real
 // cells as coverage gaps. Sits behind the person cards, so it stays subtle.
 function CellComponent({ data }: { data: GridCellNodeData }) {
-  const { count, maxCell, width, height, color, shared, zoom } = data;
-  const safeZoom = Math.max(zoom || 1, 0.12);
+  const { count, maxCell, width, height, color, shared } = data;
+  const safeZoom = Math.max(useZoom() || 1, 0.12);
   const badgeFont = Math.min(30, 12 / safeZoom);
 
   const intensity = maxCell > 0 ? count / maxCell : 0;
@@ -134,15 +136,14 @@ export type GridGroupNodeData = {
   count: number;
   width: number;
   color: string;
-  zoom: number;
   collapsed?: boolean;
   onToggle?: (label: string) => void;
 };
 
 // Top-level channel-group header spanning its member columns; click to collapse/expand
 function GroupComponent({ data }: { data: GridGroupNodeData }) {
-  const { label, count, width, color, zoom, collapsed, onToggle } = data;
-  const safeZoom = Math.max(zoom || 1, 0.12);
+  const { label, count, width, color, collapsed, onToggle } = data;
+  const safeZoom = Math.max(useZoom() || 1, 0.12);
   const labelFont = Math.min(64, 26 / safeZoom);
   const chipFont = Math.min(34, 12 / safeZoom);
   const toggleFont = Math.min(48, 20 / safeZoom);

@@ -48,6 +48,7 @@ import {
   NODE_WIDTH,
   NODE_HEIGHT,
   type LensDimension,
+  type GridGeometry,
 } from "@/lib/graph/layout";
 import { GridColNode, GridRowNode, GridCellNode, GridGroupNode } from "@/components/grid-frame-node";
 import { CHANNEL_GROUP_COLORS } from "@/lib/theme/palette";
@@ -193,7 +194,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [setLensStore, setLensFilters, rfInstance],
   );
   const [currentZoom, setCurrentZoom] = useState(1);
-  const lodBucketRef = useRef<"full" | "medium" | "compact">("full");
   // The floating Edit panel overlays the right of the canvas; this lets us
   // measure the canvas and pan a freshly selected card out from under it.
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -646,13 +646,28 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return tokensByNode;
   }, [filters?.activeTokens, personNodes, lens]);
 
+  // Grid layout/geometry depends only on the data, the collapsed groups, and the
+  // lens — never on zoom. Memoizing it separately keeps panning the Matrix lens
+  // from re-running the full grid layout on every LOD bucket flip (the
+  // computedNodes memo below intentionally does NOT depend on zoom).
+  const gridFrame = useMemo(() => {
+    if (!isGridLens(lens)) return null;
+    return {
+      // Fresh positions when a channel group is collapsed so the cards land in the
+      // merged group column (matching the recomputed geometry).
+      positions:
+        collapsedChannelGroups.size > 0
+          ? calculateGridLayout(nodesData, collapsedChannelGroups)
+          : null,
+      geometry: getGridGeometry(nodesData, collapsedChannelGroups),
+    };
+  }, [nodesData, collapsedChannelGroups, lens]);
+
   const computedNodes = useMemo<Node[]>(() => {
     // Grid lens recomputes positions fresh when a channel group is collapsed so the
     // cards land in the merged group column (matching the recomputed geometry).
     const positions =
-      isGridLens(lens) && collapsedChannelGroups.size > 0
-        ? calculateGridLayout(nodesData, collapsedChannelGroups)
-        : lensLayout?.positions ?? {};
+      gridFrame?.positions ?? lensLayout?.positions ?? {};
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
     
@@ -688,7 +703,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         emphasisLabel: getPrimaryLabel(node, lens),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
-        zoom: lodZoom, // Pass zoom for LOD rendering
         reportCount: lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0,
         hiddenCount: descendantCounts[node.id] ?? 0,
         isCollapsed: collapsedIds.includes(node.id),
@@ -781,9 +795,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       };
     });
 
-    // Brand × Channel grid: draw row bands (brands) and column bands (channels)
-    if (isGridLens(lens)) {
-      const frame = buildGridFrameNodes(personNodes, lodZoom, collapsedChannelGroups, toggleChannelGroup);
+    // Brand × Channel grid: draw row bands (brands) and column bands (channels).
+    // Geometry comes from the zoom-independent gridFrame memo above so panning
+    // doesn't recompute the full grid layout.
+    if (isGridLens(lens) && gridFrame) {
+      const frame = buildGridFrameNodes(gridFrame.geometry, collapsedChannelGroups, toggleChannelGroup);
       return [...frame, ...personFlowNodes];
     }
 
@@ -799,7 +815,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       mirrorLanes,
       selectNode,
       focusSet,
-      lodZoom,
     );
     return [...laneNodes, ...personFlowNodes];
   }, [
@@ -810,7 +825,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lensLayout?.positions,
     lens,
     highlightTokens,
-    lodZoom,
+    gridFrame,
     addPerson,
     addRelationship,
     duplicateNodes,
@@ -826,7 +841,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     unitAnchorMap,
     collapsedChannelGroups,
     toggleChannelGroup,
-    nodesData,
     filters?.focusIds,
     filters?.hiddenIds,
     hiddenByCollapse,
@@ -1292,18 +1306,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onSelectionChange={handleSelectionChange}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}
-            onMove={(_, viewport) => {
-              // Per-frame React state writes fight React Flow's CSS transform and cause
-              // flicker. During the gesture only re-render when the LOD bucket flips.
-              const bucket =
-                viewport.zoom > 0.6 ? "full" : viewport.zoom >= 0.45 ? "medium" : "compact";
-              if (bucket !== lodBucketRef.current) {
-                lodBucketRef.current = bucket;
-                setCurrentZoom(viewport.zoom);
-              }
+            onMoveStart={() => {
+              // Disable the per-node transform transition during an active gesture so
+              // freshly-mounted cards (onlyRenderVisibleElements) don't animate into
+              // place and flicker. Toggled on the wrapper DOM node to avoid a re-render.
+              wrapperRef.current?.classList.add("is-navigating");
             }}
             onMoveEnd={(_, viewport) => {
-              // Settle once when movement stops: exact zoom (counter-scaling, %) + persist
+              wrapperRef.current?.classList.remove("is-navigating");
+              // Settle once when movement stops: exact zoom (counter-scaling, %) + persist.
+              // Cards/lanes read live zoom from the store internally, so the node array
+              // is never rebuilt mid-gesture — this only updates the % readout.
               setCurrentZoom(viewport.zoom);
               setCurrentViewport(viewport);
             }}
@@ -1942,12 +1955,10 @@ const MIRROR_SECTION_GAP = 90;
 // over them, producing the matrix grid feel; person cards sit on top.
 const GRID_GROUP_BAND_H = 96;
 const buildGridFrameNodes = (
-  people: PersonNode[],
-  zoom: number,
+  geo: GridGeometry,
   collapsedGroups: Set<string>,
   onToggleGroup: (label: string) => void,
 ): Node[] => {
-  const geo = getGridGeometry(people, collapsedGroups);
   // Channel-group header bands, sitting above the column headers; click to collapse
   const groupNodes: Node[] = geo.colGroups.map((grp) => ({
     id: `gridgroup:${grp.label}`,
@@ -1958,7 +1969,6 @@ const buildGridFrameNodes = (
       count: grp.count,
       width: grp.width,
       color: CHANNEL_GROUP_COLORS[grp.label] ?? UNASSIGNED_LANE_COLOR,
-      zoom,
       collapsed: collapsedGroups.has(grp.label),
       onToggle: onToggleGroup,
     },
@@ -1980,7 +1990,6 @@ const buildGridFrameNodes = (
       height: cell.height,
       color: BRAND_COLORS[cell.rowKey] ?? UNASSIGNED_LANE_COLOR,
       shared: cell.shared,
-      zoom,
     },
     draggable: false,
     selectable: false,
@@ -1996,7 +2005,6 @@ const buildGridFrameNodes = (
       color: BRAND_COLORS[row.key] ?? UNASSIGNED_LANE_COLOR,
       count: row.count,
       width: geo.width,
-      zoom,
     },
     draggable: false,
     selectable: false,
@@ -2013,7 +2021,6 @@ const buildGridFrameNodes = (
       count: col.count,
       width: col.width,
       height: geo.height,
-      zoom,
     },
     draggable: false,
     selectable: false,
@@ -2034,7 +2041,6 @@ const buildLaneNodes = (
   showMirrors: boolean,
   onSelectMirror: (id: string) => void,
   focusSet: Set<string> | null,
-  zoom: number,
 ): Node[] => {
   const groups = groupNodesByDimension(people, dimension);
   const laneNodes: Node[] = [];
@@ -2123,7 +2129,6 @@ const buildLaneNodes = (
       ).length,
       vacancies: members.filter(isVacantRole).length,
       tiers,
-      zoom,
     };
     laneNodes.push({
       id: `lane:${key}`,
@@ -2161,7 +2166,7 @@ const buildLaneNodes = (
         id: `chgroup:${label}`,
         type: "gridGroupNode",
         position: { x: span.minX, y: topMinY - 180 },
-        data: { label, count: span.count, width: span.maxX - span.minX, color: CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR, zoom },
+        data: { label, count: span.count, width: span.maxX - span.minX, color: CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR },
         style: { width: span.maxX - span.minX, height: 120 },
         zIndex: -1,
         draggable: false,
