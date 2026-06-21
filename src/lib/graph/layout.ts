@@ -106,6 +106,23 @@ export const calculateLayout = (
 
 const TEAM_TREE_GAP_X = 160;
 const TEAM_TREE_GAP_Y = 230;
+const TEAM_TREE_WRAP_ROW_GAP_Y = 100;
+const TEAM_TREE_MAX_COLUMNS = 4;
+
+type TeamTreeSize = {
+  width: number;
+  height: number;
+  rootCenterOffset: number;
+  rows: Array<{ ids: string[]; width: number; height: number }>;
+};
+
+const chunk = <T,>(items: T[], size: number): T[][] => {
+  const rows: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    rows.push(items.slice(index, index + size));
+  }
+  return rows;
+};
 
 export const calculateTeamTreeLayout = (
   nodes: GraphNode[],
@@ -124,39 +141,92 @@ export const calculateTeamTreeLayout = (
     childrenById[edge.source].push(edge.target);
   });
 
-  const widths: Record<string, number> = {};
-  const measure = (id: string, seen = new Set<string>()): number => {
-    if (widths[id] !== undefined) return widths[id];
-    if (seen.has(id)) return NODE_WIDTH;
+  const sizes: Record<string, TeamTreeSize> = {};
+  const measure = (id: string, seen = new Set<string>()): TeamTreeSize => {
+    if (sizes[id] !== undefined) return sizes[id];
+    if (seen.has(id)) {
+      return {
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        rootCenterOffset: NODE_WIDTH / 2,
+        rows: [],
+      };
+    }
     seen.add(id);
     const children = childrenById[id] ?? [];
     if (children.length === 0) {
-      widths[id] = NODE_WIDTH;
-      return widths[id];
+      sizes[id] = {
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        rootCenterOffset: NODE_WIDTH / 2,
+        rows: [],
+      };
+      return sizes[id];
     }
-    const childWidth =
-      children.reduce((sum, childId) => sum + measure(childId, new Set(seen)), 0) +
-      (children.length - 1) * TEAM_TREE_GAP_X;
-    widths[id] = Math.max(NODE_WIDTH, childWidth);
-    return widths[id];
+
+    const columnCount = Math.min(children.length, TEAM_TREE_MAX_COLUMNS);
+    const rows = chunk(children, columnCount).map((rowIds) => {
+      const rowSizes = rowIds.map((childId) => measure(childId, new Set(seen)));
+      return {
+        ids: rowIds,
+        width:
+          rowSizes.reduce((sum, childSize) => sum + childSize.width, 0) +
+          (rowSizes.length - 1) * TEAM_TREE_GAP_X,
+        height: Math.max(...rowSizes.map((childSize) => childSize.height)),
+      };
+    });
+    const width = Math.max(NODE_WIDTH, ...rows.map((row) => row.width));
+    const childrenHeight =
+      rows.reduce((sum, row) => sum + row.height, 0) +
+      (rows.length - 1) * TEAM_TREE_WRAP_ROW_GAP_Y;
+    const firstRow = rows[0];
+    let childLeft = (width - firstRow.width) / 2;
+    const childCenters = firstRow.ids.map((childId) => {
+      const childSize = measure(childId, new Set(seen));
+      const center = childLeft + childSize.rootCenterOffset;
+      childLeft += childSize.width + TEAM_TREE_GAP_X;
+      return center;
+    });
+    const averageChildCenter =
+      childCenters.reduce((sum, center) => sum + center, 0) / childCenters.length;
+    sizes[id] = {
+      width,
+      height: NODE_HEIGHT + TEAM_TREE_GAP_Y + childrenHeight,
+      rootCenterOffset: Math.min(
+        width - NODE_WIDTH / 2,
+        Math.max(NODE_WIDTH / 2, averageChildCenter),
+      ),
+      rows,
+    };
+    return sizes[id];
   };
 
   measure(rootId);
 
   const positions: Record<string, { x: number; y: number }> = {};
-  const place = (id: string, left: number, depth: number, seen = new Set<string>()) => {
+  const place = (id: string, left: number, top: number, seen = new Set<string>()) => {
     if (seen.has(id) || !personIds.has(id)) return;
     seen.add(id);
-    const width = widths[id] ?? NODE_WIDTH;
+    const size = sizes[id] ?? measure(id);
     positions[id] = {
-      x: depth === 0 ? left + width / 2 - NODE_WIDTH / 2 : left,
-      y: depth * (NODE_HEIGHT + TEAM_TREE_GAP_Y),
+      x: left + size.rootCenterOffset - NODE_WIDTH / 2,
+      y: top,
     };
-    let childLeft = left;
-    (childrenById[id] ?? []).forEach((childId) => {
-      const childWidth = widths[childId] ?? NODE_WIDTH;
-      place(childId, childLeft, depth + 1, new Set(seen));
-      childLeft += childWidth + TEAM_TREE_GAP_X;
+    let rowTop = top + NODE_HEIGHT + TEAM_TREE_GAP_Y;
+    size.rows.forEach((row, rowIndex) => {
+      const centeredRowOffset = (size.width - row.width) / 2;
+      const previousRow = size.rows[rowIndex - 1];
+      const gapAlignedOffset =
+        rowIndex > 0 && row.ids.length === 2 && (previousRow?.ids.length ?? 0) >= 4
+          ? Math.max(0, centeredRowOffset - (NODE_WIDTH + TEAM_TREE_GAP_X) / 2)
+          : centeredRowOffset;
+      let childLeft = left + gapAlignedOffset;
+      row.ids.forEach((childId) => {
+        const childSize = sizes[childId] ?? measure(childId);
+        place(childId, childLeft, rowTop, new Set(seen));
+        childLeft += childSize.width + TEAM_TREE_GAP_X;
+      });
+      rowTop += row.height + TEAM_TREE_WRAP_ROW_GAP_Y;
     });
   };
 

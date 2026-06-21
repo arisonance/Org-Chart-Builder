@@ -129,6 +129,8 @@ describe("calculateLayout (dagre)", () => {
 });
 
 describe("calculateTeamTreeLayout", () => {
+  const centerX = (position: { x: number }) => position.x + NODE_WIDTH / 2;
+
   it("keeps each direct report's subtree in its own branch span", () => {
     const nodes = [
       makePerson("aron"),
@@ -154,8 +156,47 @@ describe("calculateTeamTreeLayout", () => {
 
     expect(positions.ashley.y).toBe(positions.courtney.y);
     expect(positions.brit.y).toBeGreaterThan(positions.ashley.y);
-    expect(positions.brit.x).toBeGreaterThan(positions.ashley.x + NODE_WIDTH);
-    expect(positions.brit.x).toBeGreaterThanOrEqual(positions.courtney.x);
+    expect(centerX(positions.brit)).toBeGreaterThanOrEqual(
+      (centerX(positions.ashley) + centerX(positions.courtney)) / 2,
+    );
+  });
+
+  it("uses a compact classic org shape for a leader with two direct reports", () => {
+    const nodes = [
+      makePerson("nathan"),
+      makePerson("brian"),
+      makePerson("ryan"),
+      makePerson("bryan"),
+      makePerson("brandon"),
+      makePerson("christian"),
+      makePerson("brooks"),
+      makePerson("brad"),
+      makePerson("matt"),
+      makePerson("justin"),
+    ];
+    const edges = [
+      makeManagerEdge("nathan", "brian"),
+      makeManagerEdge("nathan", "ryan"),
+      makeManagerEdge("brian", "bryan"),
+      makeManagerEdge("brian", "brandon"),
+      makeManagerEdge("brian", "christian"),
+      makeManagerEdge("brian", "brooks"),
+      makeManagerEdge("brian", "brad"),
+      makeManagerEdge("brian", "matt"),
+      makeManagerEdge("ryan", "justin"),
+    ];
+
+    const positions = calculateTeamTreeLayout(nodes, edges, "nathan");
+
+    expect(positions.brian.y).toBe(positions.ryan.y);
+    expect(centerX(positions.nathan)).toBeCloseTo(
+      (centerX(positions.brian) + centerX(positions.ryan)) / 2,
+      0,
+    );
+    expect(centerX(positions.ryan) - centerX(positions.brian)).toBeLessThan(1100);
+    expect(positions.bryan.y).toBeGreaterThan(positions.brian.y);
+    expect(positions.justin.y).toBeGreaterThan(positions.ryan.y);
+    expect(centerX(positions.justin)).toBeCloseTo(centerX(positions.ryan), 0);
   });
 });
 
