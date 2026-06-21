@@ -100,6 +100,8 @@ const baseEdgeStyle = {
   strokeLinecap: "round" as const,
 };
 
+const MATRIX_WRAP_LAYOUT_STORAGE_KEY = "org-chart-matrix-wrap-layout-v1";
+
 type HierarchyCanvasProps = {
   className?: string;
   style?: CSSProperties;
@@ -207,6 +209,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
   const [lensTransition, setLensTransition] = useState(false);
   const isRestoringViewport = useRef(false);
+  const matrixWrapRefreshRef = useRef<Set<LensId>>(new Set());
   const previousLens = useRef(lens);
 
   // Briefly enable the glide transition when the lens changes so cards
@@ -634,22 +637,44 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return set;
   }, [focusedNodeId, edgesData, parentMap, childMap]);
 
-  // Horizontal extent of each lane in the active matrix view, used to detect
-  // which lane a card was dropped into for drag-to-reassign
+  // Extent of each lane in the active matrix view, used to detect which lane a
+  // card was dropped into for drag-to-reassign. Department lanes can wrap into
+  // multiple rows, so hit-testing must account for both axes.
   const laneXRanges = useMemo(() => {
     const dimension = lensToDimension(lens);
     if (!dimension) return null;
     const positions = lensLayout?.positions ?? {};
     const groups = groupNodesByDimension(personNodes, dimension);
-    const ranges: Array<{ key: string; minX: number; maxX: number; centerX: number }> = [];
+    const ranges: Array<{
+      key: string;
+      minX: number;
+      maxX: number;
+      minY: number;
+      maxY: number;
+      centerX: number;
+      centerY: number;
+    }> = [];
     groups.forEach((members, key) => {
       const xs = members
         .map((m) => positions[m.id]?.x)
         .filter((x): x is number => typeof x === "number");
-      if (xs.length === 0) return;
+      const ys = members
+        .map((m) => positions[m.id]?.y)
+        .filter((y): y is number => typeof y === "number");
+      if (xs.length === 0 || ys.length === 0) return;
       const minX = Math.min(...xs) - 80;
       const maxX = Math.max(...xs) + NODE_WIDTH + 80;
-      ranges.push({ key, minX, maxX, centerX: (minX + maxX) / 2 });
+      const minY = Math.min(...ys) - 80;
+      const maxY = Math.max(...ys) + NODE_HEIGHT + 80;
+      ranges.push({
+        key,
+        minX,
+        maxX,
+        minY,
+        maxY,
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2,
+      });
     });
     return { dimension, ranges };
   }, [lens, lensLayout?.positions, personNodes]);
@@ -722,6 +747,49 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rfInstance, lens, personNodes.length, teamTree]);
+
+  useEffect(() => {
+    const dimension = lensToDimension(lens);
+    if (!dimension || !personNodes.length || teamTree) return;
+    if (matrixWrapRefreshRef.current.has(lens)) return;
+    matrixWrapRefreshRef.current.add(lens);
+
+    let shouldRefresh = true;
+    try {
+      const key = `${MATRIX_WRAP_LAYOUT_STORAGE_KEY}:${lens}`;
+      shouldRefresh = localStorage.getItem(key) !== "1";
+      if (shouldRefresh) localStorage.setItem(key, "1");
+    } catch {
+      shouldRefresh = true;
+    }
+    if (!shouldRefresh) return;
+
+    cleanupCanvas(lens, "spacious");
+    positionedLensRef.current = null;
+    const timer = window.setTimeout(() => {
+      if (dimension === "department") {
+        const positions =
+          useGraphStore.getState().document.lens_state[lens]?.layout.positions ?? {};
+        const points = Object.values(positions);
+        if (points.length > 0) {
+          const minX = Math.min(...points.map((point) => point.x));
+          const minY = Math.min(...points.map((point) => point.y));
+          const zoom = wrapperRef.current && wrapperRef.current.clientWidth < 900 ? 0.34 : 0.5;
+          rfInstance?.setViewport(
+            {
+              x: 120 - minX * zoom,
+              y: 168 - minY * zoom,
+              zoom,
+            },
+            { duration: 350 },
+          );
+          return;
+        }
+      }
+      rfInstance?.fitView({ padding: 0.18, duration: 350, minZoom: 0.35, maxZoom: 1.15 });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [lens, personNodes.length, cleanupCanvas, rfInstance, teamTree]);
 
   const highlightTokens = useMemo(() => {
     if (!filters?.activeTokens?.length) return new Map<string, string[]>();
@@ -1064,12 +1132,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         if (!person) return;
 
         const dropX = item.position.x + NODE_WIDTH / 2;
-        let target = laneXRanges.ranges.find((r) => dropX >= r.minX && dropX <= r.maxX);
+        const dropY = item.position.y + NODE_HEIGHT / 2;
+        let target = laneXRanges.ranges.find(
+          (r) => dropX >= r.minX && dropX <= r.maxX && dropY >= r.minY && dropY <= r.maxY,
+        );
         if (!target) {
           // Dropped in the gap between lanes — snap to the nearest one
-          target = laneXRanges.ranges.reduce((best, r) =>
-            Math.abs(dropX - r.centerX) < Math.abs(dropX - best.centerX) ? r : best,
-          );
+          target = laneXRanges.ranges.reduce((best, r) => {
+            const distance = Math.hypot(dropX - r.centerX, dropY - r.centerY);
+            const bestDistance = Math.hypot(dropX - best.centerX, dropY - best.centerY);
+            return distance < bestDistance ? r : best;
+          });
         }
         if (!target || target.key === UNASSIGNED_GROUP_KEY) return;
         if (getGroupKey(person, laneXRanges.dimension) === target.key) return;

@@ -10,6 +10,7 @@ import {
   getGroupKey,
   getAssignments,
   groupNodesByDimension,
+  calculateMatrixLayout,
   calculateGridLayout,
   getGridGeometry,
   isGridLens,
@@ -175,6 +176,43 @@ describe("groupNodesByDimension", () => {
     expect(groups.get("A")?.map((n) => n.id)).toEqual(["p1", "p2"]);
     expect(groups.get("B")?.map((n) => n.id)).toEqual(["p3"]);
     expect(groups.get(UNASSIGNED_GROUP_KEY)?.map((n) => n.id)).toEqual(["p4"]);
+  });
+});
+
+describe("calculateMatrixLayout", () => {
+  it("wraps large peer ranks instead of laying a lane out as one unreadable row", () => {
+    const people = Array.from({ length: 24 }, (_, index) =>
+      makePerson(`p${index}`, {
+        primaryDepartment: "James Manufacturing - Direct",
+        departments: ["James Manufacturing - Direct"],
+      }),
+    );
+    const positions = calculateMatrixLayout(people, [], "department");
+    const values = Object.values(positions);
+    const minX = Math.min(...values.map((position) => position.x));
+    const maxX = Math.max(...values.map((position) => position.x + NODE_WIDTH));
+    const rows = new Set(values.map((position) => position.y));
+
+    expect(Object.keys(positions)).toHaveLength(24);
+    expect(rows.size).toBeGreaterThan(1);
+    expect(maxX - minX).toBeLessThan(24 * NODE_WIDTH);
+  });
+
+  it("wraps department lanes into multiple rows when there are many departments", () => {
+    const people = Array.from({ length: 72 }, (_, index) => {
+      const department = `Department ${Math.floor(index / 12) + 1}`;
+      return makePerson(`p${index}`, {
+        primaryDepartment: department,
+        departments: [department],
+      });
+    });
+    const positions = calculateMatrixLayout(people, [], "department");
+    const firstDepartmentY = positions.p0.y;
+    const lastDepartmentY = positions.p60.y;
+    const xs = Object.values(positions).map((position) => position.x);
+
+    expect(lastDepartmentY).toBeGreaterThan(firstDepartmentY);
+    expect(Math.max(...xs) - Math.min(...xs) + NODE_WIDTH).toBeLessThan(7000);
   });
 });
 

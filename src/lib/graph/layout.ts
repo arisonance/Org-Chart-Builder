@@ -174,6 +174,70 @@ const sortChannelGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
     return diff !== 0 ? diff : a.localeCompare(b);
   });
 
+const MATRIX_RANK_MAX_COLS = 6;
+const MATRIX_RANK_GAP_X = 96;
+const MATRIX_RANK_GAP_Y = 78;
+const MATRIX_RANK_GROUP_GAP_Y = 180;
+const MATRIX_RANK_Y_TOLERANCE = 8;
+const MATRIX_LANE_GAP_X = 360;
+const MATRIX_LANE_GAP_Y = 420;
+const MATRIX_DEPARTMENT_ROW_MAX_WIDTH = 6400;
+
+const colsForMatrixRank = (count: number) => {
+  if (count <= MATRIX_RANK_MAX_COLS) return count;
+  if (count <= 10) return 4;
+  return Math.min(MATRIX_RANK_MAX_COLS, Math.ceil(Math.sqrt(count * 1.35)));
+};
+
+const wrapWideRanks = (
+  rawPositions: Record<string, { x: number; y: number }>,
+): Record<string, { x: number; y: number }> => {
+  const entries = Object.entries(rawPositions).sort(
+    (a, b) => a[1].y - b[1].y || a[1].x - b[1].x || a[0].localeCompare(b[0]),
+  );
+  const ranks: Array<{ y: number; items: Array<{ id: string; x: number }> }> = [];
+  entries.forEach(([id, position]) => {
+    const rank = ranks.find((item) => Math.abs(item.y - position.y) <= MATRIX_RANK_Y_TOLERANCE);
+    if (rank) {
+      rank.items.push({ id, x: position.x });
+      rank.y = (rank.y * (rank.items.length - 1) + position.y) / rank.items.length;
+    } else {
+      ranks.push({ y: position.y, items: [{ id, x: position.x }] });
+    }
+  });
+
+  const rankLayouts = ranks.map((rank) => {
+    const cols = Math.max(1, colsForMatrixRank(rank.items.length));
+    const rows = Math.ceil(rank.items.length / cols);
+    return {
+      ...rank,
+      cols,
+      rows,
+      width: cols * NODE_WIDTH + (cols - 1) * MATRIX_RANK_GAP_X,
+      height: rows * NODE_HEIGHT + (rows - 1) * MATRIX_RANK_GAP_Y,
+    };
+  });
+  const laneWidth = Math.max(NODE_WIDTH, ...rankLayouts.map((rank) => rank.width));
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  let cursorY = 0;
+  rankLayouts.forEach((rank) => {
+    const sorted = [...rank.items].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id));
+    const startX = (laneWidth - rank.width) / 2;
+    sorted.forEach((item, index) => {
+      const row = Math.floor(index / rank.cols);
+      const col = index % rank.cols;
+      positions[item.id] = {
+        x: startX + col * (NODE_WIDTH + MATRIX_RANK_GAP_X),
+        y: cursorY + row * (NODE_HEIGHT + MATRIX_RANK_GAP_Y),
+      };
+    });
+    cursorY += rank.height + MATRIX_RANK_GROUP_GAP_Y;
+  });
+
+  return positions;
+};
+
 /**
  * Swim-lane layout for matrix views: people are grouped into vertical lanes by
  * brand/channel/department, and the reporting hierarchy is laid out within each lane.
@@ -189,8 +253,9 @@ export const calculateMatrixLayout = (
   const groupKeys = dimension === "channel" ? sortChannelGroupKeys(groups) : sortGroupKeys(groups);
 
   const positions: Record<string, { x: number; y: number }> = {};
-  const LANE_GAP = 360;
   let offsetX = 0;
+  let offsetY = 0;
+  let rowHeight = 0;
 
   // Global reporting chain, used to rank people whose direct manager sits in
   // a different lane: link them to their nearest ancestor inside the lane so
@@ -224,22 +289,36 @@ export const calculateMatrixLayout = (
       }
     });
 
-    const groupPositions = calculateLayout(groupNodes, laneEdges);
+    const groupPositions = wrapWideRanks(calculateLayout(groupNodes, laneEdges));
     const xs = Object.values(groupPositions).map((p) => p.x);
     const ys = Object.values(groupPositions).map((p) => p.y);
     if (xs.length === 0) return;
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs) + NODE_WIDTH;
     const minY = Math.min(...ys);
+    const maxY = Math.max(...ys) + NODE_HEIGHT;
+    const laneWidth = maxX - minX;
+    const laneHeight = maxY - minY;
+
+    if (
+      dimension === "department" &&
+      offsetX > 0 &&
+      offsetX + laneWidth > MATRIX_DEPARTMENT_ROW_MAX_WIDTH
+    ) {
+      offsetX = 0;
+      offsetY += rowHeight + MATRIX_LANE_GAP_Y;
+      rowHeight = 0;
+    }
 
     Object.entries(groupPositions).forEach(([nodeId, p]) => {
       positions[nodeId] = {
         x: p.x - minX + offsetX,
-        y: p.y - minY,
+        y: p.y - minY + offsetY,
       };
     });
 
-    offsetX += maxX - minX + LANE_GAP;
+    offsetX += laneWidth + MATRIX_LANE_GAP_X;
+    rowHeight = Math.max(rowHeight, laneHeight);
   });
 
   return positions;
