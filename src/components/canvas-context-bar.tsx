@@ -12,7 +12,17 @@ import { LENS_BY_ID } from "@/lib/schema/lenses";
  *    names what's narrowing the canvas, plus one-click Reset view.
  * When neither applies it renders nothing, keeping the resting canvas clean.
  */
-export function CanvasContextBar({ onResetView }: { onResetView: () => void }) {
+export function CanvasContextBar({
+  onResetView,
+  onOpenTeamTree,
+  teamTreeRootId,
+  onExitTeamTree,
+}: {
+  onResetView: () => void;
+  onOpenTeamTree: (nodeId: string) => void;
+  teamTreeRootId: string | null;
+  onExitTeamTree: () => void;
+}) {
   const lens = useGraphStore((s) => s.document.lens);
   const nodes = useGraphStore((s) => s.document.nodes);
   const edges = useGraphStore((s) => s.document.edges);
@@ -21,13 +31,21 @@ export function CanvasContextBar({ onResetView }: { onResetView: () => void }) {
   const selectNode = useGraphStore((s) => s.selectNode);
   const clearSelection = useGraphStore((s) => s.clearSelection);
 
-  const nameById = useMemo(() => {
-    const map = new Map<string, string>();
+  const nodeById = useMemo(() => {
+    const map = new Map<string, { name: string; title: string }>();
     nodes.forEach((node) => {
-      if (node.kind === "person") map.set(node.id, node.name);
+      if (node.kind === "person") {
+        map.set(node.id, { name: node.name, title: node.attributes.title });
+      }
     });
     return map;
   }, [nodes]);
+
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>();
+    nodeById.forEach((node, id) => map.set(id, node.name));
+    return map;
+  }, [nodeById]);
 
   // Direct manager of each person, for walking the reporting chain upward
   const parentMap = useMemo(() => {
@@ -40,7 +58,18 @@ export function CanvasContextBar({ onResetView }: { onResetView: () => void }) {
     return map;
   }, [edges]);
 
+  const childMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    edges.forEach((edge) => {
+      if (edge.metadata.type !== "manager") return;
+      if (!map[edge.source]) map[edge.source] = [];
+      map[edge.source].push(edge.target);
+    });
+    return map;
+  }, [edges]);
+
   const focusedId = selection.nodeIds.length === 1 ? selection.nodeIds[0] : null;
+  const teamTreeRoot = teamTreeRootId ? nodeById.get(teamTreeRootId) : null;
 
   // Root → focused person, following manager edges
   const chain = useMemo(() => {
@@ -56,6 +85,22 @@ export function CanvasContextBar({ onResetView }: { onResetView: () => void }) {
     return out;
   }, [focusedId, parentMap]);
 
+  const directReportIds = focusedId ? childMap[focusedId] ?? [] : [];
+  const descendantIds = useMemo(() => {
+    if (!focusedId) return [] as string[];
+    const out: string[] = [];
+    const seen = new Set<string>([focusedId]);
+    const queue = [...(childMap[focusedId] ?? [])];
+    while (queue.length) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+      queue.push(...(childMap[id] ?? []));
+    }
+    return out;
+  }, [focusedId, childMap]);
+
   const focusIds = filters?.focusIds ?? [];
   const activeTokens = filters?.activeTokens ?? [];
   const hiddenIds = filters?.hiddenIds ?? [];
@@ -70,7 +115,7 @@ export function CanvasContextBar({ onResetView }: { onResetView: () => void }) {
   if (hiddenIds.length > 0) descriptors.push(`${hiddenIds.length} hidden`);
   const subsetActive = descriptors.length > 0;
 
-  if (!focusedId && !subsetActive) return null;
+  if (!focusedId && !subsetActive && !teamTreeRoot) return null;
 
   return (
     <div className="pointer-events-none absolute left-1/2 top-4 z-30 flex max-w-[88vw] -translate-x-1/2 flex-col items-center gap-2">
@@ -107,6 +152,66 @@ export function CanvasContextBar({ onResetView }: { onResetView: () => void }) {
             Exit
           </button>
         </nav>
+      )}
+
+      {focusedId && directReportIds.length > 0 && (
+        <div className="pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-sky-200 bg-white/95 px-3 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10">
+          <span className="font-semibold text-slate-900 dark:text-white">
+            {nameById.get(focusedId) ?? "Selected"}&apos;s org
+          </span>
+          <span className="text-slate-500 dark:text-slate-400">
+            {directReportIds.length} direct {directReportIds.length === 1 ? "report" : "reports"}
+            {descendantIds.length > directReportIds.length
+              ? ` · ${descendantIds.length + 1} total people`
+              : ""}
+          </span>
+          <span className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
+          {directReportIds.slice(0, 5).map((id) => {
+            const person = nodeById.get(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => selectNode(id)}
+                title={person?.title}
+                className="rounded-full bg-sky-50 px-2.5 py-1 font-medium text-sky-800 transition hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
+              >
+                {person?.name ?? "Unknown"}
+              </button>
+            );
+          })}
+          {directReportIds.length > 5 && (
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-500 dark:bg-white/10 dark:text-slate-300">
+              +{directReportIds.length - 5} more
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenTeamTree(focusedId)}
+            className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+          >
+            {teamTreeRootId === focusedId ? "Refit team tree" : "Open team tree"}
+          </button>
+        </div>
+      )}
+
+      {teamTreeRoot && (
+        <div className="pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="font-semibold text-emerald-900 dark:text-emerald-100">
+            Team tree
+          </span>
+          <span className="text-emerald-700 dark:text-emerald-200/85">
+            {teamTreeRoot.name} is the temporary root
+          </span>
+          <button
+            type="button"
+            onClick={onExitTeamTree}
+            className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
+          >
+            Exit team tree
+          </button>
+        </div>
       )}
 
       {subsetActive && (
