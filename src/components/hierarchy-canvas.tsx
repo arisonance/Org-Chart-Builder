@@ -43,7 +43,7 @@ import {
   isGridLens,
   getGridGeometry,
   calculateGridLayout,
-  calculateLayout,
+  calculateTeamTreeLayout,
   collectDescendants,
   UNASSIGNED_GROUP_KEY,
   NODE_WIDTH,
@@ -409,7 +409,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       ids,
       directReportIds: childMap[teamRootId] ?? [],
       descendantIds,
-      positions: calculateLayout(scopedNodes, scopedEdges),
+      positions: calculateTeamTreeLayout(scopedNodes, scopedEdges, teamRootId),
     };
   }, [teamRootId, childMap, nodesData, edgesData]);
 
@@ -522,10 +522,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const fresh = useGraphStore.getState();
       const positions = teamTree?.positions ?? fresh.document.lens_state[fresh.document.lens]?.layout.positions ?? {};
       const directReports = teamTree?.rootId === id ? teamTree.directReportIds : childMap[id] ?? [];
+      const teamTreeFrameIds =
+        teamTree?.rootId === id && teamTree.descendantIds.length <= 18
+          ? [id, ...teamTree.descendantIds]
+          : null;
       const frameIds =
-        directReports.length > 0
+        teamTreeFrameIds ??
+        (directReports.length > 0
           ? [id, ...directReports]
-          : [parentMap[id], id].filter((value): value is string => Boolean(value));
+          : [parentMap[id], id].filter((value): value is string => Boolean(value)));
       const frames = frameIds
         .map((nodeId) => ({ id: nodeId, position: positions[nodeId] }))
         .filter((item): item is { id: string; position: { x: number; y: number } } => Boolean(item.position));
@@ -1079,7 +1084,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             edge.metadata.type === "manager"
               ? `${targetName} reports to ${sourceName}`
               : edge.metadata.label,
-          showLabel: isDirectFocusedManagerEdge,
+          showLabel: !teamTree && isDirectFocusedManagerEdge,
         },
         animated: edge.metadata.type === "dotted" && lodZoom > 0.5,
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker

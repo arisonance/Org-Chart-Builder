@@ -104,6 +104,66 @@ export const calculateLayout = (
   return positions;
 };
 
+const TEAM_TREE_GAP_X = 160;
+const TEAM_TREE_GAP_Y = 230;
+
+export const calculateTeamTreeLayout = (
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  rootId: string,
+): Record<string, { x: number; y: number }> => {
+  const personIds = new Set(
+    nodes.filter((node) => node.kind === "person").map((node) => node.id),
+  );
+  if (!personIds.has(rootId)) return calculateLayout(nodes, edges);
+
+  const childrenById: ChildMap = {};
+  edges.filter(isManagerEdge).forEach((edge) => {
+    if (!personIds.has(edge.source) || !personIds.has(edge.target)) return;
+    if (!childrenById[edge.source]) childrenById[edge.source] = [];
+    childrenById[edge.source].push(edge.target);
+  });
+
+  const widths: Record<string, number> = {};
+  const measure = (id: string, seen = new Set<string>()): number => {
+    if (widths[id] !== undefined) return widths[id];
+    if (seen.has(id)) return NODE_WIDTH;
+    seen.add(id);
+    const children = childrenById[id] ?? [];
+    if (children.length === 0) {
+      widths[id] = NODE_WIDTH;
+      return widths[id];
+    }
+    const childWidth =
+      children.reduce((sum, childId) => sum + measure(childId, new Set(seen)), 0) +
+      (children.length - 1) * TEAM_TREE_GAP_X;
+    widths[id] = Math.max(NODE_WIDTH, childWidth);
+    return widths[id];
+  };
+
+  measure(rootId);
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  const place = (id: string, left: number, depth: number, seen = new Set<string>()) => {
+    if (seen.has(id) || !personIds.has(id)) return;
+    seen.add(id);
+    const width = widths[id] ?? NODE_WIDTH;
+    positions[id] = {
+      x: depth === 0 ? left + width / 2 - NODE_WIDTH / 2 : left,
+      y: depth * (NODE_HEIGHT + TEAM_TREE_GAP_Y),
+    };
+    let childLeft = left;
+    (childrenById[id] ?? []).forEach((childId) => {
+      const childWidth = widths[childId] ?? NODE_WIDTH;
+      place(childId, childLeft, depth + 1, new Set(seen));
+      childLeft += childWidth + TEAM_TREE_GAP_X;
+    });
+  };
+
+  place(rootId, 0, 0);
+  return positions;
+};
+
 export const autoLayoutDocument = (document: GraphDocument) => {
   const positions = calculateLayout(document.nodes, document.edges);
   const layout = document.lens_state[document.lens]?.layout;

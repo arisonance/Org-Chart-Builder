@@ -6,6 +6,7 @@ import {
   collectDescendants,
   isDescendant,
   calculateLayout,
+  calculateTeamTreeLayout,
   lensToDimension,
   getGroupKey,
   getAssignments,
@@ -124,6 +125,37 @@ describe("calculateLayout (dagre)", () => {
     };
     const positions = calculateLayout([makePerson("p1"), group], []);
     expect(Object.keys(positions)).toEqual(["p1"]);
+  });
+});
+
+describe("calculateTeamTreeLayout", () => {
+  it("keeps each direct report's subtree in its own branch span", () => {
+    const nodes = [
+      makePerson("aron"),
+      makePerson("chuck"),
+      makePerson("ashley"),
+      makePerson("courtney"),
+      makePerson("kris"),
+      makePerson("brit"),
+      makePerson("gandolfi"),
+      makePerson("meghan"),
+    ];
+    const edges = [
+      makeManagerEdge("aron", "chuck"),
+      makeManagerEdge("aron", "ashley"),
+      makeManagerEdge("aron", "courtney"),
+      makeManagerEdge("chuck", "kris"),
+      makeManagerEdge("courtney", "brit"),
+      makeManagerEdge("courtney", "gandolfi"),
+      makeManagerEdge("courtney", "meghan"),
+    ];
+
+    const positions = calculateTeamTreeLayout(nodes, edges, "aron");
+
+    expect(positions.ashley.y).toBe(positions.courtney.y);
+    expect(positions.brit.y).toBeGreaterThan(positions.ashley.y);
+    expect(positions.brit.x).toBeGreaterThan(positions.ashley.x + NODE_WIDTH);
+    expect(positions.brit.x).toBeGreaterThanOrEqual(positions.courtney.x);
   });
 });
 

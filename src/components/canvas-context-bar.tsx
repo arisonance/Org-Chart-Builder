@@ -86,6 +86,9 @@ export function CanvasContextBar({
   }, [focusedId, parentMap]);
 
   const directReportIds = focusedId ? childMap[focusedId] ?? [] : [];
+  const focusedName = focusedId ? nameById.get(focusedId) ?? "Selected" : "";
+  const managerId = focusedId ? parentMap[focusedId] : undefined;
+  const managerName = managerId ? nameById.get(managerId) : null;
   const descendantIds = useMemo(() => {
     if (!focusedId) return [] as string[];
     const out: string[] = [];
@@ -100,6 +103,16 @@ export function CanvasContextBar({
     }
     return out;
   }, [focusedId, childMap]);
+  const directReportSummary =
+    directReportIds.length > 0
+      ? `${directReportIds.length} direct ${
+          directReportIds.length === 1 ? "report" : "reports"
+        }${
+          descendantIds.length > directReportIds.length
+            ? ` · ${descendantIds.length + 1} total people`
+            : ""
+        }`
+      : "No direct reports";
 
   const focusIds = filters?.focusIds ?? [];
   const activeTokens = filters?.activeTokens ?? [];
@@ -154,19 +167,21 @@ export function CanvasContextBar({
         </nav>
       )}
 
-      {focusedId && directReportIds.length > 0 && (
+      {focusedId && (
         <div className="pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-sky-200 bg-white/95 px-3 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10">
           <span className="font-semibold text-slate-900 dark:text-white">
-            {nameById.get(focusedId) ?? "Selected"}&apos;s org
+            {focusedName}&apos;s org
+          </span>
+          <span className="font-medium text-sky-800 dark:text-sky-100">
+            {managerName ? `Reports to ${managerName}` : "Top of this chain"}
           </span>
           <span className="text-slate-500 dark:text-slate-400">
-            {directReportIds.length} direct {directReportIds.length === 1 ? "report" : "reports"}
-            {descendantIds.length > directReportIds.length
-              ? ` · ${descendantIds.length + 1} total people`
-              : ""}
+            {directReportSummary}
           </span>
-          <span className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
-          {directReportIds.slice(0, 5).map((id) => {
+          {directReportIds.length > 0 && (
+            <span className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
+          )}
+          {directReportIds.length > 0 && directReportIds.slice(0, 5).map((id) => {
             const person = nodeById.get(id);
             return (
               <button
@@ -185,13 +200,15 @@ export function CanvasContextBar({
               +{directReportIds.length - 5} more
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => onOpenTeamTree(focusedId)}
-            className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-          >
-            {teamTreeRootId === focusedId ? "Refit team tree" : "Open team tree"}
-          </button>
+          {directReportIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onOpenTeamTree(focusedId)}
+              className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            >
+              {teamTreeRootId === focusedId ? "Refit team tree" : "Open team tree"}
+            </button>
+          )}
         </div>
       )}
 
@@ -202,7 +219,7 @@ export function CanvasContextBar({
             Team tree
           </span>
           <span className="text-emerald-700 dark:text-emerald-200/85">
-            {teamTreeRoot.name} is the temporary root
+            Viewing {teamTreeRoot.name}&apos;s organization
           </span>
           <button
             type="button"
