@@ -17,7 +17,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["4"], label: "Department lens" },
       { keys: ["5"], label: "Brand × Channel grid" },
       { keys: ["0"], label: "Fit everything to view" },
-      { keys: ["Double-click"], label: "Open a person's team tree" },
+      { keys: ["Click manager"], label: "Open that person's org view" },
       { keys: ["+"], label: "Zoom in" },
       { keys: ["−"], label: "Zoom out" },
     ],
@@ -40,7 +40,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 const TIPS = [
   "Right-click a person — or the canvas — for the full action menu.",
   "Drag from the colored handles on a card to wire a new relationship.",
-  "Click a person to preview their org; double-click to make them the temporary team-tree root.",
+  "Click a manager to make them the temporary org-view root and reveal their downstream team.",
 ];
 
 /** Reusable mini line sample matching the on-canvas edge styles. */

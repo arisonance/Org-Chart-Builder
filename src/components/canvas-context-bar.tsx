@@ -1,8 +1,14 @@
 'use client';
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID } from "@/lib/schema/lenses";
+
+type ViewContext = {
+  kind: "support-pod" | "shared-services" | "unit";
+  label: string;
+  count: number;
+};
 
 /**
  * Top-center "you are here" strip. Two modes, mutually exclusive:
@@ -17,11 +23,13 @@ export function CanvasContextBar({
   onOpenTeamTree,
   teamTreeRootId,
   onExitTeamTree,
+  viewContext,
 }: {
   onResetView: () => void;
   onOpenTeamTree: (nodeId: string) => void;
   teamTreeRootId: string | null;
   onExitTeamTree: () => void;
+  viewContext: ViewContext | null;
 }) {
   const lens = useGraphStore((s) => s.document.lens);
   const nodes = useGraphStore((s) => s.document.nodes);
@@ -68,7 +76,10 @@ export function CanvasContextBar({
     return map;
   }, [edges]);
 
-  const focusedId = selection.nodeIds.length === 1 ? selection.nodeIds[0] : null;
+  const focusedId =
+    selection.nodeIds.length === 1 && nodeById.has(selection.nodeIds[0])
+      ? selection.nodeIds[0]
+      : null;
   const teamTreeRoot = teamTreeRootId ? nodeById.get(teamTreeRootId) : null;
 
   // Root → focused person, following manager edges
@@ -89,6 +100,16 @@ export function CanvasContextBar({
   const focusedName = focusedId ? nameById.get(focusedId) ?? "Selected" : "";
   const managerId = focusedId ? parentMap[focusedId] : undefined;
   const managerName = managerId ? nameById.get(managerId) : null;
+  const openPerson = useCallback(
+    (id: string) => {
+      if ((childMap[id]?.length ?? 0) > 0) {
+        onOpenTeamTree(id);
+        return;
+      }
+      selectNode(id);
+    },
+    [childMap, onOpenTeamTree, selectNode],
+  );
   const descendantIds = useMemo(() => {
     if (!focusedId) return [] as string[];
     const out: string[] = [];
@@ -117,11 +138,20 @@ export function CanvasContextBar({
   const focusIds = filters?.focusIds ?? [];
   const activeTokens = filters?.activeTokens ?? [];
   const hiddenIds = filters?.hiddenIds ?? [];
+  const contextTitle =
+    viewContext?.kind === "support-pod"
+      ? "Support pod"
+      : viewContext?.kind === "shared-services"
+        ? "Shared services"
+        : viewContext?.kind === "unit"
+          ? "Unit view"
+          : LENS_BY_ID[lens].label;
 
   // A single-person selection drives focus highlighting (the breadcrumb), not a
   // subset filter — so only treat focusIds as a "subset" when nothing's selected.
   const descriptors: string[] = [];
   if (focusIds.length > 0 && !focusedId) {
+    if (viewContext) descriptors.push(viewContext.label);
     descriptors.push(`Showing ${focusIds.length} ${focusIds.length === 1 ? "person" : "people"}`);
   }
   if (activeTokens.length > 0) descriptors.push(`Filtered: ${activeTokens.join(", ")}`);
@@ -145,7 +175,7 @@ export function CanvasContextBar({
                 {index > 0 && <span className="text-slate-300 dark:text-slate-600">›</span>}
                 <button
                   type="button"
-                  onClick={() => selectNode(id)}
+                  onClick={() => openPerson(id)}
                   className={
                     isLast
                       ? "whitespace-nowrap font-semibold text-slate-900 dark:text-white"
@@ -168,7 +198,7 @@ export function CanvasContextBar({
       )}
 
       {focusedId && (
-        <div className="pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-sky-200 bg-white/95 px-3 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10">
+        <div className="pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-white/95 px-3 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10">
           <span className="font-semibold text-slate-900 dark:text-white">
             {focusedName}&apos;s org
           </span>
@@ -187,8 +217,12 @@ export function CanvasContextBar({
               <button
                 key={id}
                 type="button"
-                onClick={() => selectNode(id)}
-                title={person?.title}
+                onClick={() => openPerson(id)}
+                title={
+                  (childMap[id]?.length ?? 0) > 0
+                    ? `Open ${person?.name ?? "this person"}'s org view`
+                    : person?.title
+                }
                 className="rounded-full bg-sky-50 px-2.5 py-1 font-medium text-sky-800 transition hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
               >
                 {person?.name ?? "Unknown"}
@@ -206,7 +240,7 @@ export function CanvasContextBar({
               onClick={() => onOpenTeamTree(focusedId)}
               className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
-              {teamTreeRootId === focusedId ? "Refit team tree" : "Open team tree"}
+              {teamTreeRootId === focusedId ? "Refit org view" : "Open org view"}
             </button>
           )}
         </div>
@@ -216,17 +250,17 @@ export function CanvasContextBar({
         <div className="pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-semibold text-emerald-900 dark:text-emerald-100">
-            Team tree
+            Org view
           </span>
           <span className="text-emerald-700 dark:text-emerald-200/85">
-            Viewing {teamTreeRoot.name}&apos;s organization
+            {teamTreeRoot.name} is the temporary root
           </span>
           <button
             type="button"
             onClick={onExitTeamTree}
             className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
           >
-            Exit team tree
+            Exit org view
           </button>
         </div>
       )}
@@ -234,7 +268,7 @@ export function CanvasContextBar({
       {subsetActive && (
         <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs shadow-lg dark:border-amber-400/20 dark:bg-amber-500/10">
           <span className="font-semibold text-amber-700 dark:text-amber-200">
-            {LENS_BY_ID[lens].label}
+            {contextTitle}
           </span>
           <span className="text-amber-600 dark:text-amber-300/80">{descriptors.join(" · ")}</span>
           <button
