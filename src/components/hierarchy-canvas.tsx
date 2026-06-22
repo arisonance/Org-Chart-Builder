@@ -31,6 +31,11 @@ import {
 import { OnboardingOverlay } from "@/components/onboarding-overlay";
 import { RelationshipLegend } from "@/components/relationship-legend";
 import { CanvasContextBar } from "@/components/canvas-context-bar";
+import {
+  CanvasOrientationMap,
+  type OrientationAction,
+  type OrientationChip,
+} from "@/components/canvas-orientation-map";
 import { HelpDialog } from "@/components/help-dialog";
 import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
@@ -64,7 +69,7 @@ import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
 import { UnitFoundation } from "@/components/unit-foundation";
 import { computeOrgUnits, unitMemberIdSet, computeUnitAnchors, type ComputedUnit } from "@/lib/graph/org-units";
-import { groupSharedServiceMirrors } from "@/lib/graph/shared-service-groups";
+import { groupSharedServiceMirrors, groupSharedServicePods } from "@/lib/graph/shared-service-groups";
 import {
   BRAND_COLORS,
   CHANNEL_COLORS,
@@ -82,7 +87,7 @@ type CanvasMenuState = {
 };
 
 type ViewContext = {
-  kind: "support-pod" | "shared-services" | "unit";
+  kind: "support-pod" | "shared-services" | "unit" | "lens-group";
   label: string;
   count: number;
 };
@@ -821,6 +826,147 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setLensStore,
     showToast,
     teamRootId,
+    topOverviewRootId,
+  ]);
+
+  const focusLensGroup = useCallback(
+    (dimension: LensDimension, key: string) => {
+      const members = personNodes.filter((person) =>
+        getAssignments(person, dimension).includes(key),
+      );
+      if (members.length === 0) return;
+      setTeamRootId(null);
+      setTeamReturnLens(null);
+      clearSelection();
+      setViewContext({ kind: "lens-group", label: key, count: members.length });
+      setLensFilters(lens, {
+        focusIds: members.map((member) => member.id),
+        hiddenIds: [],
+        activeTokens: [key],
+      });
+      showToast(`Focused ${key}`);
+      window.setTimeout(() => {
+        fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.38, maxZoom: 1.05 });
+      }, 180);
+    },
+    [clearSelection, lens, personNodes, setLensFilters, showToast],
+  );
+
+  const orientationMap = useMemo(() => {
+    const focusIds = filters?.focusIds ?? [];
+    const activeTokens = filters?.activeTokens ?? [];
+    const hidden =
+      selection.nodeIds.length > 0 ||
+      Boolean(teamTree) ||
+      focusIds.length > 0 ||
+      activeTokens.length > 0;
+    const sharedUnits = orgUnits.filter((unit) => unit.def.type === "shared-service");
+    const facilityUnits = orgUnits.filter((unit) => unit.def.type === "facility");
+    const sharedServicePods = groupSharedServicePods(sharedUnits.flatMap((unit) => unit.members));
+
+    const groupChips = (dimension: LensDimension, limit = 8): OrientationChip[] => {
+      const groups = groupNodesByDimension(personNodes, dimension);
+      return [...groups.entries()]
+        .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+        .slice(0, limit)
+        .map(([key, members]) => ({
+          id: `${dimension}:${key}`,
+          label: key,
+          count: members.length,
+          color: getLaneColor(key, dimension),
+          detail: `Focus ${members.length} ${members.length === 1 ? "person" : "people"}`,
+          onClick: () => focusLensGroup(dimension, key),
+        }));
+    };
+
+    const actions: OrientationAction[] = [
+      { id: "overview", label: "Show top org", tone: "dark", onClick: showOrientationOverview },
+      { id: "fit", label: "Fit view", onClick: fitToView },
+    ];
+    if (sharedUnits.length > 0) {
+      actions.push({ id: "shared", label: "Shared services", onClick: openSharedServices });
+    }
+
+    if (lens === "hierarchy") {
+      const rootId = topOverviewRootId;
+      const directReportIds = rootId ? childMap[rootId] ?? [] : [];
+      const chips = directReportIds.slice(0, 8).map((id) => {
+        const person = personNodes.find((candidate) => candidate.id === id);
+        return {
+          id,
+          label: personNameById.get(id) ?? "Leader",
+          count: childMap[id]?.length ?? 0,
+          color: person ? getAccentColor(person, lens) : "#334155",
+          detail: "Open org view",
+          onClick: () => openTeamTree(id),
+        };
+      });
+      return {
+        hidden,
+        title: "Classic Hierarchy",
+        detail: "Start with the top org, then open a leader to drill down.",
+        stats: [
+          `${personNodes.length} people`,
+          `${directReportIds.length} top reports`,
+          `${sharedUnits.length + facilityUnits.length} rolled-up support groups`,
+        ],
+        chips,
+        actions,
+      };
+    }
+
+    if (lens === "brand" || lens === "channel" || lens === "department") {
+      const dimension = lensToDimension(lens)!;
+      const groups = groupNodesByDimension(personNodes, dimension);
+      return {
+        hidden,
+        title: LENS_BY_ID[lens].label,
+        detail:
+          lens === "department"
+            ? "Departments are primary homes; support pods show cross-functional service."
+            : "Lanes show primary ownership; support pods show teams serving multiple lanes.",
+        stats: [
+          `${groups.size} lanes`,
+          `${personNodes.length} people`,
+          `${sharedServicePods.length} support pods`,
+        ],
+        chips: groupChips(dimension),
+        actions,
+      };
+    }
+
+    const brandGroups = groupNodesByDimension(personNodes, "brand");
+    const channelGroups = groupNodesByDimension(personNodes, "channel");
+    return {
+      hidden,
+      title: "Brand x Channel Grid",
+      detail: "Rows are brand homes, columns are channel coverage, foundation groups support all cells.",
+      stats: [
+        `${brandGroups.size} brand rows`,
+        `${channelGroups.size} channel columns`,
+        `${sharedUnits.length + facilityUnits.length} foundation groups`,
+      ],
+      chips: [
+        ...groupChips("brand", 4).map((chip) => ({ ...chip, detail: "Focus brand row" })),
+        ...groupChips("channel", 4).map((chip) => ({ ...chip, detail: "Focus channel column" })),
+      ],
+      actions,
+    };
+  }, [
+    childMap,
+    filters?.activeTokens,
+    filters?.focusIds,
+    fitToView,
+    focusLensGroup,
+    lens,
+    openSharedServices,
+    openTeamTree,
+    orgUnits,
+    personNameById,
+    personNodes,
+    selection.nodeIds.length,
+    showOrientationOverview,
+    teamTree,
     topOverviewRootId,
   ]);
 
@@ -1956,6 +2102,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               <span className="text-slate-500 dark:text-slate-300">{lensMotionCue.detail}</span>
             </div>
           )}
+          <CanvasOrientationMap
+            title={orientationMap.title}
+            detail={orientationMap.detail}
+            stats={orientationMap.stats}
+            chips={orientationMap.chips}
+            actions={orientationMap.actions}
+            hidden={orientationMap.hidden || lensTransition || edgeReveal}
+          />
           <ReactFlow
             nodes={rfNodes}
             edges={edges}
@@ -2143,7 +2297,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 <button
                   type="button"
                   onClick={openSharedServices}
-                  title="See all shared services (Finance, HR, IT) together"
+                  title="See all shared services together"
                   aria-label="Open Shared Services view"
                   className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-500/10"
                 >

@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import { ChevronDownIcon, ChevronRightIcon, ArrowTopRightIcon } from "@radix-ui/react-icons";
 import type { ComputedUnit } from "@/lib/graph/org-units";
+import { groupSharedServicePods } from "@/lib/graph/shared-service-groups";
 
 type UnitRailProps = {
   units: ComputedUnit[];
@@ -80,6 +81,10 @@ export function UnitRail({
               {sectionUnits.map((unit) => {
                 const style = TYPE_STYLE[unit.def.type];
                 const isOpen = expanded.has(unit.def.id);
+                const pods =
+                  unit.def.type === "shared-service"
+                    ? groupSharedServicePods(unit.members)
+                    : [];
                 return (
                   <div key={unit.def.id} className="relative mb-3">
                     {/* Stacked-paper layers: signals "a group of people," not one person */}
@@ -109,7 +114,56 @@ export function UnitRail({
                       </div>
                     </div>
 
-                    {isOpen && (
+                    {isOpen && unit.def.type === "shared-service" && pods.length > 0 && (
+                      <div className="max-h-56 overflow-y-auto border-t border-slate-100 bg-slate-50/60 px-1.5 py-1.5 dark:border-white/10 dark:bg-white/5">
+                        {pods.map((pod) => {
+                          const preview = pod.members.slice(0, 3);
+                          const overflow = pod.members.length - preview.length;
+                          return (
+                            <div
+                              key={pod.id}
+                              className="mb-1.5 rounded-md border border-violet-100 bg-white p-1.5 shadow-sm last:mb-0 dark:border-violet-400/20 dark:bg-slate-950/70"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-200">
+                                    {pod.label}
+                                  </p>
+                                  <p className="truncate text-[9px] text-slate-400">
+                                    {pod.lead ? `Lead: ${pod.lead.name}` : pod.service}
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 ring-1 ring-violet-100 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/20">
+                                  {pod.members.length}
+                                </span>
+                              </div>
+                              <div className="mt-1 space-y-0.5">
+                                {preview.map((m) => (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => onSelectMember(m.id)}
+                                    className="flex w-full flex-col rounded px-1.5 py-0.5 text-left hover:bg-violet-50 dark:hover:bg-violet-500/10"
+                                  >
+                                    <span className="truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                                      {m.name}
+                                    </span>
+                                    <span className="truncate text-[8px] text-slate-400">{m.attributes.title}</span>
+                                  </button>
+                                ))}
+                                {overflow > 0 && (
+                                  <span className="block px-1.5 text-[9px] font-semibold text-slate-400">
+                                    +{overflow} more in this pod
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {isOpen && unit.def.type !== "shared-service" && (
                       <div className="max-h-44 overflow-y-auto border-t border-slate-100 bg-slate-50/60 px-1 py-0.5 dark:border-white/10 dark:bg-white/5">
                         {unit.members.map((m) => (
                           <button

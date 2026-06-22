@@ -9,6 +9,14 @@ export type SharedServiceMirrorGroup = {
   lead?: PersonNode;
 };
 
+export type SharedServicePod = {
+  id: string;
+  service: string;
+  label: string;
+  members: PersonNode[];
+  lead?: PersonNode;
+};
+
 const TIER_RANK: Record<NodeRoleTier, number> = {
   "c-suite": 5,
   vp: 4,
@@ -138,6 +146,34 @@ export const groupSharedServiceMirrors = (
         service,
         label,
         homeLane,
+        members: [person],
+        lead: person,
+      });
+    }
+  });
+
+  return [...groups.values()].sort((a, b) => {
+    const serviceDelta = a.service.localeCompare(b.service);
+    if (serviceDelta !== 0) return serviceDelta;
+    return a.label.localeCompare(b.label);
+  });
+};
+
+export const groupSharedServicePods = (people: PersonNode[]): SharedServicePod[] => {
+  const groups = new Map<string, SharedServicePod>();
+
+  people.forEach((person) => {
+    const { service, label } = getSharedServiceGroupForPerson(person);
+    const id = `pod:${slug(service)}:${slug(label)}`;
+    const existing = groups.get(id);
+    if (existing) {
+      existing.members.push(person);
+      existing.lead = pickLead(existing.members);
+    } else {
+      groups.set(id, {
+        id,
+        service,
+        label,
         members: [person],
         lead: person,
       });
