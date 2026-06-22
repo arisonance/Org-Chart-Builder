@@ -257,6 +257,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
   const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
   const [lensTransition, setLensTransition] = useState(false);
+  const [edgeReveal, setEdgeReveal] = useState(false);
   const isRestoringViewport = useRef(false);
   const matrixWrapRefreshRef = useRef<Set<LensId>>(new Set());
   const previousLens = useRef(lens);
@@ -269,8 +270,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (previousLens.current === lens) return;
     previousLens.current = lens;
     setLensTransition(true);
-    const timer = setTimeout(() => setLensTransition(false), 850);
-    return () => clearTimeout(timer);
+    setEdgeReveal(false);
+    const glideTimer = setTimeout(() => {
+      setLensTransition(false);
+      setEdgeReveal(true);
+    }, 820);
+    const revealTimer = setTimeout(() => setEdgeReveal(false), 1400);
+    return () => {
+      clearTimeout(glideTimer);
+      clearTimeout(revealTimer);
+    };
   }, [lens]);
   const [quickAddDialog, setQuickAddDialog] = useState<{
     open: boolean;
@@ -478,6 +487,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     };
   }, [teamRootId, childMap, nodesData, edgesData]);
 
+  const topOverviewRootId = useMemo(() => {
+    const roots = personNodes.filter((person) => !parentMap[person.id]);
+    const cSuiteRoot = roots.find((person) => person.attributes.tier === "c-suite");
+    return (cSuiteRoot ?? roots[0])?.id ?? null;
+  }, [personNodes, parentMap]);
+
   // People with reports below the top tier (depth >= 1), used both for the
   // "land collapsed" default and the global Collapse-all control. Folding these
   // leaves the CEO + their direct execs — a narrow skeleton that frames cleanly.
@@ -620,6 +635,64 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [childMap, openTeamTree, selectNode, teamRootId],
   );
 
+  const framePositionMap = useCallback(
+    (
+      ids: string[],
+      positions: Record<string, { x: number; y: number }>,
+      options: FitPeopleOptions & { verticalBias?: number } = {},
+    ) => {
+      if (!rfInstance || !wrapperRef.current) return false;
+      const uniqueIds = [...new Set(ids)];
+      const frames = uniqueIds
+        .map((nodeId) => ({ id: nodeId, position: positions[nodeId] }))
+        .filter((item): item is { id: string; position: { x: number; y: number } } => Boolean(item.position));
+      if (frames.length === 0) return false;
+
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const insetX = 72;
+      const topInset = 118;
+      const bottomInset = 132;
+      const availableWidth = Math.max(360, rect.width - insetX * 2);
+      const availableHeight = Math.max(300, rect.height - topInset - bottomInset);
+      const minX = Math.min(...frames.map((item) => item.position.x));
+      const maxX = Math.max(...frames.map((item) => item.position.x + NODE_WIDTH));
+      const minY = Math.min(...frames.map((item) => item.position.y));
+      const maxY = Math.max(...frames.map((item) => item.position.y + NODE_HEIGHT));
+      const boundsWidth = Math.max(NODE_WIDTH, maxX - minX);
+      const boundsHeight = Math.max(NODE_HEIGHT, maxY - minY);
+      const padding = options.padding ?? 0.18;
+      const zoom = Math.min(
+        options.maxZoom ?? 1.05,
+        Math.max(
+          options.minZoom ?? 0.32,
+          Math.min(
+            (availableWidth * (1 - padding)) / boundsWidth,
+            (availableHeight * (1 - padding)) / boundsHeight,
+          ),
+        ),
+      );
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const targetY = topInset + availableHeight * (options.verticalBias ?? 0.4);
+
+      cameraBusyRef.current = true;
+      setViewportRescueVisible(false);
+      rfInstance.setViewport(
+        {
+          x: insetX + availableWidth / 2 - centerX * zoom,
+          y: targetY - centerY * zoom,
+          zoom,
+        },
+        { duration: options.duration ?? 480 },
+      );
+      setTimeout(() => {
+        cameraBusyRef.current = false;
+      }, (options.duration ?? 480) + 120);
+      return true;
+    },
+    [rfInstance],
+  );
+
   const framePersonContext = useCallback(
     (id: string) => {
       if (!rfInstance || !wrapperRef.current) return;
@@ -680,6 +753,76 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree],
   );
+
+  const showOrientationOverview = useCallback(() => {
+    const selectedPersonId =
+      selection.nodeIds.length === 1 && personNameById.has(selection.nodeIds[0])
+        ? selection.nodeIds[0]
+        : null;
+    const currentRoot = teamRootId ?? selectedPersonId;
+    const overviewRootId =
+      (currentRoot ? parentMap[currentRoot] ?? currentRoot : null) ?? topOverviewRootId;
+
+    if (!overviewRootId) {
+      fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.42, maxZoom: 1.05 });
+      return;
+    }
+
+    const directReportIds = childMap[overviewRootId] ?? [];
+    const descendantIds = [...collectDescendants(childMap, [overviewRootId])];
+    const visibleIds =
+      descendantIds.length > TEAM_TREE_FULL_DESCENDANT_LIMIT
+        ? new Set([overviewRootId, ...directReportIds])
+        : new Set([overviewRootId, ...descendantIds]);
+    const scopedNodes = nodesData.filter((node) => visibleIds.has(node.id));
+    const scopedEdges = edgesData.filter(
+      (edge) =>
+        edge.metadata.type === "manager" &&
+        visibleIds.has(edge.source) &&
+        visibleIds.has(edge.target),
+    );
+    const positions = calculateTeamTreeLayout(scopedNodes, scopedEdges, overviewRootId);
+    const frameIds = [overviewRootId, ...directReportIds].filter((id) => visibleIds.has(id));
+
+    setViewportRescueVisible(false);
+    setTeamReturnLens((current) => current ?? lens);
+    setViewContext(null);
+    setLensStore("hierarchy");
+    setLensFilters("hierarchy", { focusIds: [], hiddenIds: [], activeTokens: [] });
+    setTeamRootId(overviewRootId);
+    clearSelection();
+    showToast(`Showing ${personNameById.get(overviewRootId) ?? "top-level"} overview`);
+
+    const frameOverview = () => {
+      const didFrame = framePositionMap(frameIds, positions, {
+        padding: 0.18,
+        duration: 520,
+        minZoom: 0.42,
+        maxZoom: 1.05,
+        verticalBias: 0.32,
+      });
+      if (!didFrame) {
+        fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.42, maxZoom: 1.05 });
+      }
+    };
+    window.setTimeout(frameOverview, 220);
+    window.setTimeout(frameOverview, 560);
+  }, [
+    childMap,
+    edgesData,
+    framePositionMap,
+    lens,
+    nodesData,
+    parentMap,
+    personNameById,
+    clearSelection,
+    selection.nodeIds,
+    setLensFilters,
+    setLensStore,
+    showToast,
+    teamRootId,
+    topOverviewRootId,
+  ]);
 
   // ⌘K palette: fly to a person in the current lens, expanding any collapsed
   // ancestors so they're actually visible when the camera arrives
@@ -927,6 +1070,41 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [visiblePositionCount, viewportShowsRenderedPerson],
   );
+
+  const lensMotionCue = useMemo(() => {
+    const cueByLens: Record<LensId, { title: string; detail: string; color: string }> = {
+      hierarchy: {
+        title: "Classic Hierarchy",
+        detail: "Reporting chain",
+        color: "#334155",
+      },
+      brand: {
+        title: "Brand Lens",
+        detail: "Grouped by primary brand",
+        color: "#0284c7",
+      },
+      channel: {
+        title: "Channel Lens",
+        detail: "Grouped by channel coverage",
+        color: "#0d9488",
+      },
+      department: {
+        title: "Department Lens",
+        detail: "Grouped by operating function",
+        color: "#7c3aed",
+      },
+      matrix: {
+        title: "Brand × Channel Grid",
+        detail: "Brand rows × channel columns",
+        color: "#2563eb",
+      },
+    };
+    return cueByLens[lens] ?? {
+      title: LENS_BY_ID[lens].label,
+      detail: "View updated",
+      color: "#334155",
+    };
+  }, [lens]);
 
   // Auto-layout on first load with spacious preset
   useEffect(() => {
@@ -1760,11 +1938,24 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           className={[
             "relative h-full min-h-[720px] w-full overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-md ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10",
             lensTransition ? "lens-transition" : "",
+            edgeReveal ? "lens-edge-reveal" : "",
             className ?? "",
           ].join(" ")}
           style={style}
           onContextMenu={handlePaneContextMenu}
         >
+          {(lensTransition || edgeReveal) && personNodes.length > 0 && (
+            <div className="motion-view-cue pointer-events-none absolute left-1/2 top-16 z-40 flex items-center gap-2 rounded-full border border-white/80 bg-white/95 px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200/80 backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:text-slate-100 dark:ring-white/10">
+              <span
+                className="h-2.5 w-2.5 rounded-full shadow-sm"
+                style={{ background: lensMotionCue.color }}
+                aria-hidden
+              />
+              <span className="text-slate-900 dark:text-white">{lensMotionCue.title}</span>
+              <span className="h-3.5 w-px bg-slate-200 dark:bg-white/10" />
+              <span className="text-slate-500 dark:text-slate-300">{lensMotionCue.detail}</span>
+            </div>
+          )}
           <ReactFlow
             nodes={rfNodes}
             edges={edges}
@@ -1842,7 +2033,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {/* Matrix-lens controls: keep reporting lines intentional instead of
                 drawing an ambiguous all-org web across unrelated lanes. */}
             {lens !== "hierarchy" && personNodes.length > 0 && (
-              <div className="absolute left-6 top-6 z-30 flex flex-wrap items-center gap-2">
+              <div className="motion-stage-in absolute left-6 top-6 z-30 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAllReportingLines((value) => !value)}
@@ -1895,7 +2086,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {/* Hierarchy view: global fold control so the whole org can collapse to
                 its top tiers or expand back out in one click */}
             {lens === "hierarchy" && personNodes.length > 0 && (
-              <div className="absolute left-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+              <div className="motion-stage-in absolute left-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
                 <button
                   type="button"
                   onClick={() => addCollapsed(collapseTargets.top)}
@@ -1921,7 +2112,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {/* Unified top-right tools dock: one labeled home for the canvas
                 actions instead of buttons scattered around every corner */}
             {personNodes.length > 0 && (
-              <div className="absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+              <div className="motion-stage-in absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
@@ -2081,12 +2272,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 <span>No people in view</span>
                 <button
                   type="button"
-                  onClick={() =>
-                    fitVisiblePeopleRef.current({ padding: 0.18, duration: 350, minZoom: 0.35, maxZoom: 1.2 })
-                  }
+                  onClick={showOrientationOverview}
                   className="rounded-full bg-slate-900 px-3 py-1 text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
                 >
-                  Recenter
+                  Show overview
                 </button>
               </div>
             </div>

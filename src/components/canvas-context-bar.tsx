@@ -165,7 +165,7 @@ export function CanvasContextBar({
       {focusedId && (
         <nav
           aria-label="Reporting chain"
-          className="pointer-events-auto flex max-w-[88vw] items-center gap-1 overflow-x-auto rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10"
+          className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-1 overflow-x-auto rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10"
         >
           <span className="inline-flex h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-sky-500" />
           {chain.map((id, index) => {
@@ -198,7 +198,7 @@ export function CanvasContextBar({
       )}
 
       {focusedId && (
-        <div className="pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-white/95 px-3 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10">
+        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-white/95 px-3 py-2 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10">
           <span className="font-semibold text-slate-900 dark:text-white">
             {focusedName}&apos;s org
           </span>
@@ -247,7 +247,7 @@ export function CanvasContextBar({
       )}
 
       {teamTreeRoot && (
-        <div className="pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
+        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-semibold text-emerald-900 dark:text-emerald-100">
             Org view
@@ -266,7 +266,7 @@ export function CanvasContextBar({
       )}
 
       {subsetActive && (
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs shadow-lg dark:border-amber-400/20 dark:bg-amber-500/10">
+        <div className="motion-context-bar pointer-events-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs shadow-lg dark:border-amber-400/20 dark:bg-amber-500/10">
           <span className="font-semibold text-amber-700 dark:text-amber-200">
             {contextTitle}
           </span>
