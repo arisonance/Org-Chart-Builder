@@ -103,6 +103,29 @@ type FitPeopleOptions = {
   duration?: number;
   minZoom?: number;
   maxZoom?: number;
+  expectedIds?: string[];
+  primaryId?: string;
+  reason?: OrientationLoopReason;
+  skipOrientationLoop?: boolean;
+};
+
+type OrientationLoopReason =
+  | "fit"
+  | "focus"
+  | "lens"
+  | "overview"
+  | "person"
+  | "shared"
+  | "team"
+  | "unit";
+
+type OrientationLoopTarget = {
+  reason: OrientationLoopReason;
+  expectedIds?: string[];
+  primaryId?: string;
+  fallback?: () => void;
+  attempts?: number;
+  delayMs?: number;
 };
 
 const nodeTypes = {
@@ -243,7 +266,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           count: memberIds.length,
         });
         setLensFilters(targetLens, { focusIds: memberIds });
-        fitVisiblePeopleRef.current({ padding: 0.2, duration: 500, maxZoom: 1 });
+        fitVisiblePeopleRef.current({
+          padding: 0.2,
+          duration: 500,
+          maxZoom: 1,
+          reason: "unit",
+          expectedIds: memberIds,
+        });
       }, 160);
     },
     [setLensStore, setLensFilters],
@@ -268,6 +297,45 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const previousLens = useRef(lens);
   const fitVisiblePeopleRef = useRef<(options?: FitPeopleOptions) => void>(() => {});
   const viewportSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orientationLoopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orientationLoopRunRef = useRef(0);
+  const verifyOrientationTargetRef = useRef<(target: OrientationLoopTarget) => boolean>(() => true);
+  const viewportShowsRenderedPersonRef = useRef<() => boolean>(() => true);
+
+  const scheduleOrientationLoop = useCallback((target: OrientationLoopTarget) => {
+    orientationLoopRunRef.current += 1;
+    const runId = orientationLoopRunRef.current;
+    if (orientationLoopTimerRef.current) {
+      clearTimeout(orientationLoopTimerRef.current);
+      orientationLoopTimerRef.current = null;
+    }
+
+    const maxAttempts = target.attempts ?? 3;
+    const delayMs = target.delayMs ?? 620;
+    const pass = (attempt: number) => {
+      if (orientationLoopRunRef.current !== runId) return;
+
+      if (cameraBusyRef.current || isRestoringViewport.current) {
+        orientationLoopTimerRef.current = setTimeout(() => pass(attempt), 180);
+        return;
+      }
+
+      if (verifyOrientationTargetRef.current(target)) {
+        setViewportRescueVisible(false);
+        return;
+      }
+
+      if (attempt < maxAttempts) {
+        target.fallback?.();
+        orientationLoopTimerRef.current = setTimeout(() => pass(attempt + 1), delayMs);
+        return;
+      }
+
+      setViewportRescueVisible(!viewportShowsRenderedPersonRef.current());
+    };
+
+    orientationLoopTimerRef.current = setTimeout(() => pass(1), delayMs);
+  }, []);
 
   // Briefly enable the glide transition when the lens changes so cards
   // animate from their old positions to the new grouping
@@ -321,7 +389,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance],
   );
   const fitToView = useCallback(
-    () => fitVisiblePeopleRef.current({ padding: 0.18, duration: 300, minZoom: 0.35, maxZoom: 1.2 }),
+    () => fitVisiblePeopleRef.current({ padding: 0.18, duration: 300, minZoom: 0.35, maxZoom: 1.2, reason: "fit" }),
     [],
   );
 
@@ -398,7 +466,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setTimeout(() => {
       setViewContext({ kind: "shared-services", label: "All shared services", count: ids.length });
       setLensFilters("hierarchy", { focusIds: ids });
-      fitVisiblePeopleRef.current({ padding: 0.2, duration: 500, maxZoom: 1 });
+      fitVisiblePeopleRef.current({
+        padding: 0.2,
+        duration: 500,
+        maxZoom: 1,
+        reason: "shared",
+        expectedIds: ids,
+      });
     }, 160);
   }, [orgUnits, setLensStore, setLensFilters]);
 
@@ -543,7 +617,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!alreadySeeded) {
       addCollapsed(collapseTargets.top);
       window.setTimeout(() => {
-        fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.2 });
+        fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.2, reason: "overview" });
       }, 450);
     }
   }, [rfInstance, personNodes.length, parentMap, collapseTargets.top, addCollapsed]);
@@ -558,7 +632,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     clearSelection();
     expandAll();
     setTimeout(() => {
-      fitVisiblePeopleRef.current({ padding: 0.15, duration: 400, minZoom: 0.42, maxZoom: 1.2 });
+      fitVisiblePeopleRef.current({ padding: 0.15, duration: 400, minZoom: 0.42, maxZoom: 1.2, reason: "lens" });
     }, 80);
   }, [lens, setLensFilters, clearSelection, expandAll]);
 
@@ -596,7 +670,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         setLensFilters("hierarchy", { focusIds: focusedMembers, hiddenIds: [], activeTokens: [] });
         showToast(`Opened ${label} support pod`);
         window.setTimeout(() => {
-          fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, maxZoom: 1 });
+          fitVisiblePeopleRef.current({
+            padding: 0.22,
+            duration: 450,
+            maxZoom: 1,
+            reason: "shared",
+            expectedIds: focusedMembers,
+          });
         }, 180);
       }, 120);
     },
@@ -744,6 +824,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const targetY = rect.top + rect.height * 0.46;
 
       cameraBusyRef.current = true;
+      setViewportRescueVisible(false);
       rfInstance.setViewport(
         {
           x: targetX - rect.left - centerX * zoom,
@@ -754,9 +835,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       );
       setTimeout(() => {
         cameraBusyRef.current = false;
+        scheduleOrientationLoop({
+          reason: teamTree?.rootId === id ? "team" : "person",
+          primaryId: id,
+          expectedIds: frameIds,
+          fallback: () =>
+            framePositionMap(frameIds, positions, {
+              padding: 0.16,
+              duration: 360,
+              minZoom: 0.22,
+              maxZoom: 0.95,
+              verticalBias: 0.38,
+            }),
+        });
       }, 520);
     },
-    [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree],
+    [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree, scheduleOrientationLoop, framePositionMap],
   );
 
   const showOrientationOverview = useCallback(() => {
@@ -769,7 +863,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       (currentRoot ? parentMap[currentRoot] ?? currentRoot : null) ?? topOverviewRootId;
 
     if (!overviewRootId) {
-      fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.42, maxZoom: 1.05 });
+      fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.42, maxZoom: 1.05, reason: "overview" });
       return;
     }
 
@@ -807,8 +901,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         verticalBias: 0.32,
       });
       if (!didFrame) {
-        fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.42, maxZoom: 1.05 });
+        fitVisiblePeopleRef.current({
+          padding: 0.22,
+          duration: 450,
+          minZoom: 0.42,
+          maxZoom: 1.05,
+          reason: "overview",
+          primaryId: overviewRootId,
+          expectedIds: frameIds,
+        });
+        return;
       }
+      scheduleOrientationLoop({
+        reason: "overview",
+        primaryId: overviewRootId,
+        expectedIds: frameIds,
+        fallback: () =>
+          framePositionMap(frameIds, positions, {
+            padding: 0.18,
+            duration: 360,
+            minZoom: 0.42,
+            maxZoom: 1.05,
+            verticalBias: 0.32,
+          }),
+      });
     };
     window.setTimeout(frameOverview, 220);
     window.setTimeout(frameOverview, 560);
@@ -825,6 +941,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setLensFilters,
     setLensStore,
     showToast,
+    scheduleOrientationLoop,
     teamRootId,
     topOverviewRootId,
   ]);
@@ -846,7 +963,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       });
       showToast(`Focused ${key}`);
       window.setTimeout(() => {
-        fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.38, maxZoom: 1.05 });
+        fitVisiblePeopleRef.current({
+          padding: 0.22,
+          duration: 450,
+          minZoom: 0.38,
+          maxZoom: 1.05,
+          reason: "focus",
+          expectedIds: members.map((member) => member.id),
+        });
       }, 180);
     },
     [clearSelection, lens, personNodes, setLensFilters, showToast],
@@ -1131,27 +1255,72 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [visibleViewportPersonIds],
   );
-  const viewportShowsRenderedPerson = useCallback(() => {
+
+  const renderedPersonIdsInView = useCallback(() => {
     const wrapper = wrapperRef.current;
-    if (!wrapper) return true;
+    const renderedIds = new Set<string>();
+    if (!wrapper) return renderedIds;
     const wrapperRect = wrapper.getBoundingClientRect();
-    if (wrapperRect.width <= 0 || wrapperRect.height <= 0) return true;
+    if (wrapperRect.width <= 0 || wrapperRect.height <= 0) return renderedIds;
     const inset = 48;
     const personElements = Array.from(wrapper.querySelectorAll<HTMLElement>(".react-flow__node")).filter((element) => {
       const id = element.dataset.id;
       return id ? isPersonFlowNodeId(id) : false;
     });
-    if (personElements.length === 0) return false;
-    return personElements.some((element) => {
+    personElements.forEach((element) => {
+      const id = element.dataset.id;
+      if (!id) return;
       const rect = element.getBoundingClientRect();
-      return (
+      const intersectsViewport =
         rect.right >= wrapperRect.left + inset &&
         rect.left <= wrapperRect.right - inset &&
         rect.bottom >= wrapperRect.top + inset &&
-        rect.top <= wrapperRect.bottom - inset
-      );
+        rect.top <= wrapperRect.bottom - inset;
+      if (!intersectsViewport) return;
+
+      const centerX = Math.min(Math.max(rect.left + rect.width / 2, wrapperRect.left + 1), wrapperRect.right - 1);
+      const centerY = Math.min(Math.max(rect.top + rect.height / 2, wrapperRect.top + 1), wrapperRect.bottom - 1);
+      const topElement = document.elementFromPoint(centerX, centerY);
+      if (topElement && !element.contains(topElement)) return;
+      renderedIds.add(id);
     });
+    return renderedIds;
   }, []);
+
+  const viewportShowsRenderedPerson = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return true;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    if (wrapperRect.width <= 0 || wrapperRect.height <= 0) return true;
+    return renderedPersonIdsInView().size > 0;
+  }, [renderedPersonIdsInView]);
+
+  const verifyOrientationTarget = useCallback(
+    (target: OrientationLoopTarget) => {
+      const renderedIds = renderedPersonIdsInView();
+      if (renderedIds.size === 0) return false;
+
+      if (target.primaryId && !renderedIds.has(target.primaryId)) {
+        return false;
+      }
+
+      const visibleIds = new Set(visibleViewportPersonIds);
+      const expectedIds = [...new Set(target.expectedIds ?? [])].filter((id) => visibleIds.has(id));
+      if (expectedIds.length === 0) return true;
+
+      const expectedVisibleCount = expectedIds.filter((id) => renderedIds.has(id)).length;
+      const minimumVisible = target.primaryId
+        ? Math.min(expectedIds.length, 2)
+        : Math.min(expectedIds.length, 3);
+      return expectedVisibleCount >= minimumVisible;
+    },
+    [renderedPersonIdsInView, visibleViewportPersonIds],
+  );
+
+  useEffect(() => {
+    verifyOrientationTargetRef.current = verifyOrientationTarget;
+    viewportShowsRenderedPersonRef.current = viewportShowsRenderedPerson;
+  }, [verifyOrientationTarget, viewportShowsRenderedPerson]);
   const viewportRestoreRef = useRef({
     lensLayout,
     currentViewportState,
@@ -1170,6 +1339,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (options: FitPeopleOptions = {}) => {
       if (!rfInstance) return;
       const positions = lensLayout?.positions ?? {};
+      const expectedIds = options.expectedIds ?? visibleViewportPersonIds;
       const nodesToFit = visibleViewportPersonIds
         .filter((id) => Boolean(positions[id]))
         .map((id) => ({ id }));
@@ -1181,18 +1351,36 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       };
 
       setViewportRescueVisible(false);
+      const scheduleFitCheck = () => {
+        if (options.skipOrientationLoop) return;
+        window.setTimeout(() => {
+          scheduleOrientationLoop({
+            reason: options.reason ?? "fit",
+            primaryId: options.primaryId,
+            expectedIds,
+            fallback: () =>
+              fitVisiblePeopleRef.current({
+                ...options,
+                skipOrientationLoop: true,
+              }),
+          });
+        }, (options.duration ?? 350) + 180);
+      };
+
       if (nodesToFit.length > 0) {
         void rfInstance.fitView({
           nodes: nodesToFit,
           includeHiddenNodes: false,
           ...fitOptions,
         });
+        scheduleFitCheck();
         return;
       }
 
       void rfInstance.fitView(fitOptions);
+      scheduleFitCheck();
     },
-    [rfInstance, lensLayout?.positions, visibleViewportPersonIds],
+    [rfInstance, lensLayout?.positions, visibleViewportPersonIds, scheduleOrientationLoop],
   );
   fitVisiblePeopleRef.current = fitVisiblePeople;
 
@@ -1208,9 +1396,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }
       const latest = viewportRestoreRef.current;
       const positions = latest.lensLayout?.positions ?? {};
-      const isBlank =
-        !latest.viewportShowsAnyPerson(viewport, positions) ||
-        !viewportShowsRenderedPerson();
+      const mathShowsPerson = latest.viewportShowsAnyPerson(viewport, positions);
+      const renderedShowsPerson = viewportShowsRenderedPerson();
+      const isBlank = !mathShowsPerson && !renderedShowsPerson;
       setViewportRescueVisible(isBlank);
       return isBlank;
     },
@@ -1305,13 +1493,25 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         // Land at a readable zoom rather than crushing a wide org into a 1px ribbon.
         // The explicit "Fit" control uses this same people-first framing.
         // Also refuse stale saved pan/zoom values that would open to empty canvas.
-        fitVisiblePeopleRef.current({ padding: 0.15, duration: 350, minZoom: 0.42, maxZoom: 1.2 });
+        fitVisiblePeopleRef.current({ padding: 0.15, duration: 350, minZoom: 0.42, maxZoom: 1.2, reason: "lens" });
       } else {
         setViewportRescueVisible(false);
         rfInstance.setViewport(
           { x: target.x, y: target.y, zoom: target.zoom },
           { duration: 300 },
         );
+        scheduleOrientationLoop({
+          reason: "lens",
+          expectedIds: visibleViewportPersonIds,
+          fallback: () =>
+            fitVisiblePeopleRef.current({
+              padding: 0.15,
+              duration: 320,
+              minZoom: 0.42,
+              maxZoom: 1.2,
+              reason: "lens",
+            }),
+        });
       }
       setTimeout(() => {
         isRestoringViewport.current = false;
@@ -1366,7 +1566,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           return;
         }
       }
-      fitVisiblePeopleRef.current({ padding: 0.18, duration: 350, minZoom: 0.35, maxZoom: 1.15 });
+      fitVisiblePeopleRef.current({ padding: 0.18, duration: 350, minZoom: 0.35, maxZoom: 1.15, reason: "lens" });
     }, 180);
     return () => window.clearTimeout(timer);
   }, [lens, personNodes.length, cleanupCanvas, rfInstance, teamTree]);
@@ -1911,6 +2111,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   useEffect(
     () => () => {
       if (viewportSettleTimerRef.current) clearTimeout(viewportSettleTimerRef.current);
+      if (orientationLoopTimerRef.current) clearTimeout(orientationLoopTimerRef.current);
     },
     [],
   );
@@ -2308,7 +2509,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   onCleanup={(mode) => {
                     cleanupCanvas(lens, mode);
                     setTimeout(() => {
-                      fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.5 });
+                      fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.5, reason: "fit" });
                     }, 100);
                   }}
                 />
@@ -2534,7 +2735,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           })
         }
         onDeselect={() => clearSelection()}
-        onZoomFit={() => fitVisiblePeopleRef.current({ padding: 0.25, duration: 300 })}
+        onZoomFit={() => fitVisiblePeopleRef.current({ padding: 0.25, duration: 300, reason: "fit" })}
         onToggleGrid={() => toggleGrid(lens)}
         onToggleSnap={() => toggleSnap(lens)}
       />
