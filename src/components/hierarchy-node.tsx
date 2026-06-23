@@ -32,6 +32,11 @@ export type HierarchyNodeData = {
   lens: LensId;
   accentColor: string;
   emphasisLabel?: string;
+  relationshipRole?: {
+    label: string;
+    detail?: string;
+    tone: "selected" | "manager" | "report" | "downstream" | "peer" | "matrix";
+  };
   isSelected: boolean;
   highlightTokens: string[];
   actions: NodeActions;
@@ -55,7 +60,7 @@ const UNIT_CONTAINER_STYLE = {
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
     node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
-    reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, unit,
+    relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, unit,
   } = data;
 
   // Facility / shared-service container: stands in for a whole group of people
@@ -103,6 +108,19 @@ function Component({ data }: { data: HierarchyNodeData }) {
       node.attributes.primaryChannel,
     ]) ?? undefined;
 
+  const relationshipRoleClass =
+    relationshipRole?.tone === "selected"
+      ? "bg-slate-900 text-white ring-slate-900/10 dark:bg-white dark:text-slate-950 dark:ring-white/20"
+      : relationshipRole?.tone === "manager"
+        ? "bg-sky-50 text-sky-800 ring-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:ring-sky-400/20"
+        : relationshipRole?.tone === "report"
+          ? "bg-emerald-50 text-emerald-800 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-100 dark:ring-emerald-400/20"
+          : relationshipRole?.tone === "downstream"
+            ? "bg-teal-50 text-teal-800 ring-teal-100 dark:bg-teal-500/15 dark:text-teal-100 dark:ring-teal-400/20"
+            : relationshipRole?.tone === "peer"
+              ? "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10"
+              : "bg-amber-50 text-amber-800 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-400/20";
+
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
@@ -138,6 +156,14 @@ function Component({ data }: { data: HierarchyNodeData }) {
               className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
               style={{ background: isContainer && containerStyle ? containerStyle.accent : accentColor }}
             />
+            {relationshipRole && lodLevel !== "compact" && (
+              <span
+                className={`absolute left-3 top-3 max-w-[9.5rem] truncate rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${relationshipRoleClass}`}
+                title={relationshipRole.detail ?? relationshipRole.label}
+              >
+                {relationshipRole.label}
+              </span>
+            )}
             {isContainer && containerStyle && unit ? (
               <div className="flex min-h-[6.5rem] flex-col items-center justify-center gap-1.5">
                 <span className="text-3xl leading-none" aria-hidden>{containerStyle.glyph}</span>

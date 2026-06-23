@@ -1165,6 +1165,80 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return set;
   }, [focusedNodeId, edgesData, parentMap, childMap]);
 
+  const relationshipRoleById = useMemo(() => {
+    const roles = new Map<string, HierarchyNodeData["relationshipRole"]>();
+    if (!focusedNodeId) return roles;
+
+    const focusedName = personNameById.get(focusedNodeId) ?? "selected person";
+    const managerId = parentMap[focusedNodeId];
+    const managerName = managerId ? personNameById.get(managerId) ?? "their manager" : null;
+    const directReports = new Set(childMap[focusedNodeId] ?? []);
+    const descendants = new Set(collectDescendants(childMap, [focusedNodeId]));
+    const peers = new Set(
+      managerId
+        ? (childMap[managerId] ?? []).filter((id) => id !== focusedNodeId)
+        : [],
+    );
+
+    roles.set(focusedNodeId, {
+      label: "Selected",
+      detail: `${focusedName} is in focus`,
+      tone: "selected",
+    });
+
+    if (managerId) {
+      roles.set(managerId, {
+        label: "Manager",
+        detail: `${focusedName} reports to ${managerName}`,
+        tone: "manager",
+      });
+    }
+
+    directReports.forEach((id) => {
+      roles.set(id, {
+        label: "Direct report",
+        detail: `${personNameById.get(id) ?? "This person"} reports to ${focusedName}`,
+        tone: "report",
+      });
+    });
+
+    descendants.forEach((id) => {
+      if (roles.has(id)) return;
+      roles.set(id, {
+        label: "Downstream",
+        detail: `${personNameById.get(id) ?? "This person"} is in ${focusedName}'s organization`,
+        tone: "downstream",
+      });
+    });
+
+    peers.forEach((id) => {
+      if (roles.has(id)) return;
+      roles.set(id, {
+        label: "Peer",
+        detail: managerName
+          ? `${personNameById.get(id) ?? "This person"} also reports to ${managerName}`
+          : "Same reporting level",
+        tone: "peer",
+      });
+    });
+
+    edgesData.forEach((edge) => {
+      if (edge.metadata.type === "manager") return;
+      if (edge.source !== focusedNodeId && edge.target !== focusedNodeId) return;
+      const otherId = edge.source === focusedNodeId ? edge.target : edge.source;
+      if (roles.has(otherId)) return;
+      roles.set(otherId, {
+        label: edge.metadata.type === "sponsor" ? "Sponsor" : "Matrix",
+        detail:
+          edge.metadata.label ??
+          `${personNameById.get(otherId) ?? "This person"} has a ${edge.metadata.type} relationship with ${focusedName}`,
+        tone: "matrix",
+      });
+    });
+
+    return roles;
+  }, [focusedNodeId, personNameById, parentMap, childMap, edgesData]);
+
   // Extent of each lane in the active matrix view, used to detect which lane a
   // card was dropped into for drag-to-reassign. Department lanes can wrap into
   // multiple rows, so hit-testing must account for both axes.
@@ -1649,6 +1723,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         lens,
         accentColor: accent,
         emphasisLabel: getPrimaryLabel(node, lens),
+        relationshipRole: relationshipRoleById.get(node.id),
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
         zoom: lodZoom, // Pass zoom for LOD rendering
@@ -1767,6 +1842,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   }, [
     mirrorLanes,
     focusSet,
+    relationshipRoleById,
     personNodes,
     teamTree,
     selection.nodeIds,
@@ -1863,6 +1939,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         isManager &&
         !!focusedNodeId &&
         (edge.source === focusedNodeId || edge.target === focusedNodeId);
+      const focusedDirectReportCount = focusedNodeId ? childMap[focusedNodeId]?.length ?? 0 : 0;
+      const shouldLabelFocusedEdge =
+        isDirectFocusedManagerEdge &&
+        lodZoom > 0.48 &&
+        (edge.target === focusedNodeId || focusedDirectReportCount <= 4);
       if (isMatrixView && !showAllReportingLines && (!focusSet || !isIncidentToFocus)) {
         return [];
       }
@@ -1887,7 +1968,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             edge.metadata.type === "manager"
               ? `${targetName} reports to ${sourceName}`
               : edge.metadata.label,
-          showLabel: !teamTree && isDirectFocusedManagerEdge,
+          showLabel: shouldLabelFocusedEdge,
         },
         animated: edge.metadata.type === "dotted" && lodZoom > 0.5,
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker
@@ -1918,6 +1999,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lodZoom,
     focusedNodeId,
     focusSet,
+    childMap,
     showAllReportingLines,
     hiddenByCollapse,
     isCrossCutting,
