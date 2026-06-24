@@ -171,7 +171,7 @@ export function CanvasContextBar({
     viewContext?.kind === "support-pod"
       ? "Support pod"
       : viewContext?.kind === "shared-services"
-        ? "Shared services"
+        ? "Support groups"
         : viewContext?.kind === "unit"
           ? "Unit view"
           : viewContext?.kind === "lens-group"
@@ -229,7 +229,7 @@ export function CanvasContextBar({
 
   return (
     <div className="pointer-events-none absolute left-1/2 top-4 z-30 flex max-w-[88vw] -translate-x-1/2 flex-col items-center gap-2">
-      {focusedId && (
+      {focusedId && !teamTreeRoot && (
         <nav
           aria-label="Reporting chain"
           className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-1 overflow-x-auto rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10"
@@ -264,7 +264,7 @@ export function CanvasContextBar({
         </nav>
       )}
 
-      {focusedId && (
+      {focusedId && !teamTreeRoot && (
         <div
           aria-label={`${focusedName}'s relationship truth`}
           className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-sky-200 bg-white/95 px-2.5 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10"

@@ -8,9 +8,7 @@ import type { PersonNode } from '@/lib/schema/types';
 export function SearchFilterBar() {
   const nodes = useGraphStore((state) => state.document.nodes);
   const lens = useGraphStore((state) => state.document.lens);
-  const lensState = useGraphStore((state) => state.document.lens_state[state.document.lens]);
   const setLensFilters = useGraphStore((state) => state.setLensFilters);
-  const selectNode = useGraphStore((state) => state.selectNode);
   const setSelection = useGraphStore((state) => state.setSelection);
   const clearSelection = useGraphStore((state) => state.clearSelection);
 
@@ -395,4 +393,3 @@ export function SearchFilterBar() {
     </div>
   );
 }
-

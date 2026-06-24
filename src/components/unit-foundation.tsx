@@ -62,7 +62,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
           ▤ Shared Foundation
           <span className="ml-2 font-medium normal-case tracking-normal text-slate-400">
-            serves every brand &amp; channel above
+            support groups serve the matrix above
           </span>
         </p>
         <button
@@ -70,7 +70,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
           onClick={onOpenSharedServices}
           className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-sky-600 transition hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-500/10"
         >
-          Shared Services view <ArrowTopRightIcon className="h-3 w-3" aria-hidden />
+          Support groups view <ArrowTopRightIcon className="h-3 w-3" aria-hidden />
         </button>
       </div>
       <div className="flex flex-wrap items-stretch gap-3">
@@ -85,7 +85,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
         )}
         {shared.length > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Shared services</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Support groups</span>
             {shared.map((u) => <Chip key={u.def.id} unit={u} />)}
           </div>
         )}

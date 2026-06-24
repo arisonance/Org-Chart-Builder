@@ -40,8 +40,6 @@ export default function Home() {
   const [showAIImport, setShowAIImport] = useState(false);
   const [showSpreadsheet, setShowSpreadsheet] = useState(false);
 
-  const lensDescription = useMemo(() => LENS_BY_ID[lens].description, [lens]);
-
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
 
   // Lens switcher keyboard shortcuts (1-4)
@@ -268,8 +266,8 @@ export default function Home() {
             {/* Floating Editor Panel - Only for single selections; multi-select
                 uses the canvas bulk-assign toolbar instead */}
             {selection.nodeIds.length === 1 && (
-              <div className="absolute right-4 top-4 bottom-4 z-30 w-[min(360px,calc(100%_-_2rem))] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
-                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-900">
+              <div className="absolute bottom-3 right-3 top-3 z-30 w-[min(340px,calc(100%_-_1.5rem))] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>
                   <button
                     onClick={() => clearSelection()}
@@ -278,7 +276,7 @@ export default function Home() {
                     <Cross2Icon className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="p-4">
+                <div className="p-3">
                   <EditorPanel />
                 </div>
               </div>

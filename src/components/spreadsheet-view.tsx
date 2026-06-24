@@ -375,8 +375,16 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
     if (newMgrId) addRelationship(newMgrId, p.id, "manager");
   }, [idByName, managerOf, addRelationship, removeRelationship]);
 
-  const toggleSelect = useCallback((id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }), []);
-  const toggleAll = () => setSelected((s) => (selectedInView === rows.length ? new Set() : new Set(rows.map((p) => p.id))));
+  const toggleSelect = useCallback((id: string) => setSelected((s) => {
+    const next = new Set(s);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    return next;
+  }), []);
+  const toggleAll = () => setSelected(() => (selectedInView === rows.length ? new Set() : new Set(rows.map((p) => p.id))));
 
   const ids = [...selected];
   const bulkAddChannel = (c: string) => applyToPeople(ids, (a) => ({ channels: a.channels.includes(c) ? a.channels : [...a.channels, c] }));

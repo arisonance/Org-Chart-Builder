@@ -6,7 +6,7 @@ import { useGraphStore } from "@/store/graph-store";
 import type { GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
 
 const sectionClass =
-  "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/90 px-5 py-5 shadow-sm ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10";
+  "flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10";
 
 export function EditorPanel() {
   const selection = useGraphStore((state) => state.selection);
@@ -134,7 +134,7 @@ export function EditorPanel() {
   };
 
   return (
-    <aside className="w-full max-w-md space-y-4">
+    <aside className="w-full space-y-3">
       <div className={sectionClass}>
         <div className="mb-3">
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
@@ -81,6 +81,15 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
   // Level of detail based on zoom - less aggressive for better initial render
   const lodLevel = getLodLevel(zoom);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastClickAtRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    },
+    [],
+  );
 
   // Connection affordances (handle dots + the Dotted/Sponsor labels) are only
   // useful when you're close enough to actually wire a relationship. Hide them
@@ -97,7 +106,36 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
-    onSelect(node.id, additive || event.metaKey || event.ctrlKey || event.shiftKey);
+    const now = Date.now();
+    const isRapidSecondClick = now - lastClickAtRef.current < 340;
+    if (("detail" in event && event.detail > 1) || isRapidSecondClick) {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      lastClickAtRef.current = 0;
+      actions.openEditor(node.id);
+      return;
+    }
+    lastClickAtRef.current = now;
+    const shouldAdd = additive || event.metaKey || event.ctrlKey || event.shiftKey;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(
+      () => {
+        onSelect(node.id, shouldAdd);
+        clickTimerRef.current = null;
+      },
+      shouldAdd ? 0 : 180,
+    );
+  };
+
+  const handleOpenEditor = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    actions.openEditor(node.id);
   };
 
   const primaryContextBadge =
@@ -135,6 +173,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
           <button
             type="button"
             onClick={(event) => handleSelect(event, event.shiftKey)}
+            onDoubleClick={handleOpenEditor}
             className={[
               "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950",
               isContainer

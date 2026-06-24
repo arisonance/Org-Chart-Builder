@@ -52,7 +52,7 @@ export function UnitRail({
           Facilities & Shared Services
         </p>
         <p className="text-[10px] text-slate-400">
-          {rolledHeadcount} people rolled up · off the lanes
+          {rolledHeadcount} people rolled up as groups · not lane reports
         </p>
       </div>
 
@@ -63,16 +63,16 @@ export function UnitRail({
           return (
             <Fragment key={section.type}>
               <div className="flex items-center justify-between px-1 pb-1 pt-2">
-                <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
-                  {section.label}
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                  {section.type === "shared-service" ? "Support groups" : section.label}
                 </span>
                 {section.type === "shared-service" && (
                   <button
                     type="button"
                     onClick={onOpenSharedServices}
                     className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-sky-600 transition hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-500/10"
-                    title="Open a dedicated view of all shared services"
-                    aria-label="View all shared services"
+                    title="Open a dedicated view of all support groups"
+                    aria-label="View all support groups"
                   >
                     View all <ArrowTopRightIcon className="h-2.5 w-2.5" aria-hidden />
                   </button>
@@ -130,7 +130,7 @@ export function UnitRail({
                                     {pod.label}
                                   </p>
                                   <p className="truncate text-[9px] text-slate-400">
-                                    {pod.lead ? `Lead: ${pod.lead.name}` : pod.service}
+                                    {pod.lead ? `Lead: ${pod.lead.name}` : pod.service} · support group
                                   </p>
                                 </div>
                                 <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 ring-1 ring-violet-100 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/20">

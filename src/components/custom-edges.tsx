@@ -8,9 +8,16 @@ import type { GraphEdge } from '@/lib/schema/types';
 type EnhancedEdgeData = GraphEdge & {
   relationshipLabel?: string;
   showLabel?: boolean;
+  truthIssue?: {
+    level: "warning" | "danger";
+    message: string;
+    blockerNames?: string[];
+  };
+  showTruthIssue?: boolean;
 };
 
 function ManagerEdgeComponent({
+  id,
   sourceX,
   sourceY,
   targetX,
@@ -22,31 +29,56 @@ function ManagerEdgeComponent({
   selected,
   data,
 }: EdgeProps<EnhancedEdgeData>) {
+  const edgeData = data as EnhancedEdgeData | undefined;
+  const truthIssue = edgeData?.showTruthIssue ? edgeData.truthIssue : undefined;
+  const truthColor = truthIssue?.level === "danger" ? "#ef4444" : "#f59e0b";
+  const longWrappedDrop = targetY - sourceY > 260 && Math.abs(targetX - sourceX) < 320;
   const [edgePath, labelX, labelY] = useMemo(
-    () =>
-      getSmoothStepPath({
+    () => {
+      if (longWrappedDrop) {
+        const directionSeed = id
+          .split("")
+          .reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const sameColumn = Math.abs(targetX - sourceX) < 36;
+        const direction = sameColumn
+          ? directionSeed % 2 === 0
+            ? 1
+            : -1
+          : targetX > sourceX
+            ? 1
+            : -1;
+        const laneX = targetX + direction * 178;
+        const sourceExitY = sourceY + 34;
+        const targetEntryY = targetY - 38;
+        return [
+          `M ${sourceX},${sourceY} L ${sourceX},${sourceExitY} L ${laneX},${sourceExitY} L ${laneX},${targetEntryY} L ${targetX},${targetEntryY} L ${targetX},${targetY}`,
+          laneX,
+          (sourceExitY + targetEntryY) / 2,
+        ] as const;
+      }
+      return getSmoothStepPath({
         sourceX,
         sourceY,
         sourcePosition,
         targetX,
         targetY,
         targetPosition,
-      }),
-    [sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+      });
+    },
+    [id, longWrappedDrop, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
   );
 
   const edgeStyle = useMemo(
     () => ({
-      stroke: RELATIONSHIP_COLORS.manager,
-      strokeWidth: selected ? 3 : 2.5,
+      stroke: truthIssue ? truthColor : RELATIONSHIP_COLORS.manager,
+      strokeWidth: selected || truthIssue ? 3 : 2.5,
       // Keep the line a constant width on screen so it stays visible when zoomed out
       vectorEffect: 'non-scaling-stroke' as const,
       ...(style || {}),
     }),
-    [selected, style]
+    [selected, style, truthColor, truthIssue]
   );
 
-  const edgeData = data as EnhancedEdgeData | undefined;
   const showLabel = selected || edgeData?.showLabel;
 
   return (
@@ -55,7 +87,7 @@ function ManagerEdgeComponent({
         path={edgePath}
         style={{
           stroke: 'rgba(255, 255, 255, 0.92)',
-          strokeWidth: selected ? 8 : 7,
+          strokeWidth: selected || truthIssue ? 9 : 7,
           strokeLinecap: 'round',
           vectorEffect: 'non-scaling-stroke',
         }}
@@ -74,6 +106,18 @@ function ManagerEdgeComponent({
             }}
           >
             {edgeData.relationshipLabel}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+      {truthIssue && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan pointer-events-none absolute max-w-[240px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-300 bg-amber-50/95 px-2.5 py-1 text-[10px] font-semibold leading-tight text-amber-950 shadow-sm ring-1 ring-white/80 dark:border-amber-300/40 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-slate-900"
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - 24}px)`,
+            }}
+          >
+            {truthIssue.message}
           </div>
         </EdgeLabelRenderer>
       )}

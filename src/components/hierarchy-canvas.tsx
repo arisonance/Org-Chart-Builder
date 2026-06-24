@@ -128,6 +128,25 @@ type OrientationLoopTarget = {
   delayMs?: number;
 };
 
+type MatrixRelationshipMode = "reporting" | "matrix" | "all";
+
+type TruthAuditIssue = {
+  level: "warning" | "danger";
+  message: string;
+  blockerNames: string[];
+};
+
+type PersonCardRect = {
+  id: string;
+  name: string;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+};
+
 const nodeTypes = {
   hierarchyNode: HierarchyNode,
   laneNode: LaneNode,
@@ -164,6 +183,64 @@ const isPersonFlowNodeId = (id: string) =>
   !id.startsWith("mirror-group:") &&
   !id.startsWith("grid");
 
+const buildPersonCardRect = (
+  person: Pick<PersonNode, "id" | "name">,
+  position: { x: number; y: number },
+): PersonCardRect => ({
+  id: person.id,
+  name: person.name,
+  left: position.x + 18,
+  right: position.x + NODE_WIDTH - 18,
+  top: position.y + 12,
+  bottom: position.y + NODE_HEIGHT - 10,
+  centerX: position.x + NODE_WIDTH / 2,
+  centerY: position.y + NODE_HEIGHT / 2,
+});
+
+const pointInRect = (x: number, y: number, rect: PersonCardRect) =>
+  x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+
+const segmentSamplesRect = (
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  rect: PersonCardRect,
+) => {
+  for (let step = 1; step < 14; step += 1) {
+    const t = step / 14;
+    const x = startX + (endX - startX) * t;
+    const y = startY + (endY - startY) * t;
+    if (pointInRect(x, y, rect)) return true;
+  }
+  return false;
+};
+
+const findManagerLineBlockers = (
+  source: { x: number; y: number },
+  target: { x: number; y: number },
+  rects: PersonCardRect[],
+  sourceId: string,
+  targetId: string,
+) => {
+  const sourceX = source.x + NODE_WIDTH / 2;
+  const sourceY = source.y + NODE_HEIGHT;
+  const targetX = target.x + NODE_WIDTH / 2;
+  const targetY = target.y;
+  const minY = Math.min(sourceY, targetY);
+  const maxY = Math.max(sourceY, targetY);
+  const sameColumnDrop = targetY - sourceY > 130 && Math.abs(targetX - sourceX) < NODE_WIDTH * 0.7;
+
+  return rects.filter((rect) => {
+    if (rect.id === sourceId || rect.id === targetId) return false;
+    if (rect.bottom < minY || rect.top > maxY) return false;
+    if (sameColumnDrop) {
+      return targetX >= rect.left && targetX <= rect.right;
+    }
+    return segmentSamplesRect(sourceX, sourceY, targetX, targetY, rect);
+  });
+};
+
 type HierarchyCanvasProps = {
   className?: string;
   style?: CSSProperties;
@@ -196,7 +273,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const clearSelection = useGraphStore((state) => state.clearSelection);
   const toggleGrid = useGraphStore((state) => state.toggleGrid);
   const toggleSnap = useGraphStore((state) => state.toggleSnap);
-  const autoLayout = useGraphStore((state) => state.autoLayout);
   const cleanupCanvas = useGraphStore((state) => state.cleanupCanvas);
   const setCurrentViewport = useGraphStore((state) => state.setCurrentViewport);
   const currentViewportState = useGraphStore((state) => state.currentViewport);
@@ -220,6 +296,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [truthAuditVisible, setTruthAuditVisible] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [viewportRescueVisible, setViewportRescueVisible] = useState(false);
   const focusRequest = useGraphStore((state) => state.focusRequest);
@@ -364,7 +441,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   // Mouse-wheel behavior: zoom (default, mouse-friendly) or pan (trackpad-friendly)
   const [scrollZoom, setScrollZoom] = useState<boolean>(true);
-  const [showAllReportingLines, setShowAllReportingLines] = useState(false);
+  const [matrixRelationshipMode, setMatrixRelationshipMode] = useState<MatrixRelationshipMode>("reporting");
   useEffect(() => {
     setScrollZoom(localStorage.getItem("org-chart-scroll-mode") !== "pan");
   }, []);
@@ -455,8 +532,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (lens === "brand" || lens === "channel") && noFocus && orgUnits.length > 0;
   const showUnitFoundation = isGridLens(lens) && noFocus && orgUnits.length > 0;
 
-  // Dedicated Shared Services view: focus the reporting tree on everyone in the
-  // shared-service units (Finance + Admin/HR + IT) at once.
+  // Dedicated support-groups view: show shared-service units as pods first;
+  // opening a pod drills into the people behind that support group.
   const openSharedServices = useCallback(() => {
     const ids = orgUnits
       .filter((u) => u.def.type === "shared-service")
@@ -464,17 +541,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (ids.length === 0) return;
     setLensStore("hierarchy");
     setTimeout(() => {
-      setViewContext({ kind: "shared-services", label: "All shared services", count: ids.length });
+      setViewContext({ kind: "shared-services", label: "All support groups", count: ids.length });
       setLensFilters("hierarchy", { focusIds: ids });
-      fitVisiblePeopleRef.current({
-        padding: 0.2,
-        duration: 500,
-        maxZoom: 1,
-        reason: "shared",
-        expectedIds: ids,
-      });
+      window.setTimeout(() => {
+        if (rfInstance) {
+          void rfInstance.fitView({
+            padding: 0.24,
+            duration: 500,
+            minZoom: 0.45,
+            maxZoom: 1.1,
+          });
+          setViewportRescueVisible(false);
+          return;
+        }
+        fitVisiblePeopleRef.current({
+          padding: 0.2,
+          duration: 500,
+          maxZoom: 1,
+          reason: "shared",
+          expectedIds: ids,
+        });
+      }, 240);
     }, 160);
-  }, [orgUnits, setLensStore, setLensFilters]);
+  }, [orgUnits, rfInstance, setLensStore, setLensFilters]);
 
   // Last rendered position per node, across lenses — used as the glide start
   // point when a lens hasn't been laid out yet
@@ -700,13 +789,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setViewContext(null);
       setLensStore("hierarchy");
       setLensFilters("hierarchy", { focusIds: [], hiddenIds: [], activeTokens: [] });
+      clearSelection();
       expandAll();
       setTeamRootId(nodeId);
-      selectNode(nodeId);
       const name = personNameById.get(nodeId) ?? "Selected person";
       showToast(`Opened ${name}'s org view`);
     },
-    [lens, setLensStore, setLensFilters, expandAll, selectNode, personNameById, showToast],
+    [lens, setLensStore, setLensFilters, clearSelection, expandAll, personNameById, showToast],
   );
 
   const selectPersonFromCard = useCallback(
@@ -1002,13 +1091,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           onClick: () => focusLensGroup(dimension, key),
         }));
     };
+    const supportPodChips = (limit = 4): OrientationChip[] =>
+      sharedServicePods.slice(0, limit).map((pod) => ({
+        id: pod.id,
+        label: pod.service === pod.label ? pod.label : pod.label,
+        count: pod.members.length,
+        color: "#7c3aed",
+        detail:
+          pod.service === pod.label
+            ? "Open support group"
+            : `${pod.service} support group`,
+        onClick: () =>
+          openSharedServiceGroup(
+            pod.members.map((member) => member.id),
+            pod.service === pod.label ? pod.label : `${pod.service}: ${pod.label}`,
+          ),
+      }));
 
     const actions: OrientationAction[] = [
       { id: "overview", label: "Show top org", tone: "dark", onClick: showOrientationOverview },
       { id: "fit", label: "Fit view", onClick: fitToView },
     ];
     if (sharedUnits.length > 0) {
-      actions.push({ id: "shared", label: "Shared services", onClick: openSharedServices });
+      actions.push({ id: "shared", label: "Support groups", onClick: openSharedServices });
     }
 
     if (lens === "hierarchy") {
@@ -1054,7 +1159,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           `${personNodes.length} people`,
           `${sharedServicePods.length} support pods`,
         ],
-        chips: groupChips(dimension),
+        chips: [...supportPodChips(), ...groupChips(dimension, 6)],
         actions,
       };
     }
@@ -1084,6 +1189,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusLensGroup,
     lens,
     openSharedServices,
+    openSharedServiceGroup,
     openTeamTree,
     orgUnits,
     personNameById,
@@ -1685,6 +1791,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (hiddenByCollapse) {
       filteredNodes = filteredNodes.filter((node) => !hiddenByCollapse.has(node.id));
     }
+    const showSharedServiceOverview =
+      viewContext?.kind === "shared-services" && focusIds.length > 0 && !teamTree;
 
     const positions =
       focusIds.length > 0 && !teamTree
@@ -1704,6 +1812,41 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 : calculateLayout(filteredNodes, scopedEdges);
             })()
         : basePositions;
+
+    if (showSharedServiceOverview) {
+      const pods = groupSharedServicePods(filteredNodes);
+      const columns = Math.max(2, Math.min(4, Math.ceil(Math.sqrt(pods.length))));
+      return pods.map((pod, index) => {
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const displayLabel = pod.service === pod.label ? pod.label : `${pod.service}: ${pod.label}`;
+        const data: SharedServiceGroupNodeData = {
+          service: pod.service,
+          label: pod.label,
+          members: pod.members,
+          lead: pod.lead,
+          accentColor: "#7c3aed",
+          homeLane: pod.service,
+          targetLane: "all lanes",
+          dimensionLabel: "service",
+          onOpen: openSharedServiceGroup,
+        };
+        return {
+          id: `shared-overview:${pod.id}`,
+          type: "sharedServiceGroupNode",
+          position: {
+            x: col * (NODE_WIDTH + 96),
+            y: row * (MIRROR_HEIGHT + 70),
+          },
+          data,
+          draggable: false,
+          focusable: false,
+          selectable: false,
+          zIndex: 4,
+          ariaLabel: `${displayLabel} support group`,
+        };
+      });
+    }
 
     // Roll up facilities / shared services into single cards in cross-cutting views,
     // removing their members from the brand/channel lanes. Skipped while focusing.
@@ -1870,6 +2013,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     nodesData,
     filters?.focusIds,
     filters?.hiddenIds,
+    viewContext,
     edgesData,
     hiddenByCollapse,
     childMap,
@@ -1885,9 +2029,70 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setRfNodes(computedNodes);
   }, [computedNodes]);
 
+  const edgeTruthAuditById = useMemo(() => {
+    const issues = new Map<string, TruthAuditIssue>();
+    if (viewContext?.kind === "shared-services") return issues;
+
+    const personFlowNodes = computedNodes.filter((node) => isPersonFlowNodeId(node.id));
+    if (personFlowNodes.length < 3) return issues;
+
+    const personById = new Map(personNodes.map((person) => [person.id, person]));
+    const visibleIds = new Set(personFlowNodes.map((node) => node.id));
+    const rects = personFlowNodes
+      .map((node) => {
+        const person = personById.get(node.id);
+        if (!person) return null;
+        return buildPersonCardRect(person, node.position);
+      })
+      .filter((rect): rect is PersonCardRect => Boolean(rect));
+    const positionById = new Map(personFlowNodes.map((node) => [node.id, node.position]));
+
+    edgesData.forEach((edge) => {
+      if (edge.metadata.type !== "manager") return;
+      if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) return;
+
+      const sourcePosition = positionById.get(edge.source);
+      const targetPosition = positionById.get(edge.target);
+      if (!sourcePosition || !targetPosition) return;
+
+      const blockers = findManagerLineBlockers(
+        sourcePosition,
+        targetPosition,
+        rects,
+        edge.source,
+        edge.target,
+      );
+      if (blockers.length === 0) return;
+
+      const targetName = personNameById.get(edge.target) ?? "This person";
+      const blockerNames = blockers.slice(0, 3).map((blocker) => blocker.name);
+      const blockerLabel =
+        blockerNames.length === 1
+          ? blockerNames[0]
+          : `${blockerNames.slice(0, 2).join(", ")}${blockers.length > 2 ? `, +${blockers.length - 2}` : ""}`;
+      issues.set(edge.id, {
+        level: blockers.length > 1 ? "danger" : "warning",
+        message: `Could read as ${targetName} reporting to ${blockerLabel}`,
+        blockerNames,
+      });
+    });
+
+    return issues;
+  }, [computedNodes, edgesData, personNameById, personNodes, viewContext?.kind]);
+
+  const truthAuditIssues = useMemo(
+    () =>
+      [...edgeTruthAuditById.entries()].map(([edgeId, issue]) => ({
+        edgeId,
+        ...issue,
+      })),
+    [edgeTruthAuditById],
+  );
+
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
     const focusIds = filters?.focusIds ?? [];
+    if (viewContext?.kind === "shared-services") return [];
 
     const rollUp = isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
     let visibleEdges = hiddenByCollapse
@@ -1930,6 +2135,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // the within-lane reporting lines and let cross-lane links stand out
       const isMatrixView = lens !== "hierarchy";
       const isManager = edge.metadata.type === "manager";
+      const isMatrixRelationship = edge.metadata.type === "dotted" || edge.metadata.type === "sponsor";
+      const hasTruthIssue = edgeTruthAuditById.has(edge.id);
 
       // Focus mode: spotlight the selected person's relationships and the manager
       // chain they sit in (both endpoints in the focus set), fade everything else.
@@ -1944,14 +2151,39 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         isDirectFocusedManagerEdge &&
         lodZoom > 0.48 &&
         (edge.target === focusedNodeId || focusedDirectReportCount <= 4);
-      if (isMatrixView && !showAllReportingLines && (!focusSet || !isIncidentToFocus)) {
-        return [];
+      if (isMatrixView && !(truthAuditVisible && hasTruthIssue)) {
+        if (matrixRelationshipMode === "reporting" && (!focusSet || !isIncidentToFocus)) {
+          return [];
+        }
+        if (
+          matrixRelationshipMode === "matrix" &&
+          !isMatrixRelationship &&
+          (!focusSet || !isIncidentToFocus)
+        ) {
+          return [];
+        }
       }
 
-      const dimmedManager = isMatrixView && isManager && !isIncidentToFocus;
+      const dimmedManager =
+        isMatrixView &&
+        isManager &&
+        matrixRelationshipMode !== "all" &&
+        !isIncidentToFocus;
       let opacity = isGhost || edge.metadata.ghost ? 0.3 : dimmedManager ? 0.14 : 0.9;
+      if (isMatrixView && matrixRelationshipMode === "matrix" && isMatrixRelationship) {
+        opacity = isGhost || edge.metadata.ghost ? 0.38 : 0.92;
+      }
+      if (truthAuditVisible && hasTruthIssue) {
+        opacity = 0.96;
+      }
       if (focusedNodeId) {
         opacity = isIncidentToFocus ? 0.95 : 0.05;
+        if (truthAuditVisible && hasTruthIssue) {
+          opacity = 0.96;
+        }
+        if (isMatrixView && matrixRelationshipMode === "matrix" && isMatrixRelationship) {
+          opacity = isIncidentToFocus || !focusSet ? 0.95 : 0.28;
+        }
       }
 
       const sourceName = personNameById.get(edge.source) ?? "Manager";
@@ -1969,6 +2201,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               ? `${targetName} reports to ${sourceName}`
               : edge.metadata.label,
           showLabel: shouldLabelFocusedEdge,
+          truthIssue: edgeTruthAuditById.get(edge.id),
+          showTruthIssue: truthAuditVisible,
         },
         animated: edge.metadata.type === "dotted" && lodZoom > 0.5,
         markerEnd: edge.metadata.type === 'sponsor' ? undefined : { // sponsor uses custom diamond marker
@@ -1985,11 +2219,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         },
         selectable: true,
         selected: selection.edgeIds.includes(edge.id),
-        zIndex: isIncidentToFocus ? 10 : 0,
+        zIndex: truthAuditVisible && hasTruthIssue ? 12 : isIncidentToFocus ? 10 : 0,
       };
     });
   }, [
     edgesData,
+    edgeTruthAuditById,
     filters?.activeTokens,
     personNodes,
     personNameById,
@@ -2000,12 +2235,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusedNodeId,
     focusSet,
     childMap,
-    showAllReportingLines,
+    matrixRelationshipMode,
+    viewContext?.kind,
     hiddenByCollapse,
     isCrossCutting,
     orgUnits,
     unitMemberIds,
     filters?.focusIds,
+    truthAuditVisible,
   ]);
 
   // Handle node drag stop - persist positions (the whole dragged selection),
@@ -2134,10 +2371,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const handleNodeDoubleClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      event.stopPropagation();
       if (!isPersonFlowNodeId(node.id)) return;
-      selectPersonFromCard(node.id);
+      selectNode(node.id);
     },
-    [selectPersonFromCard],
+    [selectNode],
   );
 
   const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
@@ -2471,32 +2709,32 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 drawing an ambiguous all-org web across unrelated lanes. */}
             {lens !== "hierarchy" && personNodes.length > 0 && (
               <div className="motion-stage-in absolute left-6 top-6 z-30 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAllReportingLines((value) => !value)}
-                  aria-pressed={showAllReportingLines}
-                  aria-label={`Relationship lines: ${showAllReportingLines ? "all" : "selected context only"}`}
-                  className={[
-                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400",
-                    showAllReportingLines
-                      ? "border-sky-300 bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100 dark:border-sky-400/30 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20"
-                      : "border-slate-200 bg-white/90 text-slate-700 ring-slate-200 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-white/10",
-                  ].join(" ")}
-                  title={
-                    showAllReportingLines
-                      ? "Showing every relationship line in this lens"
-                      : "Showing relationship lines only for the selected person or team"
-                  }
+                <div
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10"
+                  aria-label="Relationship layer"
                 >
-                  <span
-                    aria-hidden
-                    className={[
-                      "inline-block h-2 w-2 rounded-full",
-                      showAllReportingLines ? "bg-sky-500" : "bg-slate-400 dark:bg-slate-500",
-                    ].join(" ")}
-                  />
-                  Relationships: {showAllReportingLines ? "All" : "Focus"}
-                </button>
+                  {([
+                    ["reporting", "Reporting", "Selected person, manager chain, and direct org context"],
+                    ["matrix", "Matrix", "Dotted-line and sponsor context across lanes"],
+                    ["all", "All context", "Every visible relationship line in this lens"],
+                  ] as const).map(([mode, label, title]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setMatrixRelationshipMode(mode)}
+                      aria-pressed={matrixRelationshipMode === mode}
+                      title={title}
+                      className={[
+                        "rounded-full px-3 py-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
+                        matrixRelationshipMode === mode
+                          ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                          : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   onClick={toggleMirrorLanes}
@@ -2579,12 +2817,39 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 </button>
                 <button
                   type="button"
+                  onClick={() => setTruthAuditVisible((value) => !value)}
+                  title="Check for reporting lines that could visually imply the wrong manager"
+                  aria-label="Toggle reporting line truth audit"
+                  aria-pressed={truthAuditVisible}
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
+                    truthAuditVisible
+                      ? "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-100"
+                      : truthAuditIssues.length > 0
+                        ? "text-amber-700 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-500/10"
+                        : "hover:bg-slate-100 dark:hover:bg-white/10",
+                  ].join(" ")}
+                >
+                  <span
+                    className={[
+                      "inline-block h-2 w-2 rounded-full",
+                      truthAuditIssues.length > 0 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600",
+                    ].join(" ")}
+                    aria-hidden
+                  />
+                  Truth Audit
+                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950/70 dark:text-slate-200 dark:ring-white/10">
+                    {truthAuditIssues.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={openSharedServices}
-                  title="See all shared services together"
-                  aria-label="Open Shared Services view"
+                  title="See shared services as support groups"
+                  aria-label="Open support groups view"
                   className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-500/10"
                 >
-                  <span aria-hidden>🔗</span> Shared Services
+                  <span aria-hidden>🔗</span> Support Groups
                 </button>
                 <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
                 <CleanupButton
@@ -2595,6 +2860,38 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                     }, 100);
                   }}
                 />
+              </div>
+            )}
+            {truthAuditVisible && truthAuditIssues.length > 0 && (
+              <div className="motion-stage-in absolute right-6 top-[78px] z-30 w-[min(360px,calc(100%-3rem))] rounded-lg border border-amber-200 bg-white/95 p-3 text-xs text-slate-700 shadow-lg ring-1 ring-amber-100 backdrop-blur dark:border-amber-300/30 dark:bg-slate-950/90 dark:text-slate-200 dark:ring-amber-300/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold text-slate-950 dark:text-white">
+                    {truthAuditIssues.length} risky reporting {truthAuditIssues.length === 1 ? "line" : "lines"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTruthAuditVisible(false)}
+                    className="rounded-full px-2 py-1 text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+                    aria-label="Hide truth audit"
+                  >
+                    Hide
+                  </button>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  {truthAuditIssues.slice(0, 4).map((issue) => (
+                    <div
+                      key={issue.edgeId}
+                      className="rounded-md bg-amber-50/80 px-2.5 py-2 leading-snug text-amber-950 ring-1 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-100 dark:ring-amber-300/10"
+                    >
+                      {issue.message}
+                    </div>
+                  ))}
+                </div>
+                {truthAuditIssues.length > 4 && (
+                  <div className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-200">
+                    +{truthAuditIssues.length - 4} more highlighted on the canvas
+                  </div>
+                )}
               </div>
             )}
           </ReactFlow>
