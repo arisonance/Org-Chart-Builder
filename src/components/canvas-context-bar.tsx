@@ -159,9 +159,13 @@ export function CanvasContextBar({
       : null;
   const openPerson = useCallback(
     (id: string) => {
+      if (id === focusedId && (childMap[id]?.length ?? 0) > 0) {
+        onOpenTeamTree(id);
+        return;
+      }
       selectNode(id);
     },
-    [selectNode],
+    [childMap, focusedId, onOpenTeamTree, selectNode],
   );
   const descendantIds = useMemo(() => {
     if (!focusedId) return [] as string[];
@@ -208,9 +212,9 @@ export function CanvasContextBar({
     if (viewContext?.kind !== "operating-view" || viewContext.dimension !== "channel" || !viewContext.value) {
       return null;
     }
-    const people = focusIds
-      .map((id) => nodeById.get(id))
-      .filter((node): node is PersonNode => Boolean(node));
+    const people = Array.from(nodeById.values()).filter((person) =>
+      person.attributes.channels.includes(viewContext.value ?? ""),
+    );
     const dedicated = people.filter((person) => person.attributes.primaryChannel === viewContext.value);
     const broadSupport = people.filter((person) => person.attributes.primaryChannel !== viewContext.value);
     const podKeys = new Set(
@@ -224,7 +228,7 @@ export function CanvasContextBar({
       broadSupportCount: broadSupport.length,
       podCount: podKeys.size,
     };
-  }, [focusIds, nodeById, viewContext]);
+  }, [nodeById, viewContext]);
 
   // A single-person selection drives focus highlighting (the breadcrumb), not a
   // subset filter — so only treat focusIds as a "subset" when nothing's selected.
@@ -252,14 +256,14 @@ export function CanvasContextBar({
   }) => {
     const toneClass =
       tone === "sky"
-        ? "bg-sky-50 text-sky-800 ring-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:ring-sky-400/20"
+        ? "bg-sky-50 text-sky-800 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100"
         : tone === "emerald"
-          ? "bg-emerald-50 text-emerald-800 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-100 dark:ring-emerald-400/20"
+          ? "bg-emerald-50 text-emerald-800 ring-emerald-100 dark:bg-emerald-50 dark:text-emerald-800 dark:ring-emerald-100"
           : tone === "violet"
-            ? "bg-violet-50 text-violet-800 ring-violet-100 dark:bg-violet-500/15 dark:text-violet-100 dark:ring-violet-400/20"
+            ? "bg-violet-50 text-violet-800 ring-violet-100 dark:bg-violet-50 dark:text-violet-800 dark:ring-violet-100"
             : tone === "amber"
-              ? "bg-amber-50 text-amber-800 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-400/20"
-              : "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10";
+              ? "bg-amber-50 text-amber-800 ring-amber-100 dark:bg-amber-50 dark:text-amber-800 dark:ring-amber-100"
+              : "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200";
     const className = `inline-flex max-w-[14rem] items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${toneClass}`;
     const content = (
       <>
@@ -321,9 +325,20 @@ export function CanvasContextBar({
             Relationship
           </span>
           <span className="h-4 w-px flex-shrink-0 bg-sky-100 dark:bg-sky-400/20" />
-          <span className="max-w-[12rem] truncate font-semibold text-slate-900 dark:text-white">
-            {focusedName}
-          </span>
+          {directReportIds.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => openPerson(focusedId)}
+              title={`Open ${focusedName}'s organization`}
+              className="max-w-[12rem] truncate rounded-full px-2 py-0.5 font-semibold text-slate-900 transition hover:bg-sky-50 hover:text-sky-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:text-white dark:hover:bg-sky-500/15 dark:hover:text-sky-100"
+            >
+              {focusedName}
+            </button>
+          ) : (
+            <span className="max-w-[12rem] truncate font-semibold text-slate-900 dark:text-white">
+              {focusedName}
+            </span>
+          )}
           <TruthPill
             label="Reports to"
             value={managerName ?? "Top of chain"}
@@ -360,7 +375,7 @@ export function CanvasContextBar({
                 onClick={() => openPerson(id)}
                 title={
                   (childMap[id]?.length ?? 0) > 0
-                    ? `Focus ${person?.name ?? "this person"} and show their reporting context`
+                    ? `Focus ${person?.name ?? "this person"}; click their name next to open their organization`
                     : person?.attributes.title
                 }
                 className="max-w-[9rem] truncate rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-800 transition hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
@@ -416,11 +431,23 @@ export function CanvasContextBar({
         <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-semibold text-emerald-900 dark:text-emerald-100">
-            Org view
+            {viewContext?.kind === "operating-view" ? "Official view" : "Org view"}
           </span>
           <span className="text-emerald-700 dark:text-emerald-200/85">
-            Viewing organization for {teamTreeRoot.name}
+            {viewContext?.kind === "operating-view"
+              ? `${viewContext.label} · rooted at ${teamTreeRoot.name}`
+              : `Viewing organization for ${teamTreeRoot.name}`}
           </span>
+          {viewContext?.kind === "operating-view" && viewContext.owner && (
+            <span className="rounded-full bg-white/80 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:ring-emerald-400/20">
+              Owner: {viewContext.owner}
+            </span>
+          )}
+          {viewContext?.kind === "operating-view" && viewContext.publishedAt && (
+            <span className="rounded-full bg-white/80 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:ring-emerald-400/20">
+              Published {viewContext.publishedAt}
+            </span>
+          )}
           {teamLayoutControls?.dirty && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/20">
               Unsaved layout
@@ -460,9 +487,9 @@ export function CanvasContextBar({
       )}
 
       {subsetActive && (
-        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:text-slate-200 dark:ring-white/10">
-          <span className="font-semibold text-slate-950 dark:text-white">{contextTitle}</span>
-          <span className="text-slate-500 dark:text-slate-400">{descriptors.join(" · ")}</span>
+        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/95 dark:text-slate-700 dark:ring-slate-200">
+          <span className="font-semibold text-slate-950 dark:text-slate-950">{contextTitle}</span>
+          <span className="text-slate-500 dark:text-slate-500">{descriptors.join(" · ")}</span>
           {viewContext?.owner && (
             <TruthPill label="Owner" value={viewContext.owner} tone="emerald" />
           )}
@@ -471,13 +498,13 @@ export function CanvasContextBar({
           )}
           {operatingViewSummary && (
             <>
-              <TruthPill label="Dedicated" value={`${operatingViewSummary.dedicatedCount} primary`} tone="sky" />
-              <TruthPill label="Shared support" value={`${operatingViewSummary.broadSupportCount} broad-role`} tone="violet" />
+              <TruthPill label="Core team" value={`${operatingViewSummary.dedicatedCount} primary`} tone="sky" />
+              <TruthPill label="Shared support" value={`${operatingViewSummary.broadSupportCount} supporting`} tone="violet" />
               <TruthPill label="Pods" value={`${operatingViewSummary.podCount} support pods`} tone="violet" />
             </>
           )}
           {viewContext?.kind === "operating-view" && (
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200">
               Reporting lines stay formal
             </span>
           )}

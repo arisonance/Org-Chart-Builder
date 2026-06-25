@@ -587,6 +587,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   useEffect(() => {
     if (!viewContext) return;
+    if (viewContext.kind === "operating-view") return;
     if ((filters?.focusIds?.length ?? 0) > 0) return;
     setViewContext(null);
   }, [viewContext, filters?.focusIds]);
@@ -615,14 +616,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   // Dedicated support-groups view: show shared-service units as pods first;
   // opening a pod drills into the people behind that shared-service group.
-  const openSharedServices = useCallback(() => {
+  const openSharedServices = useCallback((context?: Pick<ViewContext, "owner" | "description" | "publishedBy" | "publishedAt">) => {
     const ids = orgUnits
       .filter((u) => u.def.type === "shared-service")
       .flatMap((u) => u.members.map((m) => m.id));
     if (ids.length === 0) return;
     setLensStore("hierarchy");
     setTimeout(() => {
-      setViewContext({ kind: "shared-services", label: "Shared services", count: ids.length });
+      setViewContext({
+        kind: "shared-services",
+        label: "Shared services",
+        count: ids.length,
+        owner: context?.owner,
+        description: context?.description,
+        publishedBy: context?.publishedBy,
+        publishedAt: context?.publishedAt,
+      });
       setLensFilters("hierarchy", { focusIds: ids });
       window.setTimeout(() => {
         if (rfInstance) {
@@ -645,6 +654,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }, 240);
     }, 160);
   }, [orgUnits, rfInstance, setLensStore, setLensFilters]);
+  const openSharedServicesDefault = useCallback(() => {
+    openSharedServices();
+  }, [openSharedServices]);
 
   // Last rendered position per node, across lenses — used as the glide start
   // point when a lens hasn't been laid out yet
@@ -1145,7 +1157,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree, activeTeamPositions, scheduleOrientationLoop, framePositionMap],
   );
 
-  const showOrientationOverview = useCallback(() => {
+  const showOrientationOverview = useCallback((officialContext?: Pick<ViewContext, "owner" | "description" | "publishedBy" | "publishedAt"> & { label?: string }) => {
     const selectedPersonId =
       selection.nodeIds.length === 1 && personNameById.has(selection.nodeIds[0])
         ? selection.nodeIds[0]
@@ -1177,7 +1189,19 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     setViewportRescueVisible(false);
     setTeamReturnLens((current) => current ?? lens);
-    setViewContext(null);
+    setViewContext(
+      officialContext
+        ? {
+            kind: "operating-view",
+            label: officialContext.label ?? "Executive overview",
+            count: visibleIds.size,
+            owner: officialContext.owner,
+            description: officialContext.description,
+            publishedBy: officialContext.publishedBy,
+            publishedAt: officialContext.publishedAt,
+          }
+        : null,
+    );
     setLensStore("hierarchy");
     setLensFilters("hierarchy", { focusIds: [], hiddenIds: [], activeTokens: [] });
     setTeamRootId(overviewRootId);
@@ -1274,43 +1298,52 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       key: string,
       label = key,
       context?: Pick<ViewContext, "kind" | "owner" | "description" | "publishedBy" | "publishedAt">,
+      options: { scope?: "all-assigned" | "primary-team" } = {},
     ) => {
-      const members = personNodes.filter((person) =>
+      const assignedMembers = personNodes.filter((person) =>
         getAssignments(person, dimension).includes(key),
       );
+      const primaryMembers = personNodes.filter((person) => getGroupKey(person, dimension) === key);
+      const members =
+        options.scope === "primary-team" && primaryMembers.length > 0
+          ? primaryMembers
+          : assignedMembers;
       if (members.length === 0) return;
       const targetLens = dimension === "brand" ? "brand" : dimension === "channel" ? "channel" : "department";
+      const memberIds = members.map((member) => member.id);
       setTeamRootId(null);
       setTeamReturnLens(null);
       clearSelection();
       setLensStore(targetLens);
-      setViewContext({
-        kind: context?.kind ?? "lens-group",
-        label,
-        count: members.length,
-        owner: context?.owner,
-        description: context?.description,
-        publishedBy: context?.publishedBy,
-        publishedAt: context?.publishedAt,
-        dimension,
-        value: key,
-      });
-      setLensFilters(targetLens, {
-        focusIds: members.map((member) => member.id),
-        hiddenIds: [],
-        activeTokens: [key],
-      });
-      showToast(`Showing ${label}`);
       window.setTimeout(() => {
+        setLensFilters(targetLens, {
+          focusIds: memberIds,
+          hiddenIds: [],
+          activeTokens: [key],
+        });
+        setViewContext({
+          kind: context?.kind ?? "lens-group",
+          label,
+          count: members.length,
+          owner: context?.owner,
+          description: context?.description,
+          publishedBy: context?.publishedBy,
+          publishedAt: context?.publishedAt,
+          dimension,
+          value: key,
+        });
+        showToast(`Showing ${label}`);
+        window.setTimeout(() => {
         fitVisiblePeopleRef.current({
           padding: 0.22,
           duration: 520,
           minZoom: 0.34,
           maxZoom: 1.02,
           reason: "focus",
-          expectedIds: members.map((member) => member.id),
+          expectedIds: memberIds,
         });
-      }, 220);
+        }, 220);
+      }, 170);
     },
     [clearSelection, personNodes, setLensFilters, setLensStore, showToast],
   );
@@ -1319,11 +1352,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (view: PublishedOperatingView) => {
       if (view.kind === "overview") {
         resetView();
-        window.setTimeout(showOrientationOverview, 120);
+        window.setTimeout(() => showOrientationOverview({
+          label: view.label,
+          owner: view.owner,
+          description: view.description,
+          publishedBy: view.publishedBy,
+          publishedAt: view.publishedAt,
+        }), 120);
         return;
       }
       if (view.kind === "shared-services") {
-        openSharedServices();
+        openSharedServices({
+          owner: view.owner,
+          description: view.description,
+          publishedBy: view.publishedBy,
+          publishedAt: view.publishedAt,
+        });
         return;
       }
       openOperatingView(view.dimension, view.value, view.label, {
@@ -1332,7 +1376,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         description: view.description,
         publishedBy: view.publishedBy,
         publishedAt: view.publishedAt,
-      });
+      }, { scope: "primary-team" });
     },
     [openOperatingView, openSharedServices, resetView, showOrientationOverview],
   );
@@ -1410,7 +1454,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       });
     }
     if (sharedUnits.length > 0) {
-      actions.push({ id: "shared", label: "Shared services", onClick: openSharedServices });
+      actions.push({ id: "shared", label: "Shared services", onClick: openSharedServicesDefault });
     }
     actions.push({ id: "fit", label: "Fit view", onClick: fitToView });
 
@@ -1487,7 +1531,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusLensGroup,
     lens,
     openOperatingView,
-    openSharedServices,
+    openSharedServicesDefault,
     openSharedServiceGroup,
     openTeamTree,
     orgUnits,
@@ -3380,7 +3424,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 </button>
                 <button
                   type="button"
-                  onClick={openSharedServices}
+                  onClick={openSharedServicesDefault}
                   title="See shared services grouped by support role"
                   aria-label="Open shared services view"
                   className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-700 dark:hover:bg-violet-50"
@@ -3449,7 +3493,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               onToggleExpand={toggleUnitExpand}
               onJump={jumpToUnit}
               onSelectMember={selectPersonFromCard}
-              onOpenSharedServices={openSharedServices}
+              onOpenSharedServices={openSharedServicesDefault}
             />
           )}
 
@@ -3458,7 +3502,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             <UnitFoundation
               units={orgUnits}
               onJump={jumpToUnit}
-              onOpenSharedServices={openSharedServices}
+              onOpenSharedServices={openSharedServicesDefault}
             />
           )}
 
@@ -3542,7 +3586,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 <span>No people in view</span>
                 <button
                   type="button"
-                  onClick={showOrientationOverview}
+                  onClick={() => showOrientationOverview()}
                   className="rounded-full bg-slate-900 px-3 py-1 text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
                 >
                   Show overview

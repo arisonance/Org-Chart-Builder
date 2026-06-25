@@ -39,35 +39,35 @@ export function CanvasOrientationMap({
   if (hidden) return null;
 
   return (
-    <div className="pointer-events-none absolute left-1/2 top-5 z-30 w-[min(46rem,calc(100vw-2rem))] -translate-x-1/2">
+    <div className="pointer-events-none absolute left-1/2 top-5 z-30 w-fit max-w-[calc(100vw-2rem)] -translate-x-1/2">
       <div
-        className="motion-context-bar pointer-events-auto relative rounded-full border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-md ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:ring-slate-200"
+        className="motion-context-bar pointer-events-auto relative rounded-2xl border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-md ring-1 ring-slate-100 backdrop-blur sm:rounded-full dark:border-white/10 dark:bg-white/90 dark:ring-slate-200"
         title={detail}
       >
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="flex max-w-[calc(100vw-3rem)] flex-wrap items-center justify-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-2 px-1">
             <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-500">
               Map
             </span>
-            <span className="shrink-0 text-xs font-semibold text-slate-800 dark:text-slate-800">
+            <span className="max-w-[13rem] truncate whitespace-nowrap text-xs font-semibold text-slate-800 dark:text-slate-800">
               {title}
             </span>
-            {stats.slice(0, 2).map((stat) => (
+            {stats.slice(0, 1).map((stat) => (
               <span
                 key={stat}
-                className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 lg:inline-flex dark:bg-slate-100 dark:text-slate-500"
+                className="hidden max-w-[7.5rem] shrink-0 truncate rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 xl:inline-flex dark:bg-slate-100 dark:text-slate-500"
               >
                 {stat}
               </span>
             ))}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 flex-wrap items-center justify-center gap-1">
             {chips.length > 0 && (
               <button
                 type="button"
                 onClick={() => setGroupsOpen((open) => !open)}
                 aria-expanded={groupsOpen}
-                className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50"
+                className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50"
               >
                 Groups
               </button>
@@ -78,7 +78,7 @@ export function CanvasOrientationMap({
                 type="button"
                 onClick={action.onClick}
                 className={[
-                  "rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
+                  "whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
                   action.tone === "dark"
                     ? "bg-slate-950 text-white hover:bg-slate-700"
                     : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50",
