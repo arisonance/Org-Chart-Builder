@@ -7,6 +7,8 @@ export type PublishedOperatingView =
       label: string;
       description: string;
       owner: string;
+      publishedBy: string;
+      publishedAt: string;
       kind: "overview";
       lens: LensId;
     }
@@ -15,6 +17,8 @@ export type PublishedOperatingView =
       label: string;
       description: string;
       owner: string;
+      publishedBy: string;
+      publishedAt: string;
       kind: "shared-services";
       lens: LensId;
     }
@@ -23,6 +27,8 @@ export type PublishedOperatingView =
       label: string;
       description: string;
       owner: string;
+      publishedBy: string;
+      publishedAt: string;
       kind: "dimension";
       lens: LensId;
       dimension: LensDimension;
@@ -35,6 +41,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "Executive overview",
     description: "Formal top-level reporting map from the executive team.",
     owner: "CEO office",
+    publishedBy: "CEO office",
+    publishedAt: "2026-06-24",
     kind: "overview",
     lens: "hierarchy",
   },
@@ -43,6 +51,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "Luxury Residential",
     description: "Residential sales channel with its dedicated and supporting teams.",
     owner: "Residential SLT",
+    publishedBy: "Residential SLT",
+    publishedAt: "2026-06-24",
     kind: "dimension",
     lens: "channel",
     dimension: "channel",
@@ -53,6 +63,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "North America Professional",
     description: "Professional channel ownership and support in North America.",
     owner: "Commercial SLT",
+    publishedBy: "Commercial SLT",
+    publishedAt: "2026-06-24",
     kind: "dimension",
     lens: "channel",
     dimension: "channel",
@@ -63,6 +75,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "National Accounts",
     description: "National accounts team and supporting services.",
     owner: "Residential SLT",
+    publishedBy: "Residential SLT",
+    publishedAt: "2026-06-24",
     kind: "dimension",
     lens: "channel",
     dimension: "channel",
@@ -73,6 +87,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "International Residential",
     description: "Global residential channel coverage and support.",
     owner: "International SLT",
+    publishedBy: "International SLT",
+    publishedAt: "2026-06-24",
     kind: "dimension",
     lens: "channel",
     dimension: "channel",
@@ -83,6 +99,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "Enterprise",
     description: "Enterprise channel ownership and supporting functions.",
     owner: "Enterprise SLT",
+    publishedBy: "Enterprise SLT",
+    publishedAt: "2026-06-24",
     kind: "dimension",
     lens: "channel",
     dimension: "channel",
@@ -93,6 +111,8 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     label: "Shared services",
     description: "Back-office and specialist teams that support multiple businesses.",
     owner: "Operations SLT",
+    publishedBy: "Operations SLT",
+    publishedAt: "2026-06-24",
     kind: "shared-services",
     lens: "hierarchy",
   },

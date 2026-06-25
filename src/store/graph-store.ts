@@ -34,6 +34,7 @@ import type { Scenario } from "@/lib/scenario/types";
 
 const now = () => new Date().toISOString();
 const HISTORY_LIMIT = 100;
+export type WorkspaceMode = "explore" | "edit" | "publish";
 
 type HistoryStack = {
   past: GraphSnapshot[];
@@ -43,6 +44,8 @@ type HistoryStack = {
 type GraphStoreState = {
   document: GraphDocument;
   selection: SelectionState;
+  editorPersonId: string | null;
+  workspaceMode: WorkspaceMode;
   clipboard: ClipboardPayload | null;
   settingsClipboard: PersonSettingsClipboard | null;
   history: HistoryStack;
@@ -79,6 +82,9 @@ type GraphStoreActions = {
   selectNode: (nodeId: string, additive?: boolean) => void;
   selectEdge: (edgeId: string, additive?: boolean) => void;
   clearSelection: () => void;
+  openEditor: (nodeId: string) => void;
+  closeEditor: () => void;
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
   requestFocus: (nodeId: string) => void;
   requestOperatingView: (viewId: string) => void;
   clearOperatingView: () => void;
@@ -224,6 +230,8 @@ const initialState: GraphStoreState = {
     nodeIds: [],
     edgeIds: [],
   },
+  editorPersonId: null,
+  workspaceMode: "explore",
   clipboard: null,
   settingsClipboard: null,
   history: {
@@ -440,6 +448,10 @@ export const migrateGraphState = (persistedState: unknown) => {
       scenarios: maybeState.scenarios ?? {},
       activeScenarioId: maybeState.activeScenarioId ?? null,
       activeOperatingViewId: typeof maybeState.activeOperatingViewId === "string" ? maybeState.activeOperatingViewId : null,
+      workspaceMode:
+        maybeState.workspaceMode === "edit" || maybeState.workspaceMode === "publish"
+          ? maybeState.workspaceMode
+          : "explore",
       mirrorLanes:
         typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
       collapsedIds: Array.isArray(maybeState.collapsedIds)
@@ -467,6 +479,7 @@ export const useGraphStore = create<GraphStore>()(
           produce((state: GraphStoreState) => {
             state.document = cloneDocument(DEMO_GRAPH_DOCUMENT);
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
             state.history = { past: [], future: [] };
             state.clipboard = null;
           }),
@@ -477,6 +490,7 @@ export const useGraphStore = create<GraphStore>()(
           produce((state: GraphStoreState) => {
             state.document = createEmptyGraphDocument();
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
             state.history = { past: [], future: [] };
             state.clipboard = null;
           }),
@@ -487,6 +501,7 @@ export const useGraphStore = create<GraphStore>()(
           produce((state: GraphStoreState) => {
             state.document = cloneDocument(document);
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
             state.history = { past: [], future: [] };
           }),
         );
@@ -495,6 +510,7 @@ export const useGraphStore = create<GraphStore>()(
         withHistory(set, get, (state) => {
           state.document = cloneDocument(document);
           state.selection = { nodeIds: [], edgeIds: [] };
+          state.editorPersonId = null;
         });
       },
       exportDocument: () => cloneDocument(get().document),
@@ -513,6 +529,12 @@ export const useGraphStore = create<GraphStore>()(
               nodeIds: selection.nodeIds ?? state.selection.nodeIds,
               edgeIds: selection.edgeIds ?? state.selection.edgeIds,
             };
+            if (
+              state.editorPersonId &&
+              (state.selection.nodeIds.length !== 1 || state.selection.nodeIds[0] !== state.editorPersonId)
+            ) {
+              state.editorPersonId = null;
+            }
           }),
         );
       },
@@ -523,8 +545,10 @@ export const useGraphStore = create<GraphStore>()(
               if (!state.selection.nodeIds.includes(nodeId)) {
                 state.selection.nodeIds.push(nodeId);
               }
+              state.editorPersonId = null;
             } else {
               state.selection.nodeIds = [nodeId];
+              state.editorPersonId = null;
             }
           }),
         );
@@ -538,6 +562,7 @@ export const useGraphStore = create<GraphStore>()(
               }
             } else {
               state.selection.edgeIds = [edgeId];
+              state.editorPersonId = null;
             }
           }),
         );
@@ -546,6 +571,35 @@ export const useGraphStore = create<GraphStore>()(
         set(
           produce((state: GraphStoreState) => {
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
+          }),
+        );
+      },
+      openEditor: (nodeId) => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.selection = { nodeIds: [nodeId], edgeIds: [] };
+            state.editorPersonId = nodeId;
+            if (state.workspaceMode === "explore") {
+              state.workspaceMode = "edit";
+            }
+          }),
+        );
+      },
+      closeEditor: () => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.editorPersonId = null;
+          }),
+        );
+      },
+      setWorkspaceMode: (mode) => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.workspaceMode = mode;
+            if (mode === "explore") {
+              state.editorPersonId = null;
+            }
           }),
         );
       },
@@ -1180,10 +1234,17 @@ export const useGraphStore = create<GraphStore>()(
         // small `currentViewport` key instead and is restored on rehydrate.
         document: stripPersistedViewports(state.document),
         selection: state.selection,
+        editorPersonId: null,
         clipboard: state.clipboard,
+        settingsClipboard: null,
+        history: { past: [], future: [] },
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        comparisonScenarioId: null,
+        focusRequest: null,
+        operatingViewRequest: null,
         activeOperatingViewId: state.activeOperatingViewId,
+        workspaceMode: state.workspaceMode,
         mirrorLanes: state.mirrorLanes,
         collapsedIds: state.collapsedIds,
         currentViewport: state.currentViewport,

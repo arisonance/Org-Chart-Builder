@@ -12,6 +12,8 @@ type ViewContext = {
   count: number;
   owner?: string;
   description?: string;
+  publishedBy?: string;
+  publishedAt?: string;
   dimension?: "brand" | "channel" | "department";
   value?: string;
 };
@@ -33,6 +35,7 @@ export function CanvasContextBar({
   teamTreeRootId,
   onExitTeamTree,
   teamLayoutControls,
+  officialLayoutControls,
   viewContext,
 }: {
   onResetView: () => void;
@@ -45,6 +48,16 @@ export function CanvasContextBar({
     onSave: () => void;
     onReset: () => void;
   };
+  officialLayoutControls?: {
+    dirty: boolean;
+    saved: boolean;
+    canManage: boolean;
+    publishedAt?: string;
+    publishedBy?: string;
+    onPublish: () => void;
+    onDiscard: () => void;
+    onReset: () => void;
+  };
   viewContext: ViewContext | null;
 }) {
   const lens = useGraphStore((s) => s.document.lens);
@@ -54,6 +67,7 @@ export function CanvasContextBar({
   const filters = useGraphStore((s) => s.document.lens_state[s.document.lens]?.filters);
   const selectNode = useGraphStore((s) => s.selectNode);
   const clearSelection = useGraphStore((s) => s.clearSelection);
+  const openEditor = useGraphStore((s) => s.openEditor);
 
   const nodeById = useMemo(() => {
     const map = new Map<string, PersonNode>();
@@ -145,13 +159,9 @@ export function CanvasContextBar({
       : null;
   const openPerson = useCallback(
     (id: string) => {
-      if ((childMap[id]?.length ?? 0) > 0) {
-        onOpenTeamTree(id);
-        return;
-      }
       selectNode(id);
     },
-    [childMap, onOpenTeamTree, selectNode],
+    [selectNode],
   );
   const descendantIds = useMemo(() => {
     if (!focusedId) return [] as string[];
@@ -350,7 +360,7 @@ export function CanvasContextBar({
                 onClick={() => openPerson(id)}
                 title={
                   (childMap[id]?.length ?? 0) > 0
-                    ? `Open ${person?.name ?? "this person"}'s organization`
+                    ? `Focus ${person?.name ?? "this person"} and show their reporting context`
                     : person?.attributes.title
                 }
                 className="max-w-[9rem] truncate rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-800 transition hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
@@ -377,6 +387,13 @@ export function CanvasContextBar({
               {teamTreeRootId === focusedId ? "Refit org" : "Open org"}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => openEditor(focusedId)}
+            className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
+          >
+            Edit details
+          </button>
           {matrixRelationships.slice(0, 2).map((relationship) => (
             <button
               key={relationship.id}
@@ -443,11 +460,14 @@ export function CanvasContextBar({
       )}
 
       {subsetActive && (
-        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs shadow-lg dark:border-amber-400/20 dark:bg-amber-500/10">
-          <span className="font-semibold text-amber-700 dark:text-amber-200">{contextTitle}</span>
-          <span className="text-amber-600 dark:text-amber-300/80">{descriptors.join(" · ")}</span>
+        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:text-slate-200 dark:ring-white/10">
+          <span className="font-semibold text-slate-950 dark:text-white">{contextTitle}</span>
+          <span className="text-slate-500 dark:text-slate-400">{descriptors.join(" · ")}</span>
           {viewContext?.owner && (
             <TruthPill label="Owner" value={viewContext.owner} tone="emerald" />
+          )}
+          {viewContext?.publishedAt && (
+            <TruthPill label="Published" value={viewContext.publishedAt} tone="emerald" />
           )}
           {operatingViewSummary && (
             <>
@@ -457,14 +477,51 @@ export function CanvasContextBar({
             </>
           )}
           {viewContext?.kind === "operating-view" && (
-            <span className="rounded-full bg-white/70 px-2.5 py-1 font-semibold text-amber-700 ring-1 ring-amber-100 dark:bg-slate-900/80 dark:text-amber-100 dark:ring-amber-400/20">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10">
               Reporting lines stay formal
             </span>
+          )}
+          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
+            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-slate-950 dark:text-amber-100 dark:ring-amber-400/20">
+              Draft changes
+            </span>
+          )}
+          {viewContext?.kind === "operating-view" && !officialLayoutControls?.dirty && officialLayoutControls?.saved && (
+            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-950 dark:text-emerald-100 dark:ring-emerald-400/20">
+              Published layout{officialLayoutControls.publishedAt ? ` · ${officialLayoutControls.publishedAt}` : ""}
+            </span>
+          )}
+          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
+            <>
+              <button
+                type="button"
+                onClick={officialLayoutControls.onPublish}
+                className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              >
+                Publish view
+              </button>
+              <button
+                type="button"
+                onClick={officialLayoutControls.onDiscard}
+                className="rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:ring-amber-400/20 dark:hover:bg-slate-800"
+              >
+                Discard draft
+              </button>
+            </>
+          )}
+          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && (officialLayoutControls.dirty || officialLayoutControls.saved) && (
+            <button
+              type="button"
+              onClick={officialLayoutControls.onReset}
+              className="rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:ring-amber-400/20 dark:hover:bg-slate-800"
+            >
+              Reset arrangement
+            </button>
           )}
           <button
             type="button"
             onClick={onResetView}
-            className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-slate-800"
+            className="rounded-full bg-slate-950 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
           >
             Reset view
           </button>

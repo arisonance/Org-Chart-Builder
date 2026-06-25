@@ -41,6 +41,7 @@ export type HierarchyNodeData = {
   highlightTokens: string[];
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
+  readOnly?: boolean;
   zoom?: number; // Current zoom level for LOD rendering
   // Hierarchy view: subtree fold chip (People Finder style)
   reportCount?: number; // direct reports
@@ -60,7 +61,7 @@ const UNIT_CONTAINER_STYLE = {
 
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
-    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
+    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, readOnly = false, zoom = 1,
     relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false, unit,
   } = data;
 
@@ -98,7 +99,9 @@ function Component({ data }: { data: HierarchyNodeData }) {
   // reveal them on hover or when the card is selected. Handles stay mounted
   // either way (opacity only) so existing edges keep attaching.
   const connectorClass = `transition-opacity duration-150 ${
-    lodLevel !== "full"
+    readOnly
+      ? "opacity-0"
+      : lodLevel !== "full"
       ? "opacity-0"
       : isSelected
         ? "opacity-100"
@@ -316,52 +319,67 @@ function Component({ data }: { data: HierarchyNodeData }) {
       </ContextMenu.Trigger>
       <ContextMenu.Content className="z-50 min-w-[220px] rounded-xl border border-slate-200 bg-white/95 p-1 text-sm shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
         <MenuLabel text={node.name} />
-        <MenuItem onSelect={() => actions.openEditor(node.id)}>Edit person…</MenuItem>
-        <MenuSeparator />
-        <MenuItem onSelect={() => actions.addDirectReport(node.id)}>Add direct report</MenuItem>
-        <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
-        <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
-        <MenuSeparator />
-        <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
-          Copy settings
+        <MenuItem onSelect={() => actions.openEditor(node.id)}>
+          {readOnly ? "Switch to edit…" : "Edit person…"}
         </MenuItem>
-        <MenuItem onSelect={() => actions.pasteSettings(node.id)}>Paste settings</MenuItem>
-        <MenuSeparator />
-        <ContextMenu.Sub>
-          <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
-            Color tag
-            <ChevronRightIcon className="h-4 w-4" />
-          </ContextMenu.SubTrigger>
-          <ContextMenu.SubContent className="min-w-[200px] rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
-            {["Brand", "Channel", "Department"].map((token) => (
-              <MenuItem key={token} onSelect={() => actions.colorTag(node.id, token)}>
-                {token}
-              </MenuItem>
-            ))}
-          </ContextMenu.SubContent>
-        </ContextMenu.Sub>
-        <MenuItem onSelect={() => actions.convertToGroup(node.id)}>Convert to group node</MenuItem>
-        <MenuSeparator />
+        {readOnly ? (
+          <>
+            <MenuSeparator />
+            <MenuLabel text="Explore mode protects org data and layouts" />
+          </>
+        ) : (
+          <>
+            <MenuSeparator />
+            <MenuItem onSelect={() => actions.addDirectReport(node.id)}>Add direct report</MenuItem>
+            <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
+            <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
+            <MenuSeparator />
+            <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
+              Copy settings
+            </MenuItem>
+            <MenuItem onSelect={() => actions.pasteSettings(node.id)}>Paste settings</MenuItem>
+            <MenuSeparator />
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
+                Color tag
+                <ChevronRightIcon className="h-4 w-4" />
+              </ContextMenu.SubTrigger>
+              <ContextMenu.SubContent className="min-w-[200px] rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
+                {["Brand", "Channel", "Department"].map((token) => (
+                  <MenuItem key={token} onSelect={() => actions.colorTag(node.id, token)}>
+                    {token}
+                  </MenuItem>
+                ))}
+              </ContextMenu.SubContent>
+            </ContextMenu.Sub>
+            <MenuItem onSelect={() => actions.convertToGroup(node.id)}>Convert to group node</MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         <MenuItem onSelect={() => actions.copy(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
           Copy
         </MenuItem>
-        <MenuItem onSelect={() => actions.duplicate(node.id)}>Duplicate</MenuItem>
-        <MenuItem
-          onSelect={() => actions.lockToggle(node.id)}
-          icon={
-            node.locked ? (
-              <LockClosedIcon className="h-3.5 w-3.5" />
-            ) : (
-              <LockOpen1Icon className="h-3.5 w-3.5" />
-            )
-          }
-        >
-          {node.locked ? "Unlock position" : "Lock position"}
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem destructive onSelect={() => actions.delete(node.id)}>
-          Remove person
-        </MenuItem>
+        {!readOnly && (
+          <>
+            <MenuItem onSelect={() => actions.duplicate(node.id)}>Duplicate</MenuItem>
+            <MenuItem
+              onSelect={() => actions.lockToggle(node.id)}
+              icon={
+                node.locked ? (
+                  <LockClosedIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <LockOpen1Icon className="h-3.5 w-3.5" />
+                )
+              }
+            >
+              {node.locked ? "Unlock position" : "Lock position"}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem destructive onSelect={() => actions.delete(node.id)}>
+              Remove person
+            </MenuItem>
+          </>
+        )}
       </ContextMenu.Content>
     </ContextMenu.Root>
   );

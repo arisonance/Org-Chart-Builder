@@ -8,6 +8,7 @@ import { HierarchyCanvas } from '@/components/hierarchy-canvas';
 import { EditorPanel } from '@/components/editor-panel';
 import { LensSwitcher } from '@/components/lens-switcher';
 import { PublishedViewSwitcher } from '@/components/published-view-switcher';
+import { WorkspaceModeSwitcher } from '@/components/workspace-mode-switcher';
 import { ScenarioManager } from '@/components/scenario-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
@@ -33,7 +34,11 @@ export default function Home() {
   const scenarios = useGraphStore((state) => state.scenarios);
   const setComparisonScenario = useGraphStore((state) => state.setComparisonScenario);
   const selection = useGraphStore((state) => state.selection);
-  const clearSelection = useGraphStore((state) => state.clearSelection);
+  const editorPersonId = useGraphStore((state) => state.editorPersonId);
+  const closeEditor = useGraphStore((state) => state.closeEditor);
+  const workspaceMode = useGraphStore((state) => state.workspaceMode);
+  const activeOperatingViewId = useGraphStore((state) => state.activeOperatingViewId);
+  const canEdit = workspaceMode !== 'explore';
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCanvasFullScreen, setCanvasFullScreen] = useState(false);
@@ -154,6 +159,7 @@ export default function Home() {
             </h1>
             <SaveStatus />
             <PublishedViewSwitcher />
+            <WorkspaceModeSwitcher />
             <LensSwitcher activeLens={lens} onChange={handleLensChange} />
             <ScenarioManager />
             <PersonSearch />
@@ -162,14 +168,18 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setShowSpreadsheet(true)}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              disabled={!canEdit}
+              title={canEdit ? "Open the editable spreadsheet view" : "Switch to Edit mode to use the spreadsheet"}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:bg-slate-900 dark:disabled:text-slate-600"
             >
               <MixerHorizontalIcon className="inline h-4 w-4 mr-1" /> Spreadsheet
             </button>
             <button
               type="button"
               onClick={() => setShowAIImport(true)}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+              disabled={!canEdit}
+              title={canEdit ? "Import org changes with AI" : "Switch to Edit mode to import changes"}
+              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >
               <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import
             </button>
@@ -200,6 +210,7 @@ export default function Home() {
                 >
                   <DropdownMenu.Item
                     onSelect={() => autoLayout(lens)}
+                    disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     Auto Layout
@@ -219,6 +230,7 @@ export default function Home() {
                   <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={() => fileInputRef.current?.click()}
+                    disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     <UploadIcon className="h-4 w-4" /> Import JSON
@@ -234,6 +246,7 @@ export default function Home() {
                   <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={resetToDemo}
+                    disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 outline-none hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
                   >
                     <ReloadIcon className="h-4 w-4" /> Reset Demo
@@ -250,6 +263,22 @@ export default function Home() {
             className="hidden"
           />
         </header>
+
+        {workspaceMode === 'publish' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-100">
+            <div>
+              <span className="font-bold">Publish review</span>
+              <span className="ml-2 text-emerald-700 dark:text-emerald-200/80">
+                {activeOperatingViewId
+                  ? "Review this official view before employees rely on it."
+                  : "Choose an official view to review ownership and publish status."}
+              </span>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-950 dark:text-emerald-100 dark:ring-emerald-400/20">
+              Reporting lines remain locked to formal manager data
+            </span>
+          </div>
+        )}
 
         {/* Optional: Search/Filter - Collapsible */}
         <details className="group">
@@ -273,12 +302,12 @@ export default function Home() {
             
             {/* Floating Editor Panel - Only for single selections; multi-select
                 uses the canvas bulk-assign toolbar instead */}
-            {selection.nodeIds.length === 1 && (
+            {canEdit && editorPersonId && selection.nodeIds.length === 1 && selection.nodeIds[0] === editorPersonId && (
               <div className="absolute bottom-3 right-3 top-3 z-30 w-[min(340px,calc(100%_-_1.5rem))] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>
                   <button
-                    onClick={() => clearSelection()}
+                    onClick={() => closeEditor()}
                     className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
                   >
                     <Cross2Icon className="h-4 w-4" />

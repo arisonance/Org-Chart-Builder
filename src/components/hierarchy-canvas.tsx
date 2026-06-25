@@ -94,6 +94,8 @@ type ViewContext = {
   count: number;
   owner?: string;
   description?: string;
+  publishedBy?: string;
+  publishedAt?: string;
   dimension?: LensDimension;
   value?: string;
 };
@@ -161,6 +163,16 @@ type TeamLayoutDraft = {
   dirty: boolean;
 };
 
+type OperatingViewLayout = {
+  published?: Record<string, { x: number; y: number }>;
+  draft?: Record<string, { x: number; y: number }>;
+  publishedAt?: string;
+  publishedBy?: string;
+  draftUpdatedAt?: string;
+};
+
+type OperatingViewLayouts = Record<string, OperatingViewLayout>;
+
 const nodeTypes = {
   hierarchyNode: HierarchyNode,
   laneNode: LaneNode,
@@ -190,6 +202,7 @@ const baseEdgeStyle = {
 
 const MATRIX_WRAP_LAYOUT_STORAGE_KEY = "org-chart-matrix-wrap-layout-v1";
 const TEAM_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-team-view-layouts-v2";
+const OPERATING_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-operating-view-layouts-v1";
 const TEAM_TREE_FULL_DESCENDANT_LIMIT = 80;
 
 const loadTeamViewLayouts = (): TeamViewLayouts => {
@@ -199,6 +212,18 @@ const loadTeamViewLayouts = (): TeamViewLayouts => {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed as TeamViewLayouts : {};
+  } catch {
+    return {};
+  }
+};
+
+const loadOperatingViewLayouts = (): OperatingViewLayouts => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(OPERATING_VIEW_LAYOUTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed as OperatingViewLayouts : {};
   } catch {
     return {};
   }
@@ -299,6 +324,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (state) => state.document.lens_state[state.document.lens]
   );
   const selection = useGraphStore((state) => state.selection);
+  const workspaceMode = useGraphStore((state) => state.workspaceMode);
+  const canEdit = workspaceMode !== "explore";
   const addPerson = useGraphStore((state) => state.addPerson);
   const updateNodePosition = useGraphStore((state) => state.updateNodePosition);
   const addRelationship = useGraphStore((state) => state.addRelationship);
@@ -316,6 +343,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const selectNode = useGraphStore((state) => state.selectNode);
   const selectEdge = useGraphStore((state) => state.selectEdge);
   const clearSelection = useGraphStore((state) => state.clearSelection);
+  const openEditor = useGraphStore((state) => state.openEditor);
   const toggleGrid = useGraphStore((state) => state.toggleGrid);
   const toggleSnap = useGraphStore((state) => state.toggleSnap);
   const cleanupCanvas = useGraphStore((state) => state.cleanupCanvas);
@@ -346,6 +374,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [viewportRescueVisible, setViewportRescueVisible] = useState(false);
   const focusRequest = useGraphStore((state) => state.focusRequest);
   const operatingViewRequest = useGraphStore((state) => state.operatingViewRequest);
+  const activeOperatingViewId = useGraphStore((state) => state.activeOperatingViewId);
   const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
   const [collapsedChannelGroups, setCollapsedChannelGroups] = useState<Set<string>>(new Set());
   const [viewContext, setViewContext] = useState<ViewContext | null>(null);
@@ -406,6 +435,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [teamReturnLens, setTeamReturnLens] = useState<LensId | null>(null);
   const [savedTeamLayouts, setSavedTeamLayouts] = useState<TeamViewLayouts>(() => loadTeamViewLayouts());
   const [teamLayoutDraft, setTeamLayoutDraft] = useState<TeamLayoutDraft | null>(null);
+  const [operatingViewLayouts, setOperatingViewLayouts] = useState<OperatingViewLayouts>(() =>
+    loadOperatingViewLayouts(),
+  );
   // The floating Edit panel overlays the right of the canvas; this lets us
   // measure the canvas and pan a freshly selected card out from under it.
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -424,6 +456,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const viewportSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orientationLoopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orientationLoopRunRef = useRef(0);
+  const handledOperatingViewRequestRef = useRef<number | null>(null);
   const verifyOrientationTargetRef = useRef<(target: OrientationLoopTarget) => boolean>(() => true);
   const viewportShowsRenderedPersonRef = useRef<() => boolean>(() => true);
 
@@ -717,6 +750,21 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const teamLayoutDirty = Boolean(teamTree && teamLayoutDraft?.rootId === teamTree.rootId && teamLayoutDraft.dirty);
   const teamLayoutSaved = Boolean(teamTree && Object.keys(savedTeamLayouts[teamTree.rootId] ?? {}).length > 0);
+  const activeOperatingViewLayout =
+    activeOperatingViewId && viewContext?.kind === "operating-view"
+      ? operatingViewLayouts[activeOperatingViewId] ?? null
+      : null;
+  const operatingViewPositions = useMemo(() => {
+    if (!activeOperatingViewLayout) return null;
+    const published = activeOperatingViewLayout.published ?? {};
+    const draft = workspaceMode !== "explore" ? activeOperatingViewLayout.draft ?? {} : {};
+    return { ...published, ...draft };
+  }, [activeOperatingViewLayout, workspaceMode]);
+  const operatingViewLayoutDirty = Boolean(activeOperatingViewLayout?.draft);
+  const operatingViewLayoutSaved = Boolean(
+    activeOperatingViewLayout?.published &&
+      Object.keys(activeOperatingViewLayout.published).length > 0,
+  );
 
   const topOverviewRootId = useMemo(() => {
     const roots = personNodes.filter((person) => !parentMap[person.id]);
@@ -839,6 +887,66 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     showToast("Reset this org view to auto layout", { undoable: false });
   }, [persistTeamLayouts, savedTeamLayouts, showToast, teamTree]);
 
+  const persistOperatingViewLayouts = useCallback((layouts: OperatingViewLayouts) => {
+    try {
+      window.localStorage.setItem(OPERATING_VIEW_LAYOUTS_STORAGE_KEY, JSON.stringify(layouts));
+    } catch {
+      /* Storage may be unavailable; keep the in-session layout state. */
+    }
+  }, []);
+
+  const publishOperatingViewLayout = useCallback(() => {
+    if (!activeOperatingViewId || viewContext?.kind !== "operating-view") return;
+    const focusIds = filters?.focusIds ?? [];
+    const existing = operatingViewLayouts[activeOperatingViewId] ?? {};
+    const source = existing.draft ?? existing.published;
+    if (!source) return;
+    const published: Record<string, { x: number; y: number }> = {};
+    focusIds.forEach((id) => {
+      if (source[id]) published[id] = source[id];
+    });
+    const next = {
+      ...operatingViewLayouts,
+      [activeOperatingViewId]: {
+        ...existing,
+        published,
+        draft: undefined,
+        draftUpdatedAt: undefined,
+        publishedAt: new Date().toISOString().slice(0, 10),
+        publishedBy: viewContext.owner ?? viewContext.publishedBy ?? "View owner",
+      },
+    };
+    setOperatingViewLayouts(next);
+    persistOperatingViewLayouts(next);
+    showToast(`Published ${viewContext.label} layout`, { undoable: false });
+  }, [activeOperatingViewId, filters?.focusIds, operatingViewLayouts, persistOperatingViewLayouts, showToast, viewContext]);
+
+  const discardOperatingViewDraft = useCallback(() => {
+    if (!activeOperatingViewId || viewContext?.kind !== "operating-view") return;
+    const existing = operatingViewLayouts[activeOperatingViewId];
+    if (!existing?.draft) return;
+    const next = {
+      ...operatingViewLayouts,
+      [activeOperatingViewId]: {
+        ...existing,
+        draft: undefined,
+        draftUpdatedAt: undefined,
+      },
+    };
+    setOperatingViewLayouts(next);
+    persistOperatingViewLayouts(next);
+    showToast(`Discarded ${viewContext.label} draft`, { undoable: false });
+  }, [activeOperatingViewId, operatingViewLayouts, persistOperatingViewLayouts, showToast, viewContext]);
+
+  const resetOperatingViewLayout = useCallback(() => {
+    if (!activeOperatingViewId || viewContext?.kind !== "operating-view") return;
+    const next = { ...operatingViewLayouts };
+    delete next[activeOperatingViewId];
+    setOperatingViewLayouts(next);
+    persistOperatingViewLayouts(next);
+    showToast(`Reset ${viewContext.label} to auto layout`, { undoable: false });
+  }, [activeOperatingViewId, operatingViewLayouts, persistOperatingViewLayouts, showToast, viewContext]);
+
   const openSharedServiceGroup = useCallback(
     (memberIds: string[], label: string) => {
       if (memberIds.length === 0) return;
@@ -899,13 +1007,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const selectPersonFromCard = useCallback(
     (id: string, additive?: boolean) => {
-      if (additive || teamRootId === id || (childMap[id]?.length ?? 0) === 0) {
-        selectNode(id, additive);
-        return;
-      }
-      openTeamTree(id);
+      selectNode(id, additive);
     },
-    [childMap, openTeamTree, selectNode, teamRootId],
+    [selectNode],
   );
 
   const framePositionMap = useCallback(
@@ -1169,7 +1273,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       dimension: LensDimension,
       key: string,
       label = key,
-      context?: Pick<ViewContext, "kind" | "owner" | "description">,
+      context?: Pick<ViewContext, "kind" | "owner" | "description" | "publishedBy" | "publishedAt">,
     ) => {
       const members = personNodes.filter((person) =>
         getAssignments(person, dimension).includes(key),
@@ -1186,6 +1290,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         count: members.length,
         owner: context?.owner,
         description: context?.description,
+        publishedBy: context?.publishedBy,
+        publishedAt: context?.publishedAt,
         dimension,
         value: key,
       });
@@ -1224,6 +1330,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         kind: "operating-view",
         owner: view.owner,
         description: view.description,
+        publishedBy: view.publishedBy,
+        publishedAt: view.publishedAt,
       });
     },
     [openOperatingView, openSharedServices, resetView, showOrientationOverview],
@@ -1231,6 +1339,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   useEffect(() => {
     if (!operatingViewRequest) return;
+    if (handledOperatingViewRequestRef.current === operatingViewRequest.nonce) return;
+    handledOperatingViewRequestRef.current = operatingViewRequest.nonce;
     const view = PUBLISHED_OPERATING_VIEW_BY_ID[operatingViewRequest.id];
     if (!view) return;
     openPublishedOperatingView(view);
@@ -2001,6 +2111,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 : calculateLayout(filteredNodes, scopedEdges);
             })()
         : basePositions;
+    const displayPositions =
+      viewContext?.kind === "operating-view" && operatingViewPositions
+        ? { ...positions, ...operatingViewPositions }
+        : positions;
 
     if (showSharedServiceOverview) {
       const pods = groupSharedServicePods(filteredNodes);
@@ -2046,7 +2160,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     const personFlowNodes: Node[] = filteredNodes.map((node) => {
       const position =
-        positions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
+        displayPositions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
       lastRenderedPositions.current[node.id] = position;
       const accent = getAccentColor(node, lens);
       
@@ -2059,6 +2173,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         isSelected: selection.nodeIds.includes(node.id),
         highlightTokens: highlightTokens.get(node.id) ?? [],
         zoom: lodZoom, // Pass zoom for LOD rendering
+        readOnly: !canEdit,
         reportCount: lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0,
         hiddenCount: descendantCounts[node.id] ?? 0,
         isCollapsed: collapsedIds.includes(node.id),
@@ -2110,7 +2225,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           delete: removeNode,
           lockToggle: toggleNodeLock,
           colorTag: addTagToNode,
-          openEditor: (nodeId) => selectNode(nodeId),
+          openEditor: (nodeId) => openEditor(nodeId),
           copySettings: (nodeId) => {
             copyPersonSettings(nodeId);
             showToast("Settings copied — right-click another person to paste");
@@ -2140,7 +2255,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         type: "hierarchyNode",
         position,
         data,
-        draggable: !node.locked,
+        draggable: canEdit && !node.locked,
         selected: selection.nodeIds.includes(node.id),
         // Only carry an opacity/transition when focus mode is actually dimming
         // cards. Leaving a transition on all 250 nodes promotes each to its own
@@ -2185,12 +2300,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lodZoom,
     addPerson,
     addRelationship,
+    canEdit,
     duplicateNodes,
     openSharedServiceGroup,
     copyNodesById,
     removeNode,
     toggleNodeLock,
     addTagToNode,
+    openEditor,
     selectNode,
     selectPersonFromCard,
     setSelection,
@@ -2202,6 +2319,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     toggleChannelGroup,
     nodesData,
     activeTeamPositions,
+    operatingViewPositions,
     filters?.focusIds,
     filters?.hiddenIds,
     viewContext,
@@ -2581,6 +2699,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // and in matrix views reassign each person to the lane they were dropped into
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
+      if (!canEdit) return;
       const moved = draggedNodes?.length ? draggedNodes : [node];
       if (teamTree) {
         setTeamLayoutDraft((current) => {
@@ -2594,6 +2713,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             }
           });
           return { rootId: teamTree.rootId, positions, dirty: true };
+        });
+        return;
+      }
+
+      if (activeOperatingViewId && viewContext?.kind === "operating-view") {
+        const focusIds = new Set(filters?.focusIds ?? []);
+        setOperatingViewLayouts((current) => {
+          const existing = current[activeOperatingViewId] ?? {};
+          const draft = { ...(existing.draft ?? existing.published ?? {}) };
+          moved.forEach((item) => {
+            if (focusIds.has(item.id)) {
+              draft[item.id] = item.position;
+            }
+          });
+          const next = {
+            ...current,
+            [activeOperatingViewId]: {
+              ...existing,
+              draft,
+              draftUpdatedAt: new Date().toISOString(),
+            },
+          };
+          persistOperatingViewLayouts(next);
+          return next;
         });
         return;
       }
@@ -2631,7 +2774,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         showToast(`Moved ${reassigned.length} people → ${reassigned[0].lane}`);
       }
     },
-    [teamTree, savedTeamLayouts, updateNodePosition, laneXRanges, personNodes, reassignToLane, showToast],
+    [
+      activeOperatingViewId,
+      canEdit,
+      filters?.focusIds,
+      persistOperatingViewLayouts,
+      teamTree,
+      savedTeamLayouts,
+      updateNodePosition,
+      laneXRanges,
+      personNodes,
+      reassignToLane,
+      showToast,
+      viewContext?.kind,
+    ],
   );
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
@@ -2667,6 +2823,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const handleConnect = useCallback(
     (connection: Connection) => {
+      if (!canEdit) {
+        showToast("Switch to Edit mode to change reporting lines.");
+        return;
+      }
       if (!connection.source || !connection.target) return;
       const type = deduceRelationshipType(connection);
       if (!type) return;
@@ -2680,18 +2840,26 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       addRelationship(connection.source, connection.target, type);
       setSelection({ edgeIds: [], nodeIds: [connection.target] });
     },
-    [addRelationship, childMap, setSelection, showToast],
+    [addRelationship, canEdit, childMap, setSelection, showToast],
   );
 
   const handleEdgesDelete = useCallback(
     (deleted: Edge[]) => {
+      if (!canEdit) {
+        showToast("Switch to Edit mode to remove relationships.");
+        return;
+      }
       deleted.forEach((edge) => removeRelationship(edge.id));
     },
-    [removeRelationship],
+    [canEdit, removeRelationship, showToast],
   );
 
   const handleNodesDelete = useCallback(
     (deleted: Node[]) => {
+      if (!canEdit) {
+        showToast("Switch to Edit mode to remove people.");
+        return;
+      }
       const people = deleted.filter((node) => node.id.startsWith("person-"));
       deleted.forEach((node) => removeNode(node.id));
       if (people.length === 1) {
@@ -2701,7 +2869,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         showToast(`Deleted ${people.length} people`);
       }
     },
-    [removeNode, personNodes, showToast],
+    [canEdit, removeNode, personNodes, showToast],
   );
 
   const handlePaneClick = useCallback(() => {
@@ -2721,16 +2889,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       event.preventDefault();
       event.stopPropagation();
       if (!isPersonFlowNodeId(node.id)) return;
-      selectNode(node.id);
+      openEditor(node.id);
     },
-    [selectNode],
+    [openEditor],
   );
 
   const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.preventDefault();
+    if (!canEdit) {
+      showToast("Switch to Edit mode to change relationships.");
+      return;
+    }
     selectEdge(edge.id);
     setEdgeMenu({ edge, position: { x: event.clientX, y: event.clientY } });
-  }, [selectEdge]);
+  }, [canEdit, selectEdge, showToast]);
 
   const handleEdgeMenuAction = useCallback(
     (action: "manager" | "sponsor" | "dotted" | "delete") => {
@@ -2809,8 +2981,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // Cmd/Ctrl + D to duplicate
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
-        if (selection.nodeIds.length) {
+        if (canEdit && selection.nodeIds.length) {
           duplicateNodes(selection.nodeIds);
+        } else if (!canEdit) {
+          showToast("Switch to Edit mode to duplicate people.");
         }
         return;
       }
@@ -2837,6 +3011,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // N to add new person at center
       if (event.key.toLowerCase() === "n" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
+        if (!canEdit) {
+          showToast("Switch to Edit mode to add people.");
+          return;
+        }
         const flowPoint = rfInstance
           ? rfInstance.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
           : { x: 400, y: 300 };
@@ -2851,6 +3029,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // R to add direct report to selected node
       if (event.key.toLowerCase() === "r" && selection.nodeIds.length === 1) {
         event.preventDefault();
+        if (!canEdit) {
+          showToast("Switch to Edit mode to add reports.");
+          return;
+        }
         const selectedNode = personNodes.find((n) => n.id === selection.nodeIds[0]);
         if (selectedNode) {
           const positions = lensLayout?.positions ?? {};
@@ -2869,6 +3051,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // M to add manager to selected node
       if (event.key.toLowerCase() === "m" && selection.nodeIds.length === 1) {
         event.preventDefault();
+        if (!canEdit) {
+          showToast("Switch to Edit mode to add managers.");
+          return;
+        }
         const selectedNode = personNodes.find((n) => n.id === selection.nodeIds[0]);
         if (selectedNode) {
           const positions = lensLayout?.positions ?? {};
@@ -2889,6 +3075,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [
       selection.nodeIds,
+      canEdit,
       duplicateNodes,
       rfInstance,
       addPerson,
@@ -2899,6 +3086,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       undo,
       redo,
       fitToView,
+      showToast,
     ],
   );
 
@@ -3017,8 +3205,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 viewportSettleTimerRef.current = null;
               }, 80);
             }}
-            nodesDraggable
-            nodesConnectable
+            nodesDraggable={canEdit}
+            nodesConnectable={canEdit}
             elementsSelectable
             selectNodesOnDrag={false}
             elevateEdgesOnSelect={false}
@@ -3058,7 +3246,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {lens !== "hierarchy" && personNodes.length > 0 && (
               <div className="motion-stage-in absolute left-6 top-6 z-30 flex flex-wrap items-center gap-2">
                 <div
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10"
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200"
                   aria-label="Relationship display"
                 >
                   {([
@@ -3075,8 +3263,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                       className={[
                         "rounded-full px-3 py-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
                         matrixRelationshipMode === mode
-                          ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
-                          : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10",
+                          ? "bg-slate-950 text-white shadow-sm"
+                          : "text-slate-500 hover:bg-slate-100 dark:text-slate-600 dark:hover:bg-slate-100",
                       ].join(" ")}
                     >
                       {label}
@@ -3091,8 +3279,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   className={[
                     "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400",
                     mirrorLanes
-                      ? "border-sky-300 bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100 dark:border-sky-400/30 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20"
-                      : "border-slate-200 bg-white/90 text-slate-600 ring-slate-200 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10",
+                      ? "border-sky-300 bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100 dark:border-sky-300 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-200"
+                      : "border-slate-200 bg-white/95 text-slate-600 ring-slate-100 hover:bg-white dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200",
                   ].join(" ")}
                   title="Show ghost cards for people in every lane they're assigned to, not just their primary lane"
                 >
@@ -3109,24 +3297,24 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {/* Hierarchy view: global fold control so the whole org can collapse to
                 its top tiers or expand back out in one click */}
             {lens === "hierarchy" && personNodes.length > 0 && (
-              <div className="motion-stage-in absolute left-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+              <div className="motion-stage-in absolute left-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/95 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200">
                 <button
                   type="button"
                   onClick={() => addCollapsed(collapseTargets.top)}
                   title="Fold every team down to the top levels"
                   aria-label="Collapse all teams to the top levels"
-                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-100"
                 >
                   Collapse all
                 </button>
-                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <span className="h-4 w-px bg-slate-200 dark:bg-slate-300" />
                 <button
                   type="button"
                   onClick={() => expandAll()}
                   disabled={collapsedIds.length === 0}
                   title="Show every report"
                   aria-label="Expand all teams to show every report"
-                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40 dark:hover:bg-white/10"
+                  className="rounded-full px-3 py-1 transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40 dark:hover:bg-slate-100"
                 >
                   Expand all
                 </button>
@@ -3135,18 +3323,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {/* Unified top-right tools dock: one labeled home for the canvas
                 actions instead of buttons scattered around every corner */}
             {personNodes.length > 0 && (
-              <div className="motion-stage-in absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/90 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-white/10">
+              <div className="motion-stage-in absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/95 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200">
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
                   title="Shortcuts & guide (?)"
                   aria-label="Open keyboard shortcuts and guide"
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-slate-100 dark:hover:bg-slate-100"
                 >
                   <QuestionMarkCircledIcon className="h-3.5 w-3.5" aria-hidden />
                   Help
                 </button>
-                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <span className="h-4 w-px bg-slate-200 dark:bg-slate-300" />
                 <button
                   type="button"
                   onClick={() => setHealthOpen((v) => !v)}
@@ -3157,7 +3345,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
                     healthOpen
                       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
-                      : "hover:bg-slate-100 dark:hover:bg-white/10",
+                      : "hover:bg-slate-100 dark:hover:bg-slate-100",
                   ].join(" ")}
                 >
                   <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
@@ -3174,8 +3362,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                     truthAuditVisible
                       ? "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-100"
                       : truthAuditIssues.length > 0
-                        ? "text-amber-700 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-500/10"
-                        : "hover:bg-slate-100 dark:hover:bg-white/10",
+                        ? "text-amber-700 hover:bg-amber-50 dark:text-amber-700 dark:hover:bg-amber-50"
+                        : "hover:bg-slate-100 dark:hover:bg-slate-100",
                   ].join(" ")}
                 >
                   <span
@@ -3186,7 +3374,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                     aria-hidden
                   />
                   Truth Audit
-                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950/70 dark:text-slate-200 dark:ring-white/10">
+                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200 dark:bg-white dark:text-slate-600 dark:ring-slate-200">
                     {truthAuditIssues.length}
                   </span>
                 </button>
@@ -3195,11 +3383,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   onClick={openSharedServices}
                   title="See shared services grouped by support role"
                   aria-label="Open shared services view"
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-500/10"
+                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-700 dark:hover:bg-violet-50"
                 >
                   <span aria-hidden>🔗</span> Shared Services
                 </button>
-                <span className="h-4 w-px bg-slate-200 dark:bg-white/10" />
+                <span className="h-4 w-px bg-slate-200 dark:bg-slate-300" />
                 <CleanupButton
                   onCleanup={(mode) => {
                     cleanupCanvas(lens, mode);
@@ -3400,7 +3588,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           )}
 
           {/* Bulk assignment toolbar for multi-selections */}
-          {selection.nodeIds.length > 1 && (
+          {canEdit && selection.nodeIds.length > 1 && (
             <BulkAssignToolbar
               count={selection.nodeIds.length}
               onAssign={(dimension, laneKey) => {
@@ -3428,6 +3616,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                     }
                   : undefined
               }
+              officialLayoutControls={
+                viewContext?.kind === "operating-view"
+                  ? {
+                      dirty: operatingViewLayoutDirty,
+                      saved: operatingViewLayoutSaved,
+                      canManage: workspaceMode !== "explore",
+                      publishedAt: activeOperatingViewLayout?.publishedAt ?? viewContext.publishedAt,
+                      publishedBy: activeOperatingViewLayout?.publishedBy ?? viewContext.publishedBy,
+                      onPublish: publishOperatingViewLayout,
+                      onDiscard: discardOperatingViewDraft,
+                      onReset: resetOperatingViewLayout,
+                    }
+                  : undefined
+              }
               viewContext={viewContext}
             />
           )}
@@ -3445,6 +3647,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       <CanvasContextMenu
         open={canvasMenu}
         lens={lens}
+        canEdit={canEdit}
         onAddPerson={(point) => {
           const flowPoint = flowPositionFromClient(point);
           setQuickAddDialog({
@@ -3485,6 +3688,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 const CanvasContextMenu = ({
   open,
   lens,
+  canEdit,
   onAddPerson,
   onAddFromTemplate,
   onPaste,
@@ -3496,6 +3700,7 @@ const CanvasContextMenu = ({
 }: {
   open: CanvasMenuState | null;
   lens: LensId;
+  canEdit: boolean;
   onAddPerson: (point: { x: number; y: number }) => void;
   onAddFromTemplate: (template: RoleTemplate, point: { x: number; y: number }) => void;
   onPaste: () => void;
@@ -3511,34 +3716,49 @@ const CanvasContextMenu = ({
         <ContextMenu.Label className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           {LENS_BY_ID[lens].label}
         </ContextMenu.Label>
-        <MenuItem onSelect={() => open && onAddPerson({ x: open.clientX, y: open.clientY })}>
-          Add person here
-        </MenuItem>
-        <ContextMenu.Sub>
-          <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
-            <span>Add from template</span>
-            <span className="text-xs">▶</span>
-          </ContextMenu.SubTrigger>
-          <ContextMenu.SubContent className="min-w-[220px] rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
-            {ROLE_TEMPLATES.map((template) => (
-              <MenuItem
-                key={template.id}
-                onSelect={() => open && onAddFromTemplate(template, { x: open.clientX, y: open.clientY })}
-              >
-                <span className="mr-2">{template.icon}</span>
-                {template.label}
-              </MenuItem>
-            ))}
-          </ContextMenu.SubContent>
-        </ContextMenu.Sub>
-        <MenuSeparator />
-        <MenuItem onSelect={onPaste}>Paste person</MenuItem>
+        {canEdit ? (
+          <>
+            <MenuItem onSelect={() => open && onAddPerson({ x: open.clientX, y: open.clientY })}>
+              Add person here
+            </MenuItem>
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
+                <span>Add from template</span>
+                <span className="text-xs">▶</span>
+              </ContextMenu.SubTrigger>
+              <ContextMenu.SubContent className="min-w-[220px] rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
+                {ROLE_TEMPLATES.map((template) => (
+                  <MenuItem
+                    key={template.id}
+                    onSelect={() => open && onAddFromTemplate(template, { x: open.clientX, y: open.clientY })}
+                  >
+                    <span className="mr-2">{template.icon}</span>
+                    {template.label}
+                  </MenuItem>
+                ))}
+              </ContextMenu.SubContent>
+            </ContextMenu.Sub>
+            <MenuSeparator />
+            <MenuItem onSelect={onPaste}>Paste person</MenuItem>
+          </>
+        ) : (
+          <>
+            <ContextMenu.Label className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Explore mode protects this map
+            </ContextMenu.Label>
+            <MenuSeparator />
+          </>
+        )}
         <MenuItem onSelect={onSelectAll}>Select all</MenuItem>
         <MenuItem onSelect={onDeselect}>Deselect</MenuItem>
         <MenuItem onSelect={onZoomFit}>Zoom to fit</MenuItem>
-        <MenuSeparator />
-        <MenuItem onSelect={onToggleGrid}>Toggle grid</MenuItem>
-        <MenuItem onSelect={onToggleSnap}>Toggle snap-to-grid</MenuItem>
+        {canEdit && (
+          <>
+            <MenuSeparator />
+            <MenuItem onSelect={onToggleGrid}>Toggle grid</MenuItem>
+            <MenuItem onSelect={onToggleSnap}>Toggle snap-to-grid</MenuItem>
+          </>
+        )}
         <MenuSeparator />
         <MenuItem onSelect={onZoomFit}>Reset view</MenuItem>
       </ContextMenu.Content>
@@ -3649,7 +3869,7 @@ const CleanupButton = ({
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:text-slate-300 dark:hover:bg-white/10"
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:text-slate-700 dark:hover:bg-slate-100"
           title="Clean up canvas layout"
           aria-label="Clean up canvas layout"
         >

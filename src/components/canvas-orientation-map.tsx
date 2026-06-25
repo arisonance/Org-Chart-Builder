@@ -40,22 +40,22 @@ export function CanvasOrientationMap({
 
   return (
     <div className="pointer-events-none absolute left-1/2 top-5 z-30 w-[min(46rem,calc(100vw-2rem))] -translate-x-1/2">
-      <div className="motion-context-bar pointer-events-auto relative rounded-full border border-slate-200 bg-white/92 px-2.5 py-1.5 shadow-md ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:ring-white/10">
+      <div
+        className="motion-context-bar pointer-events-auto relative rounded-full border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-md ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:ring-slate-200"
+        title={detail}
+      >
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-900 dark:text-white">
-              View map
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-500">
+              Map
             </span>
-            <span className="shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-200">
+            <span className="shrink-0 text-xs font-semibold text-slate-800 dark:text-slate-800">
               {title}
             </span>
-            <span className="hidden min-w-0 max-w-[18rem] truncate text-[11px] text-slate-400 2xl:block">
-              {detail}
-            </span>
-            {stats.slice(0, 3).map((stat) => (
+            {stats.slice(0, 2).map((stat) => (
               <span
                 key={stat}
-                className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 md:inline-flex dark:bg-white/10 dark:text-slate-300"
+                className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 lg:inline-flex dark:bg-slate-100 dark:text-slate-500"
               >
                 {stat}
               </span>
@@ -67,7 +67,7 @@ export function CanvasOrientationMap({
                 type="button"
                 onClick={() => setGroupsOpen((open) => !open)}
                 aria-expanded={groupsOpen}
-                className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-800"
+                className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50"
               >
                 Groups
               </button>
@@ -80,8 +80,8 @@ export function CanvasOrientationMap({
                 className={[
                   "rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
                   action.tone === "dark"
-                    ? "bg-slate-900 text-white hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-800",
+                    ? "bg-slate-950 text-white hover:bg-slate-700"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50",
                 ].join(" ")}
               >
                 {action.label}
@@ -90,15 +90,15 @@ export function CanvasOrientationMap({
           </div>
         </div>
         {groupsOpen && chips.length > 0 && (
-          <div className="absolute right-0 top-[calc(100%+0.5rem)] w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white/96 p-2 shadow-xl ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-950/95 dark:ring-white/10">
+          <div className="absolute right-0 top-[calc(100%+0.5rem)] w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white/96 p-2 shadow-xl ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/95 dark:ring-slate-200">
             <div className="mb-1 flex items-center justify-between gap-2 px-1">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-500">
                 Focus a group
               </span>
               <button
                 type="button"
                 onClick={() => setGroupsOpen(false)}
-                className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-100 dark:hover:text-slate-600"
               >
                 Close
               </button>
@@ -114,7 +114,7 @@ export function CanvasOrientationMap({
                   />
                   <span className="truncate">{chip.label}</span>
                   {chip.count !== undefined && (
-                    <span className="rounded-full bg-white/70 px-1.5 py-0 text-[9px] font-bold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950/60 dark:text-slate-300 dark:ring-white/10">
+                    <span className="rounded-full bg-white/70 px-1.5 py-0 text-[9px] font-bold text-slate-500 ring-1 ring-slate-200 dark:bg-white dark:text-slate-500 dark:ring-slate-200">
                       {chip.count}
                     </span>
                   )}
@@ -126,7 +126,7 @@ export function CanvasOrientationMap({
                 </>
               );
               const className =
-                "inline-flex max-w-[14rem] items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200 transition dark:bg-white/10 dark:text-slate-200 dark:ring-white/10";
+                "inline-flex max-w-[14rem] items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200 transition dark:bg-slate-50 dark:text-slate-700 dark:ring-slate-200";
               if (!chip.onClick) {
                 return (
                   <span key={chip.id} className={className}>
@@ -143,7 +143,7 @@ export function CanvasOrientationMap({
                     setGroupsOpen(false);
                   }}
                   title={chip.detail ? `${chip.label}: ${chip.detail}` : chip.label}
-                  className={`${className} hover:bg-white hover:shadow-sm dark:hover:bg-white/15`}
+                  className={`${className} hover:bg-white hover:shadow-sm dark:hover:bg-white`}
                 >
                   {content}
                 </button>
