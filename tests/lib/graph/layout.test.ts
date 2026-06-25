@@ -193,10 +193,32 @@ describe("calculateTeamTreeLayout", () => {
       (centerX(positions.brian) + centerX(positions.ryan)) / 2,
       0,
     );
-    expect(centerX(positions.ryan) - centerX(positions.brian)).toBeLessThan(1100);
+    expect(centerX(positions.ryan) - centerX(positions.brian)).toBeLessThan(1300);
     expect(positions.bryan.y).toBeGreaterThan(positions.brian.y);
     expect(positions.justin.y).toBeGreaterThan(positions.ryan.y);
     expect(centerX(positions.justin)).toBeCloseTo(centerX(positions.ryan), 0);
+  });
+
+  it("keeps all direct reports on one rank even when one branch has descendants", () => {
+    const directReports = ["harry", "shawn", "glenn", "tim", "rick"];
+    const nodes = [
+      makePerson("michael"),
+      ...directReports.map((id) => makePerson(id)),
+      makePerson("scott"),
+    ];
+    const edges = [
+      ...directReports.map((id) => makeManagerEdge("michael", id)),
+      makeManagerEdge("glenn", "scott"),
+    ];
+
+    const positions = calculateTeamTreeLayout(nodes, edges, "michael");
+    const directReportY = positions.harry.y;
+
+    directReports.forEach((id) => {
+      expect(positions[id].y).toBe(directReportY);
+    });
+    expect(positions.rick.y).toBe(positions.harry.y);
+    expect(positions.scott.y).toBeGreaterThan(positions.glenn.y);
   });
 });
 

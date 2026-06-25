@@ -25,12 +25,19 @@ export function CanvasContextBar({
   onOpenTeamTree,
   teamTreeRootId,
   onExitTeamTree,
+  teamLayoutControls,
   viewContext,
 }: {
   onResetView: () => void;
   onOpenTeamTree: (nodeId: string) => void;
   teamTreeRootId: string | null;
   onExitTeamTree: () => void;
+  teamLayoutControls?: {
+    dirty: boolean;
+    saved: boolean;
+    onSave: () => void;
+    onReset: () => void;
+  };
   viewContext: ViewContext | null;
 }) {
   const lens = useGraphStore((s) => s.document.lens);
@@ -171,7 +178,7 @@ export function CanvasContextBar({
     viewContext?.kind === "support-pod"
       ? "Support pod"
       : viewContext?.kind === "shared-services"
-        ? "Support groups"
+        ? "Shared services"
         : viewContext?.kind === "unit"
           ? "Unit view"
           : viewContext?.kind === "lens-group"
@@ -298,7 +305,7 @@ export function CanvasContextBar({
           )}
           {matrixRelationships.length > 0 && (
             <TruthPill
-              label="Matrix"
+              label="Support"
               value={`${matrixRelationships.length} dotted/sponsor`}
               tone="amber"
             />
@@ -366,6 +373,34 @@ export function CanvasContextBar({
           <span className="text-emerald-700 dark:text-emerald-200/85">
             Viewing organization for {teamTreeRoot.name}
           </span>
+          {teamLayoutControls?.dirty && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/20">
+              Unsaved layout
+            </span>
+          )}
+          {!teamLayoutControls?.dirty && teamLayoutControls?.saved && (
+            <span className="rounded-full bg-white/80 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:ring-emerald-400/20">
+              Saved layout
+            </span>
+          )}
+          {teamLayoutControls?.dirty && (
+            <button
+              type="button"
+              onClick={teamLayoutControls.onSave}
+              className="rounded-full bg-slate-900 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            >
+              Save view
+            </button>
+          )}
+          {(teamLayoutControls?.dirty || teamLayoutControls?.saved) && (
+            <button
+              type="button"
+              onClick={teamLayoutControls.onReset}
+              className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
+            >
+              Reset arrangement
+            </button>
+          )}
           <button
             type="button"
             onClick={onExitTeamTree}

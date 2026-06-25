@@ -4,16 +4,28 @@ import { memo, useMemo } from 'react';
 import { BaseEdge, EdgeLabelRenderer, EdgeProps, getSmoothStepPath } from '@xyflow/react';
 import { RELATIONSHIP_COLORS } from '@/lib/theme/palette';
 import type { GraphEdge } from '@/lib/schema/types';
+import { buildManagerRoute } from '@/lib/graph/edge-routing';
 
 type EnhancedEdgeData = GraphEdge & {
   relationshipLabel?: string;
   showLabel?: boolean;
+  routeLane?: number;
+  routeBusY?: number;
+  sourceRect?: CardRect;
+  targetRect?: CardRect;
   truthIssue?: {
     level: "warning" | "danger";
     message: string;
     blockerNames?: string[];
   };
   showTruthIssue?: boolean;
+};
+
+type CardRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 function ManagerEdgeComponent({
@@ -32,29 +44,22 @@ function ManagerEdgeComponent({
   const edgeData = data as EnhancedEdgeData | undefined;
   const truthIssue = edgeData?.showTruthIssue ? edgeData.truthIssue : undefined;
   const truthColor = truthIssue?.level === "danger" ? "#ef4444" : "#f59e0b";
-  const longWrappedDrop = targetY - sourceY > 260 && Math.abs(targetX - sourceX) < 320;
   const [edgePath, labelX, labelY] = useMemo(
     () => {
-      if (longWrappedDrop) {
-        const directionSeed = id
-          .split("")
-          .reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const sameColumn = Math.abs(targetX - sourceX) < 36;
-        const direction = sameColumn
-          ? directionSeed % 2 === 0
-            ? 1
-            : -1
-          : targetX > sourceX
-            ? 1
-            : -1;
-        const laneX = targetX + direction * 178;
-        const sourceExitY = sourceY + 34;
-        const targetEntryY = targetY - 38;
-        return [
-          `M ${sourceX},${sourceY} L ${sourceX},${sourceExitY} L ${laneX},${sourceExitY} L ${laneX},${targetEntryY} L ${targetX},${targetEntryY} L ${targetX},${targetY}`,
-          laneX,
-          (sourceExitY + targetEntryY) / 2,
-        ] as const;
+      if (targetY > sourceY) {
+        const route = buildManagerRoute({
+          id,
+          sourceId: edgeData?.source,
+          sourceX,
+          sourceY,
+          targetX,
+          targetY,
+          routeLane: edgeData?.routeLane,
+          routeBusY: edgeData?.routeBusY,
+          sourceRect: edgeData?.sourceRect,
+          targetRect: edgeData?.targetRect,
+        });
+        return [route.path, route.labelX, route.labelY] as const;
       }
       return getSmoothStepPath({
         sourceX,
@@ -65,7 +70,7 @@ function ManagerEdgeComponent({
         targetPosition,
       });
     },
-    [id, longWrappedDrop, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+    [edgeData?.routeBusY, edgeData?.routeLane, edgeData?.source, edgeData?.sourceRect, edgeData?.targetRect, id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
   );
 
   const edgeStyle = useMemo(

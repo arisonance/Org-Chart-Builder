@@ -268,6 +268,35 @@ const withHistory = (
   );
 };
 
+const wouldCreateManagerCycle = (
+  edges: GraphEdge[],
+  sourceId: string,
+  targetId: string,
+) => {
+  const childrenByManager = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (edge.metadata.type !== "manager") return;
+    // Adding a new manager for the target replaces its current manager, so
+    // ignore existing inbound manager edges while testing the proposed shape.
+    if (edge.target === targetId) return;
+    const children = childrenByManager.get(edge.source) ?? [];
+    children.push(edge.target);
+    childrenByManager.set(edge.source, children);
+  });
+
+  const visited = new Set<string>();
+  const stack = [targetId];
+  while (stack.length > 0) {
+    const id = stack.pop();
+    if (!id || visited.has(id)) continue;
+    visited.add(id);
+    const children = childrenByManager.get(id) ?? [];
+    if (children.includes(sourceId)) return true;
+    stack.push(...children);
+  }
+  return false;
+};
+
 const applyLaneAssignment = (
   state: GraphStoreState,
   nodeId: string,
@@ -605,6 +634,32 @@ export const useGraphStore = create<GraphStore>()(
       clearPersonSettings: () => set({ settingsClipboard: null }),
       addRelationship: (sourceId, targetId, type, meta) => {
         if (sourceId === targetId) return null;
+        const current = get();
+        const nodeIds = new Set(current.document.nodes.map((node) => node.id));
+        if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) return null;
+
+        const existing = current.document.edges.find(
+          (edge) =>
+            edge.source === sourceId &&
+            edge.target === targetId &&
+            edge.metadata.type === type,
+        );
+        if (existing) {
+          set(
+            produce((state: GraphStoreState) => {
+              state.selection.edgeIds = [existing.id];
+            }),
+          );
+          return existing.id;
+        }
+
+        if (
+          type === "manager" &&
+          wouldCreateManagerCycle(current.document.edges, sourceId, targetId)
+        ) {
+          return null;
+        }
+
         const id = `edge-${type}-${nanoid(8)}`;
         withHistory(set, get, (state) => {
           const timestamp = now();
@@ -623,6 +678,11 @@ export const useGraphStore = create<GraphStore>()(
             createdAt: timestamp,
             updatedAt: timestamp,
           };
+          if (type === "manager") {
+            state.document.edges = state.document.edges.filter(
+              (item) => !(item.metadata.type === "manager" && item.target === targetId),
+            );
+          }
           state.document.edges.push(edge);
           state.selection.edgeIds = [id];
         });

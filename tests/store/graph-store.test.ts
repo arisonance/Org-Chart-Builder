@@ -73,6 +73,13 @@ describe("addRelationship", () => {
     expect(useGraphStore.getState().document.edges).toHaveLength(0);
   });
 
+  it("rejects relationships whose endpoints are missing", () => {
+    const a = addAlice();
+    expect(useGraphStore.getState().addRelationship(a, "person-missing", "manager")).toBeNull();
+    expect(useGraphStore.getState().addRelationship("person-missing", a, "manager")).toBeNull();
+    expect(useGraphStore.getState().document.edges).toHaveLength(0);
+  });
+
   it("creates a typed edge and selects it", () => {
     const a = addAlice();
     const b = useGraphStore.getState().addPerson({
@@ -87,6 +94,104 @@ describe("addRelationship", () => {
     expect(edgeId).not.toBeNull();
     expect(state.document.edges[0].metadata.type).toBe("manager");
     expect(state.selection.edgeIds).toEqual([edgeId]);
+  });
+
+  it("does not duplicate an existing relationship", () => {
+    const a = addAlice();
+    const b = useGraphStore.getState().addPerson({
+      name: "Bob",
+      title: "VP",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+    const first = useGraphStore.getState().addRelationship(a, b, "manager");
+    const second = useGraphStore.getState().addRelationship(a, b, "manager");
+
+    expect(second).toBe(first);
+    expect(useGraphStore.getState().document.edges).toHaveLength(1);
+    expect(useGraphStore.getState().selection.edgeIds).toEqual([first]);
+  });
+
+  it("replaces a person's existing manager instead of giving them two solid bosses", () => {
+    const alice = addAlice();
+    const bob = useGraphStore.getState().addPerson({
+      name: "Bob",
+      title: "VP",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+    const carol = useGraphStore.getState().addPerson({
+      name: "Carol",
+      title: "Director",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+
+    useGraphStore.getState().addRelationship(alice, carol, "manager");
+    const newEdgeId = useGraphStore.getState().addRelationship(bob, carol, "manager");
+    const managerEdges = useGraphStore
+      .getState()
+      .document.edges.filter((edge) => edge.metadata.type === "manager" && edge.target === carol);
+
+    expect(managerEdges).toHaveLength(1);
+    expect(managerEdges[0].id).toBe(newEdgeId);
+    expect(managerEdges[0].source).toBe(bob);
+  });
+
+  it("undoes a manager replacement back to the previous manager in one step", () => {
+    const alice = addAlice();
+    const bob = useGraphStore.getState().addPerson({
+      name: "Bob",
+      title: "VP",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+    const carol = useGraphStore.getState().addPerson({
+      name: "Carol",
+      title: "Director",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+
+    useGraphStore.getState().addRelationship(alice, carol, "manager");
+    useGraphStore.getState().addRelationship(bob, carol, "manager");
+    useGraphStore.getState().undo();
+
+    const managerEdges = useGraphStore
+      .getState()
+      .document.edges.filter((edge) => edge.metadata.type === "manager" && edge.target === carol);
+
+    expect(managerEdges).toHaveLength(1);
+    expect(managerEdges[0].source).toBe(alice);
+  });
+
+  it("rejects reporting cycles", () => {
+    const alice = addAlice();
+    const bob = useGraphStore.getState().addPerson({
+      name: "Bob",
+      title: "VP",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+    const carol = useGraphStore.getState().addPerson({
+      name: "Carol",
+      title: "Director",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+
+    useGraphStore.getState().addRelationship(alice, bob, "manager");
+    useGraphStore.getState().addRelationship(bob, carol, "manager");
+
+    expect(useGraphStore.getState().addRelationship(carol, alice, "manager")).toBeNull();
+    expect(useGraphStore.getState().document.edges).toHaveLength(2);
   });
 });
 

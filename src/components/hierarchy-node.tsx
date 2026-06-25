@@ -47,6 +47,7 @@ export type HierarchyNodeData = {
   hiddenCount?: number; // all descendants (shown when collapsed)
   isCollapsed?: boolean;
   onToggleCollapse?: (id: string) => void;
+  hideReportToggle?: boolean;
   // When set, this node anchors a facility / shared service and renders as a container
   unit?: UnitDef;
 };
@@ -60,7 +61,7 @@ const UNIT_CONTAINER_STYLE = {
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
     node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
-    relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, unit,
+    relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false, unit,
   } = data;
 
   // Facility / shared-service container: stands in for a whole group of people
@@ -283,11 +284,12 @@ function Component({ data }: { data: HierarchyNodeData }) {
             position={Position.Bottom}
             id={`${node.id}-manager-source`}
             data-handle-type="manager"
-            className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
+            className={`${HANDLE_BASE_CLASS} ${hideReportToggle ? "opacity-0" : connectorClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
+            style={{ bottom: hideReportToggle ? -5 : undefined }}
           />
 
           {/* Subtree fold chip, People Finder style: "6 ⌄" expanded, "+12 ▸" collapsed */}
-          {reportCount > 0 && onToggleCollapse && (
+          {reportCount > 0 && onToggleCollapse && !hideReportToggle && (
             <button
               type="button"
               data-testid={`collapse-chip-${node.id}`}

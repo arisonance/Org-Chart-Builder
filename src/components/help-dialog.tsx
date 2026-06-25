@@ -11,11 +11,11 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Navigate",
     items: [
       { keys: ["⌘", "K"], label: "Command palette — jump to anyone" },
-      { keys: ["1"], label: "Classic Hierarchy" },
-      { keys: ["2"], label: "Brand lens" },
-      { keys: ["3"], label: "Channel lens" },
-      { keys: ["4"], label: "Department lens" },
-      { keys: ["5"], label: "Brand × Channel grid" },
+      { keys: ["1"], label: "Executive Map" },
+      { keys: ["2"], label: "Brand Ownership" },
+      { keys: ["3"], label: "Channel Support" },
+      { keys: ["4"], label: "Department Map" },
+      { keys: ["5"], label: "Business Grid" },
       { keys: ["0"], label: "Fit everything to view" },
       { keys: ["Click manager"], label: "Open that person's org view" },
       { keys: ["+"], label: "Zoom in" },
@@ -40,7 +40,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 const TIPS = [
   "Right-click a person — or the canvas — for the full action menu.",
   "Drag from the colored handles on a card to wire a new relationship.",
-  "Click a manager to make them the temporary org-view root and reveal their downstream team.",
+  "Click a manager to highlight their reporting chain and downstream team.",
 ];
 
 /** Reusable mini line sample matching the on-canvas edge styles. */
@@ -67,9 +67,9 @@ function LineSample({ color, dashed, diamond }: { color: string; dashed?: boolea
 }
 
 const LEGEND = [
-  { color: RELATIONSHIP_COLORS.manager, label: "Manager", desc: "Direct reporting line" },
-  { color: RELATIONSHIP_COLORS.sponsor, label: "Sponsor", desc: "Executive support", diamond: true },
-  { color: RELATIONSHIP_COLORS.dotted, label: "Dotted line", desc: "Collaborative / advisory", dashed: true },
+  { color: RELATIONSHIP_COLORS.manager, label: "Reports to", desc: "Formal manager relationship" },
+  { color: RELATIONSHIP_COLORS.sponsor, label: "Executive support", desc: "Sponsor or operating support", diamond: true },
+  { color: RELATIONSHIP_COLORS.dotted, label: "Matrix support", desc: "Collaborative / advisory support", dashed: true },
 ];
 
 export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

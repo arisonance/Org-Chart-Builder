@@ -371,8 +371,11 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
     const cur = managerOf[p.id];
     if ((cur?.managerId ?? "") === (newMgrId ?? "")) return;
     if (newMgrId === p.id) return;
-    if (cur) removeRelationship(cur.edgeId);
-    if (newMgrId) addRelationship(newMgrId, p.id, "manager");
+    if (!newMgrId) {
+      if (cur) removeRelationship(cur.edgeId);
+      return;
+    }
+    addRelationship(newMgrId, p.id, "manager");
   }, [idByName, managerOf, addRelationship, removeRelationship]);
 
   const toggleSelect = useCallback((id: string) => setSelected((s) => {

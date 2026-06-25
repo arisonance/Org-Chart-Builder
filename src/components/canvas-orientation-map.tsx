@@ -72,7 +72,7 @@ export function CanvasOrientationMap({
                 Groups
               </button>
             )}
-            {actions.slice(0, 3).map((action) => (
+            {actions.slice(0, 5).map((action) => (
               <button
                 key={action.id}
                 type="button"
