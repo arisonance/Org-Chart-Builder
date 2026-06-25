@@ -588,9 +588,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   useEffect(() => {
     if (!viewContext) return;
     if (viewContext.kind === "operating-view") return;
+    if (teamRootId) return;
     if ((filters?.focusIds?.length ?? 0) > 0) return;
     setViewContext(null);
-  }, [viewContext, filters?.focusIds]);
+  }, [viewContext, teamRootId, filters?.focusIds]);
 
   const personNodes = useMemo(
     () => nodesData.filter((node): node is PersonNode => node.kind === "person"),
@@ -769,14 +770,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const operatingViewPositions = useMemo(() => {
     if (!activeOperatingViewLayout) return null;
     const published = activeOperatingViewLayout.published ?? {};
-    const draft = workspaceMode !== "explore" ? activeOperatingViewLayout.draft ?? {} : {};
+    const draft = activeOperatingViewLayout.draft ?? {};
     return { ...published, ...draft };
-  }, [activeOperatingViewLayout, workspaceMode]);
+  }, [activeOperatingViewLayout]);
   const operatingViewLayoutDirty = Boolean(activeOperatingViewLayout?.draft);
   const operatingViewLayoutSaved = Boolean(
     activeOperatingViewLayout?.published &&
       Object.keys(activeOperatingViewLayout.published).length > 0,
   );
+  const canArrangeActiveView = Boolean(
+    teamTree || (activeOperatingViewId && viewContext?.kind === "operating-view"),
+  );
+  const canDragNodes = canEdit || canArrangeActiveView;
 
   const topOverviewRootId = useMemo(() => {
     const roots = personNodes.filter((person) => !parentMap[person.id]);
@@ -886,7 +891,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setSavedTeamLayouts(next);
     persistTeamLayouts(next);
     setTeamLayoutDraft(null);
-    showToast("Saved this org view layout", { undoable: false });
+    showToast("Saved changes to this org view", { undoable: false });
   }, [activeTeamPositions, persistTeamLayouts, savedTeamLayouts, showToast, teamTree]);
 
   const resetTeamViewLayout = useCallback(() => {
@@ -930,7 +935,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     };
     setOperatingViewLayouts(next);
     persistOperatingViewLayouts(next);
-    showToast(`Published ${viewContext.label} layout`, { undoable: false });
+    showToast(`Saved changes to ${viewContext.label}`, { undoable: false });
   }, [activeOperatingViewId, filters?.focusIds, operatingViewLayouts, persistOperatingViewLayouts, showToast, viewContext]);
 
   const discardOperatingViewDraft = useCallback(() => {
@@ -1002,17 +1007,17 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   }, [teamReturnLens, setLensFilters, setLensStore]);
 
   const openTeamTree = useCallback(
-    (nodeId: string) => {
+    (nodeId: string, context?: ViewContext) => {
       setTeamReturnLens((current) => current ?? lens);
       setTeamLayoutDraft(null);
-      setViewContext(null);
+      setViewContext(context ?? null);
       setLensStore("hierarchy");
       setLensFilters("hierarchy", { focusIds: [], hiddenIds: [], activeTokens: [] });
       clearSelection();
       expandAll();
       setTeamRootId(nodeId);
       const name = personNameById.get(nodeId) ?? "Selected person";
-      showToast(`Opened ${name}'s org view`);
+      showToast(context?.kind === "unit" ? `Opened ${context.label} team view` : `Opened ${name}'s org view`);
     },
     [lens, setLensStore, setLensFilters, clearSelection, expandAll, personNameById, showToast],
   );
@@ -2207,6 +2212,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         displayPositions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
       lastRenderedPositions.current[node.id] = position;
       const accent = getAccentColor(node, lens);
+      const unitForNode = lens === "hierarchy" ? unitAnchorMap.get(node.id) : undefined;
       
       const data: HierarchyNodeData = {
         node,
@@ -2224,7 +2230,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         onToggleCollapse: lens === "hierarchy" ? toggleCollapse : undefined,
         hideReportToggle: Boolean(teamTree),
         // When this node is a facility / shared-service anchor, render it as a container
-        unit: lens === "hierarchy" ? unitAnchorMap.get(node.id) : undefined,
+        unit: unitForNode,
         actions: {
           addDirectReport: (managerId) => {
             const manager = personNodes.find((n) => n.id === managerId);
@@ -2270,6 +2276,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           lockToggle: toggleNodeLock,
           colorTag: addTagToNode,
           openEditor: (nodeId) => openEditor(nodeId),
+          openOrg: (nodeId) => {
+            if ((childMap[nodeId]?.length ?? 0) > 0) {
+              const unitForOpenedNode = nodeId === node.id ? unitForNode : unitAnchorMap.get(nodeId);
+              openTeamTree(
+                nodeId,
+                unitForOpenedNode
+                  ? {
+                      kind: "unit",
+                      label: unitForOpenedNode.label,
+                      count: (descendantCounts[nodeId] ?? 0) + 1,
+                    }
+                  : undefined,
+              );
+            } else {
+              openEditor(nodeId);
+            }
+          },
           copySettings: (nodeId) => {
             copyPersonSettings(nodeId);
             showToast("Settings copied — right-click another person to paste");
@@ -2299,7 +2322,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         type: "hierarchyNode",
         position,
         data,
-        draggable: canEdit && !node.locked,
+        draggable: canDragNodes && !node.locked,
         selected: selection.nodeIds.includes(node.id),
         // Only carry an opacity/transition when focus mode is actually dimming
         // cards. Leaving a transition on all 250 nodes promotes each to its own
@@ -2345,6 +2368,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addPerson,
     addRelationship,
     canEdit,
+    canDragNodes,
     duplicateNodes,
     openSharedServiceGroup,
     copyNodesById,
@@ -2352,6 +2376,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     toggleNodeLock,
     addTagToNode,
     openEditor,
+    openTeamTree,
     selectNode,
     selectPersonFromCard,
     setSelection,
@@ -2629,6 +2654,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         (edge.source === focusedNodeId || edge.target === focusedNodeId);
       const focusedDirectReportCount = focusedNodeId ? childMap[focusedNodeId]?.length ?? 0 : 0;
       const shouldLabelFocusedEdge =
+        !teamTree &&
         isDirectFocusedManagerEdge &&
         lodZoom > 0.48 &&
         (edge.target === focusedNodeId || focusedDirectReportCount <= 4);
@@ -2743,7 +2769,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // and in matrix views reassign each person to the lane they were dropped into
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
-      if (!canEdit) return;
       const moved = draggedNodes?.length ? draggedNodes : [node];
       if (teamTree) {
         setTeamLayoutDraft((current) => {
@@ -2784,6 +2809,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
         return;
       }
+
+      if (!canEdit) return;
 
       moved.forEach((item) => updateNodePosition(item.id, item.position));
 
@@ -2933,9 +2960,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       event.preventDefault();
       event.stopPropagation();
       if (!isPersonFlowNodeId(node.id)) return;
+      if ((childMap[node.id]?.length ?? 0) > 0) {
+        openTeamTree(node.id);
+        return;
+      }
       openEditor(node.id);
     },
-    [openEditor],
+    [childMap, openEditor, openTeamTree],
   );
 
   const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
@@ -3249,7 +3280,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 viewportSettleTimerRef.current = null;
               }, 80);
             }}
-            nodesDraggable={canEdit}
+            nodesDraggable={canDragNodes}
             nodesConnectable={canEdit}
             elementsSelectable
             selectNodesOnDrag={false}
@@ -3665,7 +3696,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   ? {
                       dirty: operatingViewLayoutDirty,
                       saved: operatingViewLayoutSaved,
-                      canManage: workspaceMode !== "explore",
+                      canManage: workspaceMode !== "explore" || operatingViewLayoutDirty || operatingViewLayoutSaved,
                       publishedAt: activeOperatingViewLayout?.publishedAt ?? viewContext.publishedAt,
                       publishedBy: activeOperatingViewLayout?.publishedBy ?? viewContext.publishedBy,
                       onPublish: publishOperatingViewLayout,

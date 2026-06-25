@@ -143,6 +143,7 @@ export function UnitRail({
                                     key={m.id}
                                     type="button"
                                     onClick={() => onSelectMember(m.id)}
+                                    title={`Focus ${m.name}; use the relationship strip to open their organization`}
                                     className="flex w-full flex-col rounded px-1.5 py-0.5 text-left hover:bg-violet-50 dark:hover:bg-violet-500/10"
                                   >
                                     <span className="truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
@@ -170,6 +171,7 @@ export function UnitRail({
                             key={m.id}
                             type="button"
                             onClick={() => onSelectMember(m.id)}
+                            title={`Focus ${m.name}; use the relationship strip to open their organization`}
                             className="flex w-full flex-col rounded px-2 py-1 text-left hover:bg-white dark:hover:bg-white/10"
                           >
                             <span className="truncate text-[11px] font-medium text-slate-700 dark:text-slate-200">

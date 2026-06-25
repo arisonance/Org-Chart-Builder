@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID } from "@/lib/schema/lenses";
 import type { PersonNode } from "@/lib/schema/types";
@@ -68,6 +68,7 @@ export function CanvasContextBar({
   const selectNode = useGraphStore((s) => s.selectNode);
   const clearSelection = useGraphStore((s) => s.clearSelection);
   const openEditor = useGraphStore((s) => s.openEditor);
+  const [expandedReportFocusId, setExpandedReportFocusId] = useState<string | null>(null);
 
   const nodeById = useMemo(() => {
     const map = new Map<string, PersonNode>();
@@ -127,6 +128,7 @@ export function CanvasContextBar({
   }, [focusedId, parentMap]);
 
   const directReportIds = focusedId ? childMap[focusedId] ?? [] : [];
+  const reportsExpanded = focusedId !== null && expandedReportFocusId === focusedId;
   const focusedPerson = focusedId ? nodeById.get(focusedId) ?? null : null;
   const focusedName = focusedId ? nameById.get(focusedId) ?? "Selected" : "";
   const managerId = focusedId ? parentMap[focusedId] : undefined;
@@ -189,8 +191,12 @@ export function CanvasContextBar({
     descendantIds.length > directReportIds.length
       ? `${descendantIds.length + 1} total people`
       : null;
-  const directReportPreviewIds = directReportIds.slice(0, 4);
+  const directReportPreviewIds = directReportIds.slice(0, reportsExpanded ? 12 : 4);
   const remainingDirectReports = Math.max(0, directReportIds.length - directReportPreviewIds.length);
+
+  useEffect(() => {
+    setExpandedReportFocusId(null);
+  }, [focusedId]);
 
   const focusIds = filters?.focusIds ?? EMPTY_IDS;
   const activeTokens = filters?.activeTokens ?? EMPTY_TOKENS;
@@ -387,10 +393,10 @@ export function CanvasContextBar({
           {remainingDirectReports > 0 && (
             <button
               type="button"
-              onClick={() => onOpenTeamTree(focusedId)}
+              onClick={() => setExpandedReportFocusId(focusedId)}
               className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-900 transition hover:bg-sky-200 dark:bg-sky-500/20 dark:text-sky-100 dark:hover:bg-sky-500/30"
             >
-              +{remainingDirectReports} more
+              +{remainingDirectReports} more reports
             </button>
           )}
           {directReportIds.length > 0 && (
@@ -431,11 +437,17 @@ export function CanvasContextBar({
         <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-semibold text-emerald-900 dark:text-emerald-100">
-            {viewContext?.kind === "operating-view" ? "Official view" : "Org view"}
+            {viewContext?.kind === "operating-view"
+              ? "Official view"
+              : viewContext?.kind === "unit"
+              ? "Team view"
+              : "Org view"}
           </span>
           <span className="text-emerald-700 dark:text-emerald-200/85">
             {viewContext?.kind === "operating-view"
               ? `${viewContext.label} · rooted at ${teamTreeRoot.name}`
+              : viewContext?.kind === "unit"
+              ? `${viewContext.label} team · rooted at ${teamTreeRoot.name}`
               : `Viewing organization for ${teamTreeRoot.name}`}
           </span>
           {viewContext?.kind === "operating-view" && viewContext.owner && (
@@ -450,7 +462,7 @@ export function CanvasContextBar({
           )}
           {teamLayoutControls?.dirty && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/20">
-              Unsaved layout
+              Unsaved changes
             </span>
           )}
           {!teamLayoutControls?.dirty && teamLayoutControls?.saved && (
@@ -464,7 +476,7 @@ export function CanvasContextBar({
               onClick={teamLayoutControls.onSave}
               className="rounded-full bg-slate-900 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
-              Save view
+              Save changes
             </button>
           )}
           {(teamLayoutControls?.dirty || teamLayoutControls?.saved) && (
@@ -479,9 +491,10 @@ export function CanvasContextBar({
           <button
             type="button"
             onClick={onExitTeamTree}
+            title="Return to the broader map"
             className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
           >
-            Exit org view
+            Back to broader view
           </button>
         </div>
       )}
@@ -510,12 +523,12 @@ export function CanvasContextBar({
           )}
           {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
             <span className="rounded-full bg-white px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-slate-950 dark:text-amber-100 dark:ring-amber-400/20">
-              Draft changes
+              Unsaved changes
             </span>
           )}
           {viewContext?.kind === "operating-view" && !officialLayoutControls?.dirty && officialLayoutControls?.saved && (
             <span className="rounded-full bg-white px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-950 dark:text-emerald-100 dark:ring-emerald-400/20">
-              Published layout{officialLayoutControls.publishedAt ? ` · ${officialLayoutControls.publishedAt}` : ""}
+              Saved layout{officialLayoutControls.publishedAt ? ` · ${officialLayoutControls.publishedAt}` : ""}
             </span>
           )}
           {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
@@ -525,7 +538,7 @@ export function CanvasContextBar({
                 onClick={officialLayoutControls.onPublish}
                 className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
               >
-                Publish view
+                Save changes
               </button>
               <button
                 type="button"
