@@ -7,10 +7,17 @@ import type { PersonNode } from "@/lib/schema/types";
 import { getSharedServiceGroupForPerson } from "@/lib/graph/shared-service-groups";
 
 type ViewContext = {
-  kind: "support-pod" | "shared-services" | "unit" | "lens-group";
+  kind: "support-pod" | "shared-services" | "unit" | "lens-group" | "operating-view";
   label: string;
   count: number;
+  owner?: string;
+  description?: string;
+  dimension?: "brand" | "channel" | "department";
+  value?: string;
 };
+
+const EMPTY_IDS: string[] = [];
+const EMPTY_TOKENS: string[] = [];
 
 /**
  * Top-center "you are here" strip. Two modes, mutually exclusive:
@@ -171,9 +178,9 @@ export function CanvasContextBar({
   const directReportPreviewIds = directReportIds.slice(0, 4);
   const remainingDirectReports = Math.max(0, directReportIds.length - directReportPreviewIds.length);
 
-  const focusIds = filters?.focusIds ?? [];
-  const activeTokens = filters?.activeTokens ?? [];
-  const hiddenIds = filters?.hiddenIds ?? [];
+  const focusIds = filters?.focusIds ?? EMPTY_IDS;
+  const activeTokens = filters?.activeTokens ?? EMPTY_TOKENS;
+  const hiddenIds = filters?.hiddenIds ?? EMPTY_IDS;
   const contextTitle =
     viewContext?.kind === "support-pod"
       ? "Support pod"
@@ -181,9 +188,33 @@ export function CanvasContextBar({
         ? "Shared services"
         : viewContext?.kind === "unit"
           ? "Unit view"
-          : viewContext?.kind === "lens-group"
+          : viewContext?.kind === "operating-view"
+            ? "Official view"
+            : viewContext?.kind === "lens-group"
             ? "Focused group"
             : LENS_BY_ID[lens].label;
+
+  const operatingViewSummary = useMemo(() => {
+    if (viewContext?.kind !== "operating-view" || viewContext.dimension !== "channel" || !viewContext.value) {
+      return null;
+    }
+    const people = focusIds
+      .map((id) => nodeById.get(id))
+      .filter((node): node is PersonNode => Boolean(node));
+    const dedicated = people.filter((person) => person.attributes.primaryChannel === viewContext.value);
+    const broadSupport = people.filter((person) => person.attributes.primaryChannel !== viewContext.value);
+    const podKeys = new Set(
+      broadSupport.map((person) => {
+        const pod = getSharedServiceGroupForPerson(person);
+        return `${pod.service}:${pod.label}`;
+      }),
+    );
+    return {
+      dedicatedCount: dedicated.length,
+      broadSupportCount: broadSupport.length,
+      podCount: podKeys.size,
+    };
+  }, [focusIds, nodeById, viewContext]);
 
   // A single-person selection drives focus highlighting (the breadcrumb), not a
   // subset filter — so only treat focusIds as a "subset" when nothing's selected.
@@ -412,11 +443,24 @@ export function CanvasContextBar({
       )}
 
       {subsetActive && (
-        <div className="motion-context-bar pointer-events-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs shadow-lg dark:border-amber-400/20 dark:bg-amber-500/10">
-          <span className="font-semibold text-amber-700 dark:text-amber-200">
-            {contextTitle}
-          </span>
+        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs shadow-lg dark:border-amber-400/20 dark:bg-amber-500/10">
+          <span className="font-semibold text-amber-700 dark:text-amber-200">{contextTitle}</span>
           <span className="text-amber-600 dark:text-amber-300/80">{descriptors.join(" · ")}</span>
+          {viewContext?.owner && (
+            <TruthPill label="Owner" value={viewContext.owner} tone="emerald" />
+          )}
+          {operatingViewSummary && (
+            <>
+              <TruthPill label="Dedicated" value={`${operatingViewSummary.dedicatedCount} primary`} tone="sky" />
+              <TruthPill label="Shared support" value={`${operatingViewSummary.broadSupportCount} broad-role`} tone="violet" />
+              <TruthPill label="Pods" value={`${operatingViewSummary.podCount} support pods`} tone="violet" />
+            </>
+          )}
+          {viewContext?.kind === "operating-view" && (
+            <span className="rounded-full bg-white/70 px-2.5 py-1 font-semibold text-amber-700 ring-1 ring-amber-100 dark:bg-slate-900/80 dark:text-amber-100 dark:ring-amber-400/20">
+              Reporting lines stay formal
+            </span>
+          )}
           <button
             type="button"
             onClick={onResetView}

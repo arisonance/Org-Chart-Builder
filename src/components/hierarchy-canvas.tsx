@@ -89,9 +89,13 @@ type CanvasMenuState = {
 };
 
 type ViewContext = {
-  kind: "support-pod" | "shared-services" | "unit" | "lens-group";
+  kind: "support-pod" | "shared-services" | "unit" | "lens-group" | "operating-view";
   label: string;
   count: number;
+  owner?: string;
+  description?: string;
+  dimension?: LensDimension;
+  value?: string;
 };
 
 type ViewportState = {
@@ -1161,7 +1165,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
 
   const openOperatingView = useCallback(
-    (dimension: LensDimension, key: string, label = key) => {
+    (
+      dimension: LensDimension,
+      key: string,
+      label = key,
+      context?: Pick<ViewContext, "kind" | "owner" | "description">,
+    ) => {
       const members = personNodes.filter((person) =>
         getAssignments(person, dimension).includes(key),
       );
@@ -1171,7 +1180,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setTeamReturnLens(null);
       clearSelection();
       setLensStore(targetLens);
-      setViewContext({ kind: "lens-group", label, count: members.length });
+      setViewContext({
+        kind: context?.kind ?? "lens-group",
+        label,
+        count: members.length,
+        owner: context?.owner,
+        description: context?.description,
+        dimension,
+        value: key,
+      });
       setLensFilters(targetLens, {
         focusIds: members.map((member) => member.id),
         hiddenIds: [],
@@ -1203,7 +1220,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         openSharedServices();
         return;
       }
-      openOperatingView(view.dimension, view.value, view.label);
+      openOperatingView(view.dimension, view.value, view.label, {
+        kind: "operating-view",
+        owner: view.owner,
+        description: view.description,
+      });
     },
     [openOperatingView, openSharedServices, resetView, showOrientationOverview],
   );
