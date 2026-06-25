@@ -41,6 +41,7 @@ import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
 import { useGraphStore, buildSettingsPatch } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
+import { PUBLISHED_OPERATING_VIEW_BY_ID, type PublishedOperatingView } from "@/lib/schema/operating-views";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
 import {
   buildChildMap,
@@ -340,6 +341,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [helpOpen, setHelpOpen] = useState(false);
   const [viewportRescueVisible, setViewportRescueVisible] = useState(false);
   const focusRequest = useGraphStore((state) => state.focusRequest);
+  const operatingViewRequest = useGraphStore((state) => state.operatingViewRequest);
   const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
   const [collapsedChannelGroups, setCollapsedChannelGroups] = useState<Set<string>>(new Set());
   const [viewContext, setViewContext] = useState<ViewContext | null>(null);
@@ -1189,6 +1191,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [clearSelection, personNodes, setLensFilters, setLensStore, showToast],
   );
+
+  const openPublishedOperatingView = useCallback(
+    (view: PublishedOperatingView) => {
+      if (view.kind === "overview") {
+        resetView();
+        window.setTimeout(showOrientationOverview, 120);
+        return;
+      }
+      if (view.kind === "shared-services") {
+        openSharedServices();
+        return;
+      }
+      openOperatingView(view.dimension, view.value, view.label);
+    },
+    [openOperatingView, openSharedServices, resetView, showOrientationOverview],
+  );
+
+  useEffect(() => {
+    if (!operatingViewRequest) return;
+    const view = PUBLISHED_OPERATING_VIEW_BY_ID[operatingViewRequest.id];
+    if (!view) return;
+    openPublishedOperatingView(view);
+  }, [openPublishedOperatingView, operatingViewRequest]);
 
   const orientationMap = useMemo(() => {
     const focusIds = filters?.focusIds ?? [];

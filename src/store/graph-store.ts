@@ -62,6 +62,10 @@ type GraphStoreState = {
   // Header search → canvas: ask the canvas to fly to a person. The nonce lets the
   // same person be re-requested (it always changes), and is not persisted.
   focusRequest: { id: string; nonce: number } | null;
+  // Published operating views → canvas: request a curated official map without
+  // storing it as org data or creating any new reporting relationship.
+  operatingViewRequest: { id: string; nonce: number } | null;
+  activeOperatingViewId: string | null;
 };
 
 type GraphStoreActions = {
@@ -76,6 +80,8 @@ type GraphStoreActions = {
   selectEdge: (edgeId: string, additive?: boolean) => void;
   clearSelection: () => void;
   requestFocus: (nodeId: string) => void;
+  requestOperatingView: (viewId: string) => void;
+  clearOperatingView: () => void;
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
   applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
@@ -235,6 +241,8 @@ const initialState: GraphStoreState = {
   mirrorLanes: true,
   collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
   focusRequest: null,
+  operatingViewRequest: null,
+  activeOperatingViewId: null,
 };
 
 // Hierarchy layout/cleanup should only place people not folded away under a
@@ -431,6 +439,7 @@ export const migrateGraphState = (persistedState: unknown) => {
       clipboard: null,
       scenarios: maybeState.scenarios ?? {},
       activeScenarioId: maybeState.activeScenarioId ?? null,
+      activeOperatingViewId: typeof maybeState.activeOperatingViewId === "string" ? maybeState.activeOperatingViewId : null,
       mirrorLanes:
         typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
       collapsedIds: Array.isArray(maybeState.collapsedIds)
@@ -542,7 +551,13 @@ export const useGraphStore = create<GraphStore>()(
       },
       requestFocus: (nodeId) => {
         // Bump nonce so the canvas effect re-fires even for the same person.
-        set({ focusRequest: { id: nodeId, nonce: Date.now() } });
+        set({ focusRequest: { id: nodeId, nonce: Date.now() }, activeOperatingViewId: null });
+      },
+      requestOperatingView: (viewId) => {
+        set({ operatingViewRequest: { id: viewId, nonce: Date.now() }, activeOperatingViewId: viewId });
+      },
+      clearOperatingView: () => {
+        set({ activeOperatingViewId: null, operatingViewRequest: null });
       },
       addPerson: (payload) => {
         const id = `person-${nanoid(10)}`;
@@ -1168,6 +1183,7 @@ export const useGraphStore = create<GraphStore>()(
         clipboard: state.clipboard,
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        activeOperatingViewId: state.activeOperatingViewId,
         mirrorLanes: state.mirrorLanes,
         collapsedIds: state.collapsedIds,
         currentViewport: state.currentViewport,

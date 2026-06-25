@@ -7,6 +7,7 @@ import { ZodError } from 'zod';
 import { HierarchyCanvas } from '@/components/hierarchy-canvas';
 import { EditorPanel } from '@/components/editor-panel';
 import { LensSwitcher } from '@/components/lens-switcher';
+import { PublishedViewSwitcher } from '@/components/published-view-switcher';
 import { ScenarioManager } from '@/components/scenario-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
@@ -22,6 +23,7 @@ export default function Home() {
   const documentMeta = useGraphStore((state) => state.document.metadata);
   const lens = useGraphStore((state) => state.document.lens);
   const setLens = useGraphStore((state) => state.setLens);
+  const clearOperatingView = useGraphStore((state) => state.clearOperatingView);
   const undo = useGraphStore((state) => state.undo);
   const redo = useGraphStore((state) => state.redo);
   const autoLayout = useGraphStore((state) => state.autoLayout);
@@ -41,6 +43,11 @@ export default function Home() {
   const [showSpreadsheet, setShowSpreadsheet] = useState(false);
 
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
+
+  const handleLensChange = useCallback((nextLens: typeof lens) => {
+    clearOperatingView();
+    setLens(nextLens);
+  }, [clearOperatingView, setLens]);
 
   // Lens switcher keyboard shortcuts (1-4)
   useEffect(() => {
@@ -146,7 +153,8 @@ export default function Home() {
               {documentMeta.name}
             </h1>
             <SaveStatus />
-            <LensSwitcher activeLens={lens} onChange={setLens} />
+            <PublishedViewSwitcher />
+            <LensSwitcher activeLens={lens} onChange={handleLensChange} />
             <ScenarioManager />
             <PersonSearch />
           </div>
