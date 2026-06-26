@@ -35,11 +35,13 @@ export type PublishedOperatingView =
       value: string;
     };
 
+export const DEFAULT_OPERATING_VIEW_ID = "executive-overview";
+
 export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
   {
-    id: "executive-overview",
-    label: "Executive overview",
-    description: "Formal top-level reporting map from the executive team.",
+    id: DEFAULT_OPERATING_VIEW_ID,
+    label: "Senior Leadership Team",
+    description: "Home view: Ari and the senior leaders, with drill-down from there.",
     owner: "CEO office",
     publishedBy: "CEO office",
     publishedAt: "2026-06-24",

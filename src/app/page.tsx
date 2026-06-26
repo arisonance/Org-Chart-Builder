@@ -18,6 +18,7 @@ import { PersonSearch } from '@/components/person-search';
 import { SaveStatus } from '@/components/save-status';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
+import { DEFAULT_OPERATING_VIEW_ID } from '@/lib/schema/operating-views';
 import { parseGraphDocument } from '@/lib/schema/validation';
 
 export default function Home() {
@@ -38,9 +39,11 @@ export default function Home() {
   const closeEditor = useGraphStore((state) => state.closeEditor);
   const workspaceMode = useGraphStore((state) => state.workspaceMode);
   const activeOperatingViewId = useGraphStore((state) => state.activeOperatingViewId);
+  const requestOperatingView = useGraphStore((state) => state.requestOperatingView);
   const canEdit = workspaceMode !== 'explore';
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const requestedDefaultViewRef = useRef(Boolean(activeOperatingViewId));
   const [isCanvasFullScreen, setCanvasFullScreen] = useState(false);
   const [showFullScreenPanel, setShowFullScreenPanel] = useState(false);
   const [showComparisonPicker, setShowComparisonPicker] = useState(false);
@@ -53,6 +56,17 @@ export default function Home() {
     clearOperatingView();
     setLens(nextLens);
   }, [clearOperatingView, setLens]);
+
+  const goToSeniorTeam = useCallback(() => {
+    requestOperatingView(DEFAULT_OPERATING_VIEW_ID);
+  }, [requestOperatingView]);
+
+  useEffect(() => {
+    if (!activeOperatingViewId && !requestedDefaultViewRef.current) {
+      requestedDefaultViewRef.current = true;
+      requestOperatingView(DEFAULT_OPERATING_VIEW_ID);
+    }
+  }, [activeOperatingViewId, requestOperatingView]);
 
   // Lens switcher keyboard shortcuts (1-4)
   useEffect(() => {
@@ -131,7 +145,7 @@ export default function Home() {
     <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <ScenarioComparison />
       {showAIImport && <AIImportWizard onClose={() => setShowAIImport(false)} />}
-      <SpreadsheetView open={showSpreadsheet} onClose={() => setShowSpreadsheet(false)} />
+      <SpreadsheetView open={showSpreadsheet} onClose={() => setShowSpreadsheet(false)} readOnly={!canEdit} />
       {showComparisonPicker && (
         <ComparisonPickerDialog
           scenarios={scenarioList}
@@ -158,6 +172,14 @@ export default function Home() {
               {documentMeta.name}
             </h1>
             <SaveStatus />
+            <button
+              type="button"
+              onClick={goToSeniorTeam}
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              title="Return to the Senior Leadership Team home view"
+            >
+              Senior team
+            </button>
             <PublishedViewSwitcher />
             <WorkspaceModeSwitcher />
             <LensSwitcher activeLens={lens} onChange={handleLensChange} />
@@ -168,28 +190,33 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setShowSpreadsheet(true)}
-              disabled={!canEdit}
-              title={canEdit ? "Open the editable spreadsheet view" : "Switch to Edit mode to use the spreadsheet"}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:bg-slate-900 dark:disabled:text-slate-600"
+              title={canEdit ? "Open the editable spreadsheet view" : "Open the spreadsheet in read-only mode"}
+              aria-label="Open spreadsheet view"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              <MixerHorizontalIcon className="inline h-4 w-4 mr-1" /> Spreadsheet
+              <MixerHorizontalIcon className="h-4 w-4" />
+              <span>Spreadsheet</span>
             </button>
             <button
               type="button"
               onClick={() => setShowAIImport(true)}
               disabled={!canEdit}
               title={canEdit ? "Import org changes with AI" : "Switch to Edit mode to import changes"}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+              aria-label="Import org changes with AI"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-sky-600 text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >
-              <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import
+              <UploadIcon className="h-4 w-4" />
+              <span className="sr-only">AI Import</span>
             </button>
             <button
               type="button"
               onClick={handleExport}
               title="Download this org chart as a JSON file you can share or back up"
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              aria-label="Export org chart"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              <DownloadIcon className="inline h-4 w-4 mr-1" /> Export
+              <DownloadIcon className="h-4 w-4" />
+              <span className="sr-only">Export</span>
             </button>
 
             {/* More Actions Menu */}

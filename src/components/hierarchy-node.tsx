@@ -16,7 +16,6 @@ type NodeActions = {
   addDirectReport: (managerId: string) => void;
   addManager: (nodeId: string) => void;
   addDotted: (nodeId: string) => void;
-  convertToGroup: (nodeId: string) => void;
   duplicate: (nodeId: string) => void;
   copy: (nodeId: string) => void;
   delete: (nodeId: string) => void;
@@ -50,6 +49,7 @@ export type HierarchyNodeData = {
   isCollapsed?: boolean;
   onToggleCollapse?: (id: string) => void;
   hideReportToggle?: boolean;
+  interactionKey?: string;
   // When set, this node anchors a facility / shared service and renders as a container
   unit?: UnitDef;
 };
@@ -62,8 +62,9 @@ const UNIT_CONTAINER_STYLE = {
 
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
-    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, readOnly = false, zoom = 1,
-    relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false, unit,
+    node, emphasisLabel, isSelected, highlightTokens, actions, onSelect, readOnly = false, zoom = 1,
+    relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false,
+    unit,
   } = data;
 
   // Facility / shared-service container: stands in for a whole group of people
@@ -200,10 +201,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
             ].join(" ")}
             style={isContainer && containerStyle ? { borderColor: containerStyle.accent } : undefined}
           >
-            <span
-              className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
-              style={{ background: isContainer && containerStyle ? containerStyle.accent : accentColor }}
-            />
             {relationshipRole && lodLevel !== "compact" && (
               <span
                 className={`absolute left-3 top-3 max-w-[9.5rem] truncate rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${relationshipRoleClass}`}
@@ -380,7 +377,6 @@ function Component({ data }: { data: HierarchyNodeData }) {
                 ))}
               </ContextMenu.SubContent>
             </ContextMenu.Sub>
-            <MenuItem onSelect={() => actions.convertToGroup(node.id)}>Convert to group node</MenuItem>
             <MenuSeparator />
           </>
         )}
@@ -482,7 +478,13 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
   if (
     prev.isCollapsed !== next.isCollapsed ||
     prev.reportCount !== next.reportCount ||
-    prev.hiddenCount !== next.hiddenCount
+    prev.hiddenCount !== next.hiddenCount ||
+    prev.hideReportToggle !== next.hideReportToggle ||
+    prev.interactionKey !== next.interactionKey ||
+    prev.readOnly !== next.readOnly ||
+    prev.relationshipRole?.label !== next.relationshipRole?.label ||
+    prev.relationshipRole?.detail !== next.relationshipRole?.detail ||
+    prev.relationshipRole?.tone !== next.relationshipRole?.tone
   ) {
     return false;
   }
@@ -492,7 +494,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
       prev.isSelected === next.isSelected &&
       prev.accentColor === next.accentColor &&
       prev.emphasisLabel === next.emphasisLabel &&
-      prev.highlightTokens.length === next.highlightTokens.length) {
+      prev.highlightTokens.length === next.highlightTokens.length &&
+      prev.interactionKey === next.interactionKey) {
     return true;
   }
 
@@ -505,6 +508,7 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.isSelected === next.isSelected &&
     prev.accentColor === next.accentColor &&
     prev.lens === next.lens &&
+    prev.interactionKey === next.interactionKey &&
     prev.highlightTokens.join(',') === next.highlightTokens.join(',')
   );
 }

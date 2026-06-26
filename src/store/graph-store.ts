@@ -4,6 +4,7 @@ import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
 import { DEMO_GRAPH_DOCUMENT, DEMO_DEFAULT_COLLAPSED } from "@/data/demo-graph";
+import { DEFAULT_OPERATING_VIEW_ID } from "@/lib/schema/operating-views";
 import {
   buildChildMap,
   calculateLayout,
@@ -112,6 +113,7 @@ type GraphStoreActions = {
   toggleNodeLock: (nodeId: string) => void;
   toggleCollapse: (nodeId: string) => void;
   addCollapsed: (nodeIds: string[]) => void;
+  expandSubtree: (nodeId: string) => void;
   expandAll: () => void;
   reassignToLane: (
     nodeId: string,
@@ -250,7 +252,7 @@ const initialState: GraphStoreState = {
   collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
   focusRequest: null,
   operatingViewRequest: null,
-  activeOperatingViewId: null,
+  activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
 };
 
 // Hierarchy layout/cleanup should only place people not folded away under a
@@ -447,7 +449,7 @@ export const migrateGraphState = (persistedState: unknown) => {
       clipboard: null,
       scenarios: maybeState.scenarios ?? {},
       activeScenarioId: maybeState.activeScenarioId ?? null,
-      activeOperatingViewId: typeof maybeState.activeOperatingViewId === "string" ? maybeState.activeOperatingViewId : null,
+      activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
       workspaceMode:
         maybeState.workspaceMode === "edit" || maybeState.workspaceMode === "publish"
           ? maybeState.workspaceMode
@@ -1031,6 +1033,31 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
+      // Unfold one manager's organization without opening the entire company.
+      // This keeps first-click focus useful even in a mostly collapsed overview.
+      expandSubtree: (nodeId) => {
+        set(
+          produce((state: GraphStoreState) => {
+            if (state.collapsedIds.length === 0) return;
+            const childMap = buildChildMap(state.document.edges);
+            const subtreeIds = new Set([nodeId, ...collectDescendants(childMap, [nodeId])]);
+            const nextCollapsed = state.collapsedIds.filter((id) => !subtreeIds.has(id));
+            if (nextCollapsed.length === state.collapsedIds.length) return;
+            state.collapsedIds = nextCollapsed;
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
+      },
       // Unfold every collapsed subtree at once and reflow the hierarchy.
       // No history entry — this is a view-level presentation toggle.
       expandAll: () => {
@@ -1227,7 +1254,7 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 8,
+      version: 9,
       partialize: (state) => ({
         // Persist the document WITHOUT the volatile per-lens viewport so a pan
         // gesture never rewrites the whole blob. The viewport rides along in the
@@ -1243,7 +1270,7 @@ export const useGraphStore = create<GraphStore>()(
         comparisonScenarioId: null,
         focusRequest: null,
         operatingViewRequest: null,
-        activeOperatingViewId: state.activeOperatingViewId,
+        activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
         workspaceMode: state.workspaceMode,
         mirrorLanes: state.mirrorLanes,
         collapsedIds: state.collapsedIds,

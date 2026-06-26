@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Image from 'next/image';
 import { Cross2Icon, UploadIcon, CheckIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { useGraphStore } from '@/store/graph-store';
 import { parseOrgChartImage, fileToBase64, validateExtraction, ImportError, importErrorMessage, type ParsedOrgChart, type ParsedPerson } from '@/lib/ai/vision-parser';
@@ -366,9 +367,12 @@ function UploadStep({
                 key={index}
                 className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-800"
               >
-                <img
+                <Image
                   src={fileStatus.previewUrl}
                   alt={fileStatus.file.name}
+                  width={240}
+                  height={135}
+                  unoptimized
                   className="aspect-video w-full object-cover"
                 />
                 <button
@@ -680,4 +684,3 @@ function CompleteStep({ count, onClose }: { count: number; onClose: () => void }
     </div>
   );
 }
-

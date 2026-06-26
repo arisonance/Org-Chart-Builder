@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useGraphStore } from "@/store/graph-store";
 import { LENS_BY_ID } from "@/lib/schema/lenses";
 import type { PersonNode } from "@/lib/schema/types";
@@ -68,7 +68,6 @@ export function CanvasContextBar({
   const selectNode = useGraphStore((s) => s.selectNode);
   const clearSelection = useGraphStore((s) => s.clearSelection);
   const openEditor = useGraphStore((s) => s.openEditor);
-  const [expandedReportFocusId, setExpandedReportFocusId] = useState<string | null>(null);
 
   const nodeById = useMemo(() => {
     const map = new Map<string, PersonNode>();
@@ -112,6 +111,10 @@ export function CanvasContextBar({
       ? selection.nodeIds[0]
       : null;
   const teamTreeRoot = teamTreeRootId ? nodeById.get(teamTreeRootId) : null;
+  const isSeniorTeamHome =
+    viewContext?.kind === "operating-view" &&
+    viewContext.label === "Senior Leadership Team" &&
+    teamTreeRoot?.name === "Ari Supran";
 
   // Root → focused person, following manager edges
   const chain = useMemo(() => {
@@ -128,37 +131,7 @@ export function CanvasContextBar({
   }, [focusedId, parentMap]);
 
   const directReportIds = focusedId ? childMap[focusedId] ?? [] : [];
-  const reportsExpanded = focusedId !== null && expandedReportFocusId === focusedId;
-  const focusedPerson = focusedId ? nodeById.get(focusedId) ?? null : null;
   const focusedName = focusedId ? nameById.get(focusedId) ?? "Selected" : "";
-  const managerId = focusedId ? parentMap[focusedId] : undefined;
-  const managerName = managerId ? nameById.get(managerId) : null;
-  const peerIds = managerId
-    ? (childMap[managerId] ?? []).filter((id) => id !== focusedId)
-    : [];
-  const matrixRelationships = focusedId
-    ? edges
-        .filter(
-          (edge) =>
-            edge.metadata.type !== "manager" &&
-            (edge.source === focusedId || edge.target === focusedId),
-        )
-        .map((edge) => {
-          const otherId = edge.source === focusedId ? edge.target : edge.source;
-          const otherName = nameById.get(otherId) ?? "Unknown";
-          const type =
-            edge.metadata.type === "dotted"
-              ? "Dotted"
-              : edge.metadata.type === "sponsor"
-                ? "Sponsor"
-                : edge.metadata.type;
-          return { id: edge.id, type, otherId, otherName };
-        })
-    : [];
-  const supportPod =
-    focusedPerson && focusedPerson.attributes.tier !== "c-suite"
-      ? getSharedServiceGroupForPerson(focusedPerson)
-      : null;
   const openPerson = useCallback(
     (id: string) => {
       if (id === focusedId && (childMap[id]?.length ?? 0) > 0) {
@@ -191,12 +164,6 @@ export function CanvasContextBar({
     descendantIds.length > directReportIds.length
       ? `${descendantIds.length + 1} total people`
       : null;
-  const directReportPreviewIds = directReportIds.slice(0, reportsExpanded ? 12 : 4);
-  const remainingDirectReports = Math.max(0, directReportIds.length - directReportPreviewIds.length);
-
-  useEffect(() => {
-    setExpandedReportFocusId(null);
-  }, [focusedId]);
 
   const focusIds = filters?.focusIds ?? EMPTY_IDS;
   const activeTokens = filters?.activeTokens ?? EMPTY_TOKENS;
@@ -325,85 +292,35 @@ export function CanvasContextBar({
       {focusedId && !teamTreeRoot && (
         <div
           aria-label={`${focusedName}'s relationship truth`}
-          className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-sky-200 bg-white/95 px-2.5 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10"
+          className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-1.5 overflow-x-auto rounded-full border border-sky-200 bg-white/95 px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10"
         >
           <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-200">
-            Relationship
+            Selected
           </span>
-          <span className="h-4 w-px flex-shrink-0 bg-sky-100 dark:bg-sky-400/20" />
           {directReportIds.length > 0 ? (
             <button
               type="button"
               onClick={() => openPerson(focusedId)}
               title={`Open ${focusedName}'s organization`}
-              className="max-w-[12rem] truncate rounded-full px-2 py-0.5 font-semibold text-slate-900 transition hover:bg-sky-50 hover:text-sky-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:text-white dark:hover:bg-sky-500/15 dark:hover:text-sky-100"
+              className="max-w-[12rem] truncate rounded-full px-2 py-0.5 font-semibold text-slate-950 transition hover:bg-sky-50 hover:text-sky-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:text-white dark:hover:bg-sky-500/15 dark:hover:text-sky-100"
             >
               {focusedName}
             </button>
           ) : (
-            <span className="max-w-[12rem] truncate font-semibold text-slate-900 dark:text-white">
+            <span className="max-w-[12rem] truncate font-semibold text-slate-950 dark:text-white">
               {focusedName}
             </span>
           )}
-          <TruthPill
-            label="Reports to"
-            value={managerName ?? "Top of chain"}
-            tone="sky"
-            onClick={managerId ? () => openPerson(managerId) : undefined}
-          />
-          <TruthPill label="Directs" value={directReportSummary} tone="emerald" />
+          <span className="h-4 w-px flex-shrink-0 bg-sky-100 dark:bg-sky-400/20" />
+          <TruthPill label="Downstream" value={directReportSummary} tone="emerald" />
           {orgSizeSummary && (
-            <TruthPill label="Org size" value={orgSizeSummary} tone="emerald" />
-          )}
-          {supportPod && (
-            <TruthPill
-              label="Pod"
-              value={supportPod.service === supportPod.label ? supportPod.label : `${supportPod.service} / ${supportPod.label}`}
-              tone="violet"
-            />
-          )}
-          {peerIds.length > 0 && (
-            <TruthPill label="Peers" value={`${peerIds.length} under ${managerName}`} tone="slate" />
-          )}
-          {matrixRelationships.length > 0 && (
-            <TruthPill
-              label="Support"
-              value={`${matrixRelationships.length} dotted/sponsor`}
-              tone="amber"
-            />
-          )}
-          {directReportPreviewIds.map((id) => {
-            const person = nodeById.get(id);
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => openPerson(id)}
-                title={
-                  (childMap[id]?.length ?? 0) > 0
-                    ? `Focus ${person?.name ?? "this person"}; click their name next to open their organization`
-                    : person?.attributes.title
-                }
-                className="max-w-[9rem] truncate rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-800 transition hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
-              >
-                {person?.name ?? "Unknown"}
-              </button>
-            );
-          })}
-          {remainingDirectReports > 0 && (
-            <button
-              type="button"
-              onClick={() => setExpandedReportFocusId(focusedId)}
-              className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-900 transition hover:bg-sky-200 dark:bg-sky-500/20 dark:text-sky-100 dark:hover:bg-sky-500/30"
-            >
-              +{remainingDirectReports} more reports
-            </button>
+            <TruthPill label="Org" value={orgSizeSummary} tone="emerald" />
           )}
           {directReportIds.length > 0 && (
             <button
               type="button"
               onClick={() => onOpenTeamTree(focusedId)}
-              className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              className="whitespace-nowrap rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
               {teamTreeRootId === focusedId ? "Refit org" : "Open org"}
             </button>
@@ -411,25 +328,10 @@ export function CanvasContextBar({
           <button
             type="button"
             onClick={() => openEditor(focusedId)}
-            className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
+            className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
           >
-            Edit details
+            Details
           </button>
-          {matrixRelationships.slice(0, 2).map((relationship) => (
-            <button
-              key={relationship.id}
-              type="button"
-              onClick={() => openPerson(relationship.otherId)}
-              className="max-w-[10rem] truncate rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-amber-100 transition hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-400/20 dark:hover:bg-amber-500/25"
-            >
-              {relationship.type}: {relationship.otherName}
-            </button>
-          ))}
-          {matrixRelationships.length > 2 && (
-            <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-400/20">
-              +{matrixRelationships.length - 2} matrix
-            </span>
-          )}
         </div>
       )}
 
@@ -488,14 +390,16 @@ export function CanvasContextBar({
               Reset arrangement
             </button>
           )}
-          <button
-            type="button"
-            onClick={onExitTeamTree}
-            title="Return to the broader map"
-            className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
-          >
-            Back to broader view
-          </button>
+          {!isSeniorTeamHome && (
+            <button
+              type="button"
+              onClick={onExitTeamTree}
+              title="Return to the broader map"
+              className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
+            >
+              Back to broader view
+            </button>
+          )}
         </div>
       )}
 
@@ -523,12 +427,12 @@ export function CanvasContextBar({
           )}
           {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
             <span className="rounded-full bg-white px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-slate-950 dark:text-amber-100 dark:ring-amber-400/20">
-              Unsaved changes
+              Draft changes saved
             </span>
           )}
           {viewContext?.kind === "operating-view" && !officialLayoutControls?.dirty && officialLayoutControls?.saved && (
             <span className="rounded-full bg-white px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-950 dark:text-emerald-100 dark:ring-emerald-400/20">
-              Saved layout{officialLayoutControls.publishedAt ? ` · ${officialLayoutControls.publishedAt}` : ""}
+              Published layout{officialLayoutControls.publishedAt ? ` · ${officialLayoutControls.publishedAt}` : ""}
             </span>
           )}
           {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
@@ -538,7 +442,7 @@ export function CanvasContextBar({
                 onClick={officialLayoutControls.onPublish}
                 className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
               >
-                Save changes
+                Publish view
               </button>
               <button
                 type="button"

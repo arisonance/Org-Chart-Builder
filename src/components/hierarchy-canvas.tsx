@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { MixerHorizontalIcon, QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
 import { LaneNode, type LaneNodeData } from "@/components/lane-node";
-import { MirrorNode } from "@/components/mirror-node";
+import { MirrorNode, type MirrorNodeData } from "@/components/mirror-node";
 import {
   SharedServiceGroupNode,
   type SharedServiceGroupNodeData,
@@ -41,7 +41,11 @@ import { customEdgeTypes } from "@/components/custom-edges";
 import { QuickAddPersonDialog, type QuickAddPersonData } from "@/components/quick-add-person-dialog";
 import { useGraphStore, buildSettingsPatch } from "@/store/graph-store";
 import { LENS_BY_ID, type LensId } from "@/lib/schema/lenses";
-import { PUBLISHED_OPERATING_VIEW_BY_ID, type PublishedOperatingView } from "@/lib/schema/operating-views";
+import {
+  DEFAULT_OPERATING_VIEW_ID,
+  PUBLISHED_OPERATING_VIEW_BY_ID,
+  type PublishedOperatingView,
+} from "@/lib/schema/operating-views";
 import type { GraphEdge, PersonNode } from "@/lib/schema/types";
 import {
   buildChildMap,
@@ -65,7 +69,7 @@ import {
 import { buildManagerRoute } from "@/lib/graph/edge-routing";
 import { GridColNode, GridRowNode, GridCellNode, GridGroupNode } from "@/components/grid-frame-node";
 import { CHANNEL_GROUP_COLORS } from "@/lib/theme/palette";
-import { channelTopGroup } from "@/lib/org/channels";
+import { channelSubGroup, channelTopGroup } from "@/lib/org/channels";
 import { CommandPalette, type PaletteAction } from "@/components/command-palette";
 import { OrgHealthPanel } from "@/components/org-health-panel";
 import { UnitRail } from "@/components/unit-rail";
@@ -92,6 +96,7 @@ type ViewContext = {
   kind: "support-pod" | "shared-services" | "unit" | "lens-group" | "operating-view";
   label: string;
   count: number;
+  rootId?: string;
   owner?: string;
   description?: string;
   publishedBy?: string;
@@ -195,6 +200,66 @@ const markerByType: Record<string, { width: number; height: number; color: strin
   dotted: { width: 16, height: 16, color: RELATIONSHIP_COLORS.dotted },
 };
 
+const EXECUTIVE_ROOT_ID = "person-ari-supran";
+const SENIOR_LEADERSHIP_CONTEXT_IDS = [
+  EXECUTIVE_ROOT_ID,
+  "person-pat-mcgaughan",
+  "person-rob-roland",
+  "person-jason-sloan",
+  "person-michael-sonntag",
+  "person-grace-dryer",
+  "person-jorge-notni",
+];
+
+const CHANNEL_ROOT_BY_CHANNEL: Record<string, string> = {
+  "Luxury Residential": "person-jason-sloan",
+  "National Accounts": "person-jason-sloan",
+  "International Residential": "person-jason-sloan",
+  "North America Professional": "person-michael-sonntag",
+  "International Professional": "person-michael-sonntag",
+  Enterprise: "person-michael-sonntag",
+};
+
+const BRAND_CONTEXT_BY_BRAND: Record<string, string[]> = {
+  Sonance: SENIOR_LEADERSHIP_CONTEXT_IDS,
+  James: SENIOR_LEADERSHIP_CONTEXT_IDS,
+  iPort: ["person-rob-roland", "person-mike-paganini", "person-chris-lawson"],
+};
+
+const BRAND_CONTEXT_LABEL_BY_ID: Record<string, string> = {
+  [EXECUTIVE_ROOT_ID]: "CEO / SLT",
+  "person-pat-mcgaughan": "SLT context",
+  "person-rob-roland": "SLT context",
+  "person-jason-sloan": "SLT context",
+  "person-michael-sonntag": "SLT context",
+  "person-grace-dryer": "SLT context",
+  "person-jorge-notni": "SLT context",
+  "person-mike-paganini": "Product leadership",
+  "person-chris-lawson": "iPort general manager",
+};
+
+const CHANNEL_CONTEXT_BY_KEY: Record<string, string[]> = {
+  Residential: ["person-jason-sloan"],
+  "Luxury Residential": ["person-jason-sloan"],
+  "National Accounts": ["person-jason-sloan"],
+  "International Residential": ["person-jason-sloan"],
+  Commercial: ["person-michael-sonntag"],
+  Professional: ["person-michael-sonntag"],
+  "North America Professional": ["person-michael-sonntag"],
+  "International Professional": ["person-michael-sonntag"],
+  Enterprise: ["person-michael-sonntag", "person-chris-lawson"],
+};
+
+const CHANNEL_CONTEXT_LABEL_BY_ID: Record<string, string> = {
+  "person-jason-sloan": "Residential owner",
+  "person-michael-sonntag": "Professional owner",
+  "person-chris-lawson": "Enterprise / iPort GM",
+};
+
+const CHANNEL_SUPPORT_NAME_HINTS: Record<string, string[]> = {
+  "International Residential": ["Kim Buck", "Adrian Ickeringill", "Goran"],
+};
+
 const baseEdgeStyle = {
   strokeWidth: 2.5,
   strokeLinecap: "round" as const,
@@ -232,7 +297,9 @@ const loadOperatingViewLayouts = (): OperatingViewLayouts => {
 const isPersonFlowNodeId = (id: string) =>
   !id.startsWith("lane:") &&
   !id.startsWith("mirror:") &&
+  !id.startsWith("context:") &&
   !id.startsWith("mirror-group:") &&
+  !id.startsWith("shared-overview:") &&
   !id.startsWith("grid");
 
 const buildPersonCardRect = (
@@ -354,6 +421,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const collapsedIds = useGraphStore((state) => state.collapsedIds);
   const toggleCollapse = useGraphStore((state) => state.toggleCollapse);
   const addCollapsed = useGraphStore((state) => state.addCollapsed);
+  const expandSubtree = useGraphStore((state) => state.expandSubtree);
   const expandAll = useGraphStore((state) => state.expandAll);
   const applyToPeople = useGraphStore((state) => state.applyToPeople);
   const copyPersonSettings = useGraphStore((state) => state.copyPersonSettings);
@@ -444,6 +512,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // True while jumpToPerson is animating the camera, so the reveal effect
   // doesn't fight it with a second pan.
   const cameraBusyRef = useRef(false);
+  const paneClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Zoom quantized to 0.05 steps for node data: LOD/label scaling only needs
   // coarse zoom, and feeding the raw value rebuilt every node per wheel frame
   const lodZoom = useMemo(() => Math.round(currentZoom * 20) / 20, [currentZoom]);
@@ -453,10 +522,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const matrixWrapRefreshRef = useRef<Set<LensId>>(new Set());
   const previousLens = useRef(lens);
   const fitVisiblePeopleRef = useRef<(options?: FitPeopleOptions) => void>(() => {});
+  const defaultFitIdsRef = useRef<string[] | null>(null);
   const viewportSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orientationLoopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orientationLoopRunRef = useRef(0);
-  const handledOperatingViewRequestRef = useRef<number | null>(null);
+  const handledFocusRequestRef = useRef<number | null>(null);
+  const handledOperatingViewRequestRef = useRef<number | string | null>(null);
   const verifyOrientationTargetRef = useRef<(target: OrientationLoopTarget) => boolean>(() => true);
   const viewportShowsRenderedPersonRef = useRef<() => boolean>(() => true);
 
@@ -547,7 +618,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance],
   );
   const fitToView = useCallback(
-    () => fitVisiblePeopleRef.current({ padding: 0.18, duration: 300, minZoom: 0.35, maxZoom: 1.2, reason: "fit" }),
+    () =>
+      fitVisiblePeopleRef.current({
+        padding: 0.18,
+        duration: 300,
+        minZoom: 0.35,
+        maxZoom: 1.2,
+        reason: "fit",
+        expectedIds: defaultFitIdsRef.current ?? undefined,
+      }),
     [],
   );
 
@@ -611,9 +690,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const noFocus = (filters?.focusIds?.length ?? 0) === 0;
   // Brand/Channel get the left rail; the Grid gets a full-width foundation band instead
-  const showUnitRail =
-    (lens === "brand" || lens === "channel") && noFocus && orgUnits.length > 0;
-  const showUnitFoundation = isGridLens(lens) && noFocus && orgUnits.length > 0;
+  const showUnitRail = false;
+  const showUnitFoundation =
+    (isGridLens(lens) || lens === "brand" || lens === "channel") && noFocus && orgUnits.length > 0;
 
   // Dedicated support-groups view: show shared-service units as pods first;
   // opening a pod drills into the people behind that shared-service group.
@@ -706,9 +785,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       lens === "hierarchy" &&
       collapsedIds.length > 0 &&
       (filters?.focusIds?.length ?? 0) === 0
-        ? collectDescendants(childMap, collapsedIds)
+        ? (() => {
+            const hidden = collectDescendants(childMap, collapsedIds);
+            if (activeOperatingViewId === DEFAULT_OPERATING_VIEW_ID) {
+              SENIOR_LEADERSHIP_CONTEXT_IDS.forEach((id) => hidden.delete(id));
+            }
+            return hidden;
+          })()
         : null,
-    [lens, collapsedIds, childMap, filters?.focusIds],
+    [lens, collapsedIds, childMap, filters?.focusIds, activeOperatingViewId],
   );
 
   // Total subtree size per person, for the "+N" chip on collapsed cards
@@ -733,6 +818,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       descendantIds.length > TEAM_TREE_FULL_DESCENDANT_LIMIT
         ? new Set([teamRootId, ...directReportIds])
         : allIds;
+    if (teamRootId === EXECUTIVE_ROOT_ID) {
+      SENIOR_LEADERSHIP_CONTEXT_IDS.forEach((id) => visibleIds.add(id));
+    }
     const scopedNodes = nodesData.filter((node) => visibleIds.has(node.id));
     const scopedEdges = edgesData.filter(
       (edge) =>
@@ -870,6 +958,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setToast({ message, undoable: options.undoable });
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 6000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (paneClickTimerRef.current) clearTimeout(paneClickTimerRef.current);
+    };
   }, []);
 
   const persistTeamLayouts = useCallback((layouts: TeamViewLayouts) => {
@@ -1093,12 +1187,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const fresh = useGraphStore.getState();
       const positions = activeTeamPositions ?? fresh.document.lens_state[fresh.document.lens]?.layout.positions ?? {};
       const directReports = teamTree?.rootId === id ? teamTree.directReportIds : childMap[id] ?? [];
+      const descendants = collectDescendants(childMap, [id]);
       const teamTreeFrameIds =
-        teamTree?.rootId === id && teamTree.descendantIds.length <= 18
-          ? [id, ...teamTree.descendantIds]
+        teamTree?.rootId === id
+          ? [id, ...[...teamTree.ids].filter((teamId) => teamId !== id)]
+          : null;
+      const downstreamFrameIds =
+        !teamTree && descendants.size > 0 && descendants.size <= TEAM_TREE_FULL_DESCENDANT_LIMIT
+          ? [id, ...descendants]
           : null;
       const frameIds =
         teamTreeFrameIds ??
+        downstreamFrameIds ??
         (directReports.length > 0
           ? [id, ...directReports]
           : [parentMap[id], id].filter((value): value is string => Boolean(value)));
@@ -1130,14 +1230,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
       const targetX = availableLeft + availableWidth / 2;
-      const targetY = rect.top + rect.height * 0.46;
+      const isTeamRootFrame = teamTree?.rootId === id;
+      const rootPosition = isTeamRootFrame ? positions[id] : null;
+      const targetY = isTeamRootFrame
+        ? rect.top + 135
+        : rect.top + rect.height * 0.46;
 
       cameraBusyRef.current = true;
       setViewportRescueVisible(false);
       rfInstance.setViewport(
         {
-          x: targetX - rect.left - centerX * zoom,
-          y: targetY - rect.top - centerY * zoom,
+          x: targetX - rect.left - (rootPosition ? rootPosition.x + NODE_WIDTH / 2 : centerX) * zoom,
+          y: targetY - rect.top - (rootPosition ? rootPosition.y : centerY) * zoom,
           zoom,
         },
         { duration: 420 },
@@ -1162,12 +1266,37 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree, activeTeamPositions, scheduleOrientationLoop, framePositionMap],
   );
 
-  const showOrientationOverview = useCallback((officialContext?: Pick<ViewContext, "owner" | "description" | "publishedBy" | "publishedAt"> & { label?: string }) => {
+  const focusPersonFromCard = useCallback(
+    (id: string, additive?: boolean) => {
+      const hasReports = (childMap[id]?.length ?? 0) > 0;
+      const hasHiddenReportsInCurrentTree =
+        Boolean(teamTree && teamTree.rootId !== id && hasReports) &&
+        Array.from(collectDescendants(childMap, [id])).some((descendantId) => !teamTree?.ids.has(descendantId));
+      if (!additive && lens === "hierarchy" && hasHiddenReportsInCurrentTree) {
+        openTeamTree(id);
+        return;
+      }
+      if (!additive && lens === "hierarchy" && hasReports) {
+        expandSubtree(id);
+        selectNode(id, false);
+        window.setTimeout(() => framePersonContext(id), 90);
+        window.setTimeout(() => framePersonContext(id), 360);
+        return;
+      }
+      selectNode(id, additive);
+    },
+    [childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, teamTree],
+  );
+
+  const showOrientationOverview = useCallback((
+    officialContext?: Pick<ViewContext, "owner" | "description" | "publishedBy" | "publishedAt"> & { label?: string },
+    options: { forceTop?: boolean } = {},
+  ) => {
     const selectedPersonId =
       selection.nodeIds.length === 1 && personNameById.has(selection.nodeIds[0])
         ? selection.nodeIds[0]
         : null;
-    const currentRoot = teamRootId ?? selectedPersonId;
+    const currentRoot = options.forceTop ? null : teamRootId ?? selectedPersonId;
     const overviewRootId =
       (currentRoot ? parentMap[currentRoot] ?? currentRoot : null) ?? topOverviewRootId;
 
@@ -1182,6 +1311,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       descendantIds.length > TEAM_TREE_FULL_DESCENDANT_LIMIT
         ? new Set([overviewRootId, ...directReportIds])
         : new Set([overviewRootId, ...descendantIds]);
+    if (overviewRootId === EXECUTIVE_ROOT_ID) {
+      SENIOR_LEADERSHIP_CONTEXT_IDS.forEach((id) => visibleIds.add(id));
+    }
     const scopedNodes = nodesData.filter((node) => visibleIds.has(node.id));
     const scopedEdges = edgesData.filter(
       (edge) =>
@@ -1190,7 +1322,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         visibleIds.has(edge.target),
     );
     const positions = calculateTeamTreeLayout(scopedNodes, scopedEdges, overviewRootId);
-    const frameIds = [overviewRootId, ...directReportIds].filter((id) => visibleIds.has(id));
+    const overviewFrameIds =
+      overviewRootId === EXECUTIVE_ROOT_ID
+        ? [overviewRootId, ...directReportIds, ...SENIOR_LEADERSHIP_CONTEXT_IDS]
+        : [overviewRootId, ...directReportIds];
+    const frameIds = [...new Set(overviewFrameIds)].filter((id) => visibleIds.has(id));
 
     setViewportRescueVisible(false);
     setTeamReturnLens((current) => current ?? lens);
@@ -1315,7 +1451,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           : assignedMembers;
       if (members.length === 0) return;
       const targetLens = dimension === "brand" ? "brand" : dimension === "channel" ? "channel" : "department";
-      const memberIds = members.map((member) => member.id);
+      const rootId = dimension === "channel" ? CHANNEL_ROOT_BY_CHANNEL[key] : undefined;
+      const memberIds = (() => {
+        if (!rootId || !personNameById.has(rootId)) return members.map((member) => member.id);
+        const ids = new Set<string>([rootId]);
+        members.forEach((member) => {
+          ids.add(member.id);
+          let ancestor = parentMap[member.id];
+          const seen = new Set<string>([member.id]);
+          while (ancestor && !seen.has(ancestor)) {
+            ids.add(ancestor);
+            if (ancestor === rootId) break;
+            seen.add(ancestor);
+            ancestor = parentMap[ancestor];
+          }
+        });
+        return [...ids].filter((id) => personNameById.has(id));
+      })();
       setTeamRootId(null);
       setTeamReturnLens(null);
       clearSelection();
@@ -1334,6 +1486,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           description: context?.description,
           publishedBy: context?.publishedBy,
           publishedAt: context?.publishedAt,
+          rootId,
           dimension,
           value: key,
         });
@@ -1350,7 +1503,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         }, 220);
       }, 170);
     },
-    [clearSelection, personNodes, setLensFilters, setLensStore, showToast],
+    [clearSelection, parentMap, personNameById, personNodes, setLensFilters, setLensStore, showToast],
   );
 
   const openPublishedOperatingView = useCallback(
@@ -1363,7 +1516,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           description: view.description,
           publishedBy: view.publishedBy,
           publishedAt: view.publishedAt,
-        }), 120);
+        }, { forceTop: true }), 120);
         return;
       }
       if (view.kind === "shared-services") {
@@ -1386,6 +1539,69 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [openOperatingView, openSharedServices, resetView, showOrientationOverview],
   );
 
+  const openSeniorLeadershipHome = useCallback(() => {
+    const homeView = PUBLISHED_OPERATING_VIEW_BY_ID[DEFAULT_OPERATING_VIEW_ID];
+    if (homeView) {
+      openPublishedOperatingView(homeView);
+      return;
+    }
+    showOrientationOverview(undefined, { forceTop: true });
+  }, [openPublishedOperatingView, showOrientationOverview]);
+
+  const stepOutToBroaderView = useCallback(() => {
+    if (!teamRootId) {
+      clearSelection();
+      return;
+    }
+
+    const parentId = parentMap[teamRootId];
+    if (parentId) {
+      openTeamTree(parentId);
+      return;
+    }
+
+    clearSelection();
+  }, [clearSelection, openTeamTree, parentMap, teamRootId]);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    const isBlankPaneTarget = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return false;
+      if (target.closest(".react-flow__node, .react-flow__edge, button, input, textarea, select, [role='button']")) {
+        return false;
+      }
+      return target.classList.contains("react-flow__pane");
+    };
+
+    const scheduleBroaderView = (event: PointerEvent) => {
+      if (!isBlankPaneTarget(event)) return;
+      if (paneClickTimerRef.current) clearTimeout(paneClickTimerRef.current);
+      paneClickTimerRef.current = setTimeout(() => {
+        paneClickTimerRef.current = null;
+        stepOutToBroaderView();
+      }, 180);
+    };
+
+    const goHomeFromBlankPane = (event: MouseEvent) => {
+      if (!isBlankPaneTarget(event)) return;
+      if (paneClickTimerRef.current) {
+        clearTimeout(paneClickTimerRef.current);
+        paneClickTimerRef.current = null;
+      }
+      openSeniorLeadershipHome();
+    };
+
+    wrapper.addEventListener("pointerup", scheduleBroaderView, true);
+    wrapper.addEventListener("dblclick", goHomeFromBlankPane, true);
+    return () => {
+      wrapper.removeEventListener("pointerup", scheduleBroaderView, true);
+      wrapper.removeEventListener("dblclick", goHomeFromBlankPane, true);
+    };
+  }, [openSeniorLeadershipHome, stepOutToBroaderView]);
+
   useEffect(() => {
     if (!operatingViewRequest) return;
     if (handledOperatingViewRequestRef.current === operatingViewRequest.nonce) return;
@@ -1394,6 +1610,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!view) return;
     openPublishedOperatingView(view);
   }, [openPublishedOperatingView, operatingViewRequest]);
+
+  useEffect(() => {
+    if (!activeOperatingViewId || operatingViewRequest) return;
+    const bootKey = `active:${activeOperatingViewId}`;
+    if (handledOperatingViewRequestRef.current === bootKey) return;
+    const view = PUBLISHED_OPERATING_VIEW_BY_ID[activeOperatingViewId];
+    if (!view) return;
+    handledOperatingViewRequestRef.current = bootKey;
+    window.setTimeout(() => openPublishedOperatingView(view), 120);
+  }, [activeOperatingViewId, openPublishedOperatingView, operatingViewRequest]);
 
   const orientationMap = useMemo(() => {
     const focusIds = filters?.focusIds ?? [];
@@ -1442,7 +1668,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       personNodes.some((person) => getAssignments(person, "channel").includes(channel));
 
     const actions: OrientationAction[] = [
-      { id: "overview", label: "Show top org", tone: "dark", onClick: showOrientationOverview },
+      {
+        id: "overview",
+        label: "Senior team",
+        tone: "dark",
+        onClick: () => showOrientationOverview(undefined, { forceTop: true }),
+      },
     ];
     if (hasChannel("Luxury Residential")) {
       actions.push({
@@ -1478,7 +1709,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         };
       });
       return {
-        hidden,
+        hidden: true,
         title: "Executive Map",
         detail: "Formal reporting truth from the top, with drill-down by leader.",
         stats: [
@@ -1580,6 +1811,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // changes on every request so re-picking the same person still flies there.
   useEffect(() => {
     if (!focusRequest) return;
+    if (handledFocusRequestRef.current === focusRequest.nonce) return;
+    handledFocusRequestRef.current = focusRequest.nonce;
     if ((childMap[focusRequest.id]?.length ?? 0) > 0) {
       openTeamTree(focusRequest.id);
       return;
@@ -1763,6 +1996,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     return visibleViewportPersonIds.filter((id) => Boolean(positions[id])).length;
   }, [lensLayout?.positions, visibleViewportPersonIds]);
 
+  useEffect(() => {
+    if (teamTree || !noFocus) {
+      defaultFitIdsRef.current = null;
+      return;
+    }
+
+    const highLevelIds = new Set<string>();
+    if (lens === "brand") {
+      SENIOR_LEADERSHIP_CONTEXT_IDS.forEach((id) => highLevelIds.add(id));
+      (BRAND_CONTEXT_BY_BRAND.iPort ?? []).forEach((id) => highLevelIds.add(id));
+    } else if (lens === "channel") {
+      Object.values(CHANNEL_CONTEXT_BY_KEY).flat().forEach((id) => highLevelIds.add(id));
+      personNodes.forEach((person) => {
+        const tier = person.attributes.tier;
+        if (tier !== "vp" && tier !== "director") return;
+        if ((person.attributes.primaryChannel ?? "All Channels") === "All Channels") return;
+        highLevelIds.add(person.id);
+      });
+    }
+
+    const fitIds = [...highLevelIds].filter((id) => visibleViewportPersonIds.includes(id));
+    defaultFitIdsRef.current = fitIds.length > 0 ? fitIds : null;
+  }, [lens, noFocus, personNodes, teamTree, visibleViewportPersonIds]);
+
   const viewportShowsAnyPerson = useCallback(
     (viewport: ViewportState, positions: Record<string, { x: number; y: number }>) => {
       const wrapper = wrapperRef.current;
@@ -1868,7 +2125,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       if (!rfInstance) return;
       const positions = lensLayout?.positions ?? {};
       const expectedIds = options.expectedIds ?? visibleViewportPersonIds;
-      const nodesToFit = visibleViewportPersonIds
+      const visibleIds = new Set(visibleViewportPersonIds);
+      const candidateIds = [...new Set(expectedIds)].filter((id) => visibleIds.has(id));
+      const nodesToFit = (candidateIds.length > 0 ? candidateIds : visibleViewportPersonIds)
         .filter((id) => Boolean(positions[id]))
         .map((id) => ({ id }));
       const fitOptions = {
@@ -2144,21 +2403,29 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     const positions =
       focusIds.length > 0 && !teamTree
-        ? dimension
-          ? calculateMatrixLayout(filteredNodes, edgesData, dimension)
-          : (() => {
-              const scopedEdges = edgesData.filter(
-                (edge) =>
-                  edge.metadata.type === "manager" &&
-                  focusIds.includes(edge.source) &&
-                  focusIds.includes(edge.target),
-              );
-              const childIds = new Set(scopedEdges.map((edge) => edge.target));
-              const roots = filteredNodes.filter((node) => !childIds.has(node.id));
-              return roots.length === 1
-                ? calculateTeamTreeLayout(filteredNodes, scopedEdges, roots[0].id)
-                : calculateLayout(filteredNodes, scopedEdges);
-            })()
+        ? (() => {
+            const scopedEdges = edgesData.filter(
+              (edge) =>
+                edge.metadata.type === "manager" &&
+                focusIds.includes(edge.source) &&
+                focusIds.includes(edge.target),
+            );
+            const operatingRootId =
+              viewContext?.kind === "operating-view" && viewContext.rootId
+                ? viewContext.rootId
+                : undefined;
+            if (operatingRootId && focusIds.includes(operatingRootId)) {
+              return calculateTeamTreeLayout(filteredNodes, scopedEdges, operatingRootId);
+            }
+            if (dimension) {
+              return calculateMatrixLayout(filteredNodes, edgesData, dimension);
+            }
+            const childIds = new Set(scopedEdges.map((edge) => edge.target));
+            const roots = filteredNodes.filter((node) => !childIds.has(node.id));
+            return roots.length === 1
+              ? calculateTeamTreeLayout(filteredNodes, scopedEdges, roots[0].id)
+              : calculateLayout(filteredNodes, scopedEdges);
+          })()
         : basePositions;
     const displayPositions =
       viewContext?.kind === "operating-view" && operatingViewPositions
@@ -2204,7 +2471,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     // removing their members from the brand/channel lanes. Skipped while focusing.
     const rollUp = isCrossCutting && focusIds.length === 0 && orgUnits.length > 0;
     if (rollUp) {
-      filteredNodes = filteredNodes.filter((node) => !unitMemberIds.has(node.id));
+      filteredNodes = filteredNodes.filter(
+        (node) =>
+          !unitMemberIds.has(node.id) ||
+          SENIOR_LEADERSHIP_CONTEXT_IDS.includes(node.id),
+      );
     }
 
     const personFlowNodes: Node[] = filteredNodes.map((node) => {
@@ -2213,6 +2484,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       lastRenderedPositions.current[node.id] = position;
       const accent = getAccentColor(node, lens);
       const unitForNode = lens === "hierarchy" ? unitAnchorMap.get(node.id) : undefined;
+      const directReportCount = lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0;
+      const isNodeCollapsed = collapsedIds.includes(node.id);
       
       const data: HierarchyNodeData = {
         node,
@@ -2224,11 +2497,19 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         highlightTokens: highlightTokens.get(node.id) ?? [],
         zoom: lodZoom, // Pass zoom for LOD rendering
         readOnly: !canEdit,
-        reportCount: lens === "hierarchy" ? childMap[node.id]?.length ?? 0 : 0,
+        reportCount: directReportCount,
         hiddenCount: descendantCounts[node.id] ?? 0,
-        isCollapsed: collapsedIds.includes(node.id),
+        isCollapsed: isNodeCollapsed,
         onToggleCollapse: lens === "hierarchy" ? toggleCollapse : undefined,
         hideReportToggle: Boolean(teamTree),
+        interactionKey: [
+          lens,
+          teamTree?.rootId ?? "full-org",
+          canEdit ? "edit" : "explore",
+          directReportCount,
+          isNodeCollapsed ? "collapsed" : "expanded",
+          relationshipRoleById.get(node.id)?.tone ?? "none",
+        ].join(":"),
         // When this node is a facility / shared-service anchor, render it as a container
         unit: unitForNode,
         actions: {
@@ -2266,10 +2547,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             addRelationship(newId, targetId, "dotted");
             setSelection({ nodeIds: [newId], edgeIds: [] });
           },
-          convertToGroup: () => {
-            // placeholder: converting to group requires dedicated flow
-            addTagToNode(node.id, "Group candidate");
-          },
           duplicate: (nodeId) => duplicateNodes([nodeId]),
           copy: (nodeId) => copyNodesById([nodeId]),
           delete: removeNode,
@@ -2278,7 +2555,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           openEditor: (nodeId) => openEditor(nodeId),
           openOrg: (nodeId) => {
             if ((childMap[nodeId]?.length ?? 0) > 0) {
-              const unitForOpenedNode = nodeId === node.id ? unitForNode : unitAnchorMap.get(nodeId);
+              const unitForOpenedNode = nodeId === node.id && isNodeCollapsed ? unitForNode : undefined;
               openTeamTree(
                 nodeId,
                 unitForOpenedNode
@@ -2311,7 +2588,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           },
         },
         onSelect: (id, additive) => {
-          selectPersonFromCard(id, additive);
+          focusPersonFromCard(id, additive);
         },
       };
       
@@ -2341,7 +2618,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     }
 
     // Matrix views: draw a labeled swim lane behind each brand/channel/department group
-    if (!dimension) {
+    const suppressLaneNodes = viewContext?.kind === "operating-view" && Boolean(viewContext.rootId);
+    if (!dimension || suppressLaneNodes) {
       return personFlowNodes;
     }
     const laneNodes = buildLaneNodes(
@@ -2350,6 +2628,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       dimension,
       mirrorLanes && focusIds.length === 0,
       openSharedServiceGroup,
+      focusPersonFromCard,
       focusSet,
       lodZoom,
     );
@@ -2367,8 +2646,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     lodZoom,
     addPerson,
     addRelationship,
+    applyToPeople,
     canEdit,
     canDragNodes,
+    copyPersonSettings,
     duplicateNodes,
     openSharedServiceGroup,
     copyNodesById,
@@ -2377,8 +2658,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     addTagToNode,
     openEditor,
     openTeamTree,
-    selectNode,
-    selectPersonFromCard,
+    focusPersonFromCard,
     setSelection,
     isCrossCutting,
     orgUnits,
@@ -2397,6 +2677,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     childMap,
     descendantCounts,
     collapsedIds,
+    showToast,
     toggleCollapse,
   ]);
 
@@ -2639,7 +2920,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       
       // In matrix views the dotted/sponsor relationships are the story, so fade
       // the within-lane reporting lines and let cross-lane links stand out
-      const isMatrixView = lens !== "hierarchy";
+      const isRootedOperatingView = viewContext?.kind === "operating-view" && Boolean(viewContext.rootId);
+      const isMatrixView = lens !== "hierarchy" && !isRootedOperatingView;
       const isManager = edge.metadata.type === "manager";
       const isMatrixRelationship = edge.metadata.type === "dotted" || edge.metadata.type === "sponsor";
       const hasTruthIssue = edgeTruthAuditById.has(edge.id);
@@ -2757,6 +3039,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     childMap,
     matrixRelationshipMode,
     viewContext?.kind,
+    viewContext?.rootId,
     hiddenByCollapse,
     isCrossCutting,
     orgUnits,
@@ -2942,10 +3225,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [canEdit, removeNode, personNodes, showToast],
   );
-
-  const handlePaneClick = useCallback(() => {
-    clearSelection();
-  }, [clearSelection]);
 
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -3255,7 +3534,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             onConnect={handleConnect}
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
-            onPaneClick={handlePaneClick}
             onSelectionChange={handleSelectionChange}
             onNodeContextMenu={handleNodeContextMenu}
             onNodeDoubleClick={handleNodeDoubleClick}
@@ -4070,8 +4348,16 @@ const getLaneColor = (key: string, dimension: LensDimension) =>
   LANE_PALETTES[dimension][key] ?? UNASSIGNED_LANE_COLOR;
 
 const LANE_PAD_X = 70;
-const LANE_PAD_TOP = 130;
+const LANE_PAD_TOP = 430;
 const LANE_PAD_BOTTOM = 70;
+const LANE_MIN_WIDTH: Record<LensDimension, number> = {
+  brand: 1240,
+  channel: 980,
+  department: 720,
+};
+const CONTEXT_CARD_HEIGHT = 122;
+const CONTEXT_CARD_GAP = 32;
+const CONTEXT_ROW_TOP = 72;
 const MIRROR_HEIGHT = 150;
 const MIRROR_GAP = 40;
 const MIRROR_SECTION_GAP = 90;
@@ -4172,32 +4458,120 @@ const buildLaneNodes = (
   dimension: LensDimension,
   showMirrors: boolean,
   onOpenSharedServiceGroup: (ids: string[], label: string) => void,
+  onSelectPerson: (id: string) => void,
   focusSet: Set<string> | null,
   zoom: number,
 ): Node[] => {
   const groups = groupNodesByDimension(people, dimension);
+  const personById = new Map(people.map((person) => [person.id, person]));
   const laneNodes: Node[] = [];
   const mirrorNodes: Node[] = [];
   const laneRects: Array<{ key: string; minX: number; maxX: number; minY: number; count: number }> = [];
+
+  const resolveContextPeople = (key: string) => {
+    if (dimension === "brand") {
+      return (BRAND_CONTEXT_BY_BRAND[key] ?? []).flatMap((id) => {
+        const person = personById.get(id);
+        return person ? [person] : [];
+      });
+    }
+    if (dimension === "channel") {
+      const contextKeys = [
+        key,
+        channelSubGroup(key),
+        channelTopGroup(key),
+      ].filter((value): value is string => Boolean(value));
+      const ids = new Set<string>();
+      contextKeys.forEach((contextKey) => {
+        (CHANNEL_CONTEXT_BY_KEY[contextKey] ?? []).forEach((id) => ids.add(id));
+      });
+      return [...ids].flatMap((id) => {
+        const person = personById.get(id);
+        return person ? [person] : [];
+      });
+    }
+    return [];
+  };
 
   groups.forEach((members, key) => {
     const points = members
       .map((member) => positions[member.id])
       .filter((point): point is { x: number; y: number } => Boolean(point));
     if (points.length === 0) return;
-    const minX = Math.min(...points.map((p) => p.x)) - LANE_PAD_X;
-    const maxX = Math.max(...points.map((p) => p.x)) + NODE_WIDTH + LANE_PAD_X;
+    let minX = Math.min(...points.map((p) => p.x)) - LANE_PAD_X;
+    let maxX = Math.max(...points.map((p) => p.x)) + NODE_WIDTH + LANE_PAD_X;
     const minY = Math.min(...points.map((p) => p.y)) - LANE_PAD_TOP;
     let maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
+    const contextPeople = resolveContextPeople(key);
+    const contextCols = Math.max(1, Math.min(contextPeople.length, 4));
+    const contextRows = Math.ceil(contextPeople.length / Math.max(contextCols, 1));
+    const contextWidth =
+      contextPeople.length > 0
+        ? contextCols * NODE_WIDTH + (contextCols - 1) * CONTEXT_CARD_GAP + 2 * LANE_PAD_X
+        : 0;
+    const targetWidth = Math.max(maxX - minX, LANE_MIN_WIDTH[dimension], contextWidth);
+    if (targetWidth > maxX - minX) {
+      const center = (minX + maxX) / 2;
+      minX = center - targetWidth / 2;
+      maxX = center + targetWidth / 2;
+    }
+
+    if (contextPeople.length > 0) {
+      const rowWidth = contextCols * NODE_WIDTH + (contextCols - 1) * CONTEXT_CARD_GAP;
+      const startX = minX + (maxX - minX - rowWidth) / 2;
+      const contextTop = minY + CONTEXT_ROW_TOP;
+      contextPeople.forEach((person, index) => {
+        const row = Math.floor(index / contextCols);
+        const col = index % contextCols;
+        const data: MirrorNodeData = {
+          node: person,
+          accentColor: getLaneColor(key, dimension),
+          homeLane: getGroupKey(person, dimension),
+          targetLane: key,
+          roleLabel:
+            dimension === "brand"
+              ? BRAND_CONTEXT_LABEL_BY_ID[person.id] ?? "Brand context"
+              : CHANNEL_CONTEXT_LABEL_BY_ID[person.id] ?? "Channel owner",
+          variant: "context",
+          onSelect: onSelectPerson,
+        };
+        mirrorNodes.push({
+          id: `context:${dimension}:${key}:${person.id}`,
+          type: "mirrorNode",
+          position: {
+            x: startX + col * (NODE_WIDTH + CONTEXT_CARD_GAP),
+            y: contextTop + row * (CONTEXT_CARD_HEIGHT + CONTEXT_CARD_GAP),
+          },
+          data,
+          draggable: false,
+          focusable: false,
+          selectable: false,
+          zIndex: 4,
+        });
+      });
+      maxY = Math.max(
+        maxY,
+        minY + CONTEXT_ROW_TOP + contextRows * CONTEXT_CARD_HEIGHT + (contextRows - 1) * CONTEXT_CARD_GAP + LANE_PAD_BOTTOM,
+      );
+    }
 
     // Mirror cards: people whose secondary assignments include this lane,
     // stacked in a grid below the lane's primary members
     if (showMirrors) {
+      const supportNameHints =
+        dimension === "channel"
+          ? (CHANNEL_SUPPORT_NAME_HINTS[key] ?? []).map((hint) => hint.toLowerCase())
+          : [];
       const mirrors = people.filter(
-        (person) =>
-          person.attributes.tier !== "c-suite" &&
-          getGroupKey(person, dimension) !== key &&
-          getAssignments(person, dimension).includes(key),
+        (person) => {
+          if (person.attributes.tier === "c-suite") return false;
+          if (getGroupKey(person, dimension) === key) return false;
+          const assignedToLane = getAssignments(person, dimension).includes(key);
+          const explicitlySupportsLane =
+            supportNameHints.length > 0 &&
+            supportNameHints.some((hint) => person.name.toLowerCase().includes(hint));
+          return assignedToLane || explicitlySupportsLane;
+        },
       );
       const mirrorGroups = groupSharedServiceMirrors(mirrors, (person) =>
         getGroupKey(person, dimension),

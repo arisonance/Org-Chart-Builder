@@ -58,7 +58,7 @@ function PasteSettingsMenu({ sourceName, count, onApply }: { sourceName: string;
   );
 }
 
-type SpreadsheetViewProps = { open: boolean; onClose: () => void };
+type SpreadsheetViewProps = { open: boolean; onClose: () => void; readOnly?: boolean };
 
 const TIERS: Array<{ value: string; label: string }> = [
   { value: "c-suite", label: "C-Suite" },
@@ -140,10 +140,19 @@ function FilterBox({ value, onChange, placeholder }: { value: string; onChange: 
 const chipCls =
   "inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-white/10 dark:text-slate-200";
 
-function ChipMultiSelect({ values, options, onChange, allowAdd }: { values: string[]; options: string[]; onChange: (v: string[]) => void; allowAdd?: boolean }) {
+function ChipMultiSelect({ values, options, onChange, allowAdd, disabled }: { values: string[]; options: string[]; onChange: (v: string[]) => void; allowAdd?: boolean; disabled?: boolean }) {
   const [q, setQ] = useState("");
   const filtered = options.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase()));
   const canAdd = allowAdd && q.trim() && !options.some((o) => o.toLowerCase() === q.trim().toLowerCase());
+  if (disabled) {
+    return values.length ? (
+      <span className="flex min-h-7 flex-wrap items-center gap-1 px-1.5 py-1">
+        {values.map((v) => <span key={v} className={chipCls}>{v}</span>)}
+      </span>
+    ) : (
+      <span className="block px-1.5 py-1 text-xs text-slate-300">—</span>
+    );
+  }
   return (
     <Pop
       width={240}
@@ -187,10 +196,17 @@ function ChipMultiSelect({ values, options, onChange, allowAdd }: { values: stri
   );
 }
 
-function SingleSelect({ value, options, onChange, allowAdd, placeholder, invalid }: { value: string; options: string[]; onChange: (v: string) => void; allowAdd?: boolean; placeholder?: string; invalid?: boolean }) {
+function SingleSelect({ value, options, onChange, allowAdd, placeholder, invalid, disabled }: { value: string; options: string[]; onChange: (v: string) => void; allowAdd?: boolean; placeholder?: string; invalid?: boolean; disabled?: boolean }) {
   const [q, setQ] = useState("");
   const filtered = options.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase()));
   const canAdd = allowAdd && q.trim() && !options.some((o) => o.toLowerCase() === q.trim().toLowerCase());
+  if (disabled) {
+    return (
+      <span className={`block min-h-7 rounded px-1.5 py-1 text-xs ${invalid ? "bg-amber-50/60 text-amber-700" : "text-slate-600 dark:text-slate-300"}`}>
+        {value || placeholder || "—"}
+      </span>
+    );
+  }
   return (
     <Pop
       width={230}
@@ -234,43 +250,48 @@ type RowProps = {
   onName: (p: PersonNode, v: string) => void;
   onAttr: (p: PersonNode, patch: Partial<PersonNode["attributes"]>) => void;
   onManager: (p: PersonNode, name: string) => void;
+  readOnly?: boolean;
 };
 
-const Row = memo(function Row({ person, managerName, selected, opts, onToggleSelect, onName, onAttr, onManager }: RowProps) {
+const Row = memo(function Row({ person, managerName, selected, opts, onToggleSelect, onName, onAttr, onManager, readOnly = false }: RowProps) {
   const a = person.attributes;
   const cell = "border-b border-slate-100 px-1 align-top dark:border-white/5";
+  const inputClass = readOnly ? `${textCls} cursor-default opacity-75` : textCls;
   return (
     <tr className={selected ? "bg-sky-50/60 dark:bg-sky-500/10" : "hover:bg-sky-50/30 dark:hover:bg-sky-500/5"}>
       <td className={`${cell} sticky left-0 z-10 ${selected ? "bg-sky-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900"}`}>
         <div className="flex items-center gap-2">
-          <input type="checkbox" checked={selected} onChange={() => onToggleSelect(person.id)} className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-sky-600" />
-          <input className={`${textCls} font-semibold`} defaultValue={person.name} onBlur={(e) => onName(person, e.target.value)} key={`n-${person.id}-${person.name}`} />
+          <input type="checkbox" checked={selected} disabled={readOnly} onChange={() => onToggleSelect(person.id)} className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-sky-600 disabled:cursor-not-allowed disabled:opacity-40" />
+          <input className={`${inputClass} font-semibold`} defaultValue={person.name} disabled={readOnly} onBlur={(e) => onName(person, e.target.value)} key={`n-${person.id}-${person.name}`} />
         </div>
       </td>
-      <td className={cell}><input className={textCls} defaultValue={a.title} onBlur={(e) => onAttr(person, { title: e.target.value })} key={`t-${person.id}-${a.title}`} /></td>
+      <td className={cell}><input className={inputClass} defaultValue={a.title} disabled={readOnly} onBlur={(e) => onAttr(person, { title: e.target.value })} key={`t-${person.id}-${a.title}`} /></td>
       <td className={cell}>
         <SingleSelect value={a.primaryDepartment ?? ""} options={opts.depts} allowAdd placeholder="— add —" invalid={!a.primaryDepartment}
+          disabled={readOnly}
           onChange={(v) => onAttr(person, { primaryDepartment: v || undefined, departments: v ? [v] : [] })} />
       </td>
       <td className={cell}>
-        <select className={textCls} value={a.tier ?? "ic"} onChange={(e) => onAttr(person, { tier: e.target.value as PersonNode["attributes"]["tier"] })}>
+        <select className={inputClass} value={a.tier ?? "ic"} disabled={readOnly} onChange={(e) => onAttr(person, { tier: e.target.value as PersonNode["attributes"]["tier"] })}>
           {TIERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
       </td>
       <td className={cell}>
-        <SingleSelect value={managerName} options={opts.people} placeholder="—" onChange={(v) => onManager(person, v)} />
+        <SingleSelect value={managerName} options={opts.people} placeholder="—" disabled={readOnly} onChange={(v) => onManager(person, v)} />
       </td>
       <td className={cell}>
         <SingleSelect value={a.primaryBrand ?? ""} options={opts.brands} allowAdd placeholder="—"
+          disabled={readOnly}
           onChange={(v) => onAttr(person, { primaryBrand: v || undefined, brands: v && !a.brands.includes(v) ? [...a.brands, v] : a.brands })} />
       </td>
-      <td className={cell}><ChipMultiSelect values={a.brands} options={opts.brands} allowAdd onChange={(v) => onAttr(person, { brands: v })} /></td>
+      <td className={cell}><ChipMultiSelect values={a.brands} options={opts.brands} allowAdd disabled={readOnly} onChange={(v) => onAttr(person, { brands: v })} /></td>
       <td className={cell}>
         <SingleSelect value={a.primaryChannel ?? ""} options={opts.channels} allowAdd placeholder="—"
+          disabled={readOnly}
           onChange={(v) => onAttr(person, { primaryChannel: v || undefined, channels: v && !a.channels.includes(v) ? [...a.channels, v] : a.channels })} />
       </td>
-      <td className={cell}><ChipMultiSelect values={a.channels} options={opts.channels} allowAdd onChange={(v) => onAttr(person, { channels: v })} /></td>
-      <td className={cell}><input className={textCls} defaultValue={a.location ?? ""} onBlur={(e) => onAttr(person, { location: e.target.value.trim() || undefined })} key={`l-${person.id}-${a.location}`} /></td>
+      <td className={cell}><ChipMultiSelect values={a.channels} options={opts.channels} allowAdd disabled={readOnly} onChange={(v) => onAttr(person, { channels: v })} /></td>
+      <td className={cell}><input className={inputClass} defaultValue={a.location ?? ""} disabled={readOnly} onBlur={(e) => onAttr(person, { location: e.target.value.trim() || undefined })} key={`l-${person.id}-${a.location}`} /></td>
     </tr>
   );
 });
@@ -298,7 +319,7 @@ function BulkMenu({ label, options, onPick, accent }: { label: string; options: 
 }
 
 /* ------------------------------ main view ------------------------------ */
-export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
+export function SpreadsheetView({ open, onClose, readOnly = false }: SpreadsheetViewProps) {
   const nodes = useGraphStore((s) => s.document.nodes);
   const edges = useGraphStore((s) => s.document.edges);
   const updatePerson = useGraphStore((s) => s.updatePerson);
@@ -364,9 +385,10 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
     if (selectAllRef.current) selectAllRef.current.indeterminate = selectedInView > 0 && selectedInView < rows.length;
   }, [selectedInView, rows.length]);
 
-  const onName = useCallback((p: PersonNode, v: string) => { const name = v.trim(); if (name && name !== p.name) updatePerson(p.id, { name }); }, [updatePerson]);
-  const onAttr = useCallback((p: PersonNode, patch: Partial<PersonNode["attributes"]>) => { updatePerson(p.id, { attributes: { ...p.attributes, ...patch } }); }, [updatePerson]);
+  const onName = useCallback((p: PersonNode, v: string) => { if (readOnly) return; const name = v.trim(); if (name && name !== p.name) updatePerson(p.id, { name }); }, [readOnly, updatePerson]);
+  const onAttr = useCallback((p: PersonNode, patch: Partial<PersonNode["attributes"]>) => { if (readOnly) return; updatePerson(p.id, { attributes: { ...p.attributes, ...patch } }); }, [readOnly, updatePerson]);
   const onManager = useCallback((p: PersonNode, name: string) => {
+    if (readOnly) return;
     const newMgrId = name.trim() ? idByName.get(name.trim()) : undefined;
     const cur = managerOf[p.id];
     if ((cur?.managerId ?? "") === (newMgrId ?? "")) return;
@@ -376,18 +398,24 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
       return;
     }
     addRelationship(newMgrId, p.id, "manager");
-  }, [idByName, managerOf, addRelationship, removeRelationship]);
+  }, [readOnly, idByName, managerOf, addRelationship, removeRelationship]);
 
-  const toggleSelect = useCallback((id: string) => setSelected((s) => {
-    const next = new Set(s);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    return next;
-  }), []);
-  const toggleAll = () => setSelected(() => (selectedInView === rows.length ? new Set() : new Set(rows.map((p) => p.id))));
+  const toggleSelect = useCallback((id: string) => {
+    if (readOnly) return;
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, [readOnly]);
+  const toggleAll = () => {
+    if (readOnly) return;
+    setSelected(() => (selectedInView === rows.length ? new Set() : new Set(rows.map((p) => p.id))));
+  };
 
   const ids = [...selected];
   const bulkAddChannel = (c: string) => applyToPeople(ids, (a) => ({ channels: a.channels.includes(c) ? a.channels : [...a.channels, c] }));
@@ -412,6 +440,7 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
         <div className="flex items-center gap-3">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">People · Spreadsheet</h2>
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-300">{rows.length} of {people.length}</span>
+          {readOnly && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Read-only in Explore</span>}
           {noDeptCount > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">{noDeptCount} missing dept</span>}
         </div>
         <div className="flex items-center gap-3">
@@ -429,7 +458,7 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
             <tr>
               <th className="sticky left-0 top-0 z-30 min-w-[13rem] border-b border-slate-200 bg-slate-50 px-2 py-2 text-left dark:border-white/10 dark:bg-slate-800">
                 <div className="flex items-center gap-2">
-                  <input ref={selectAllRef} type="checkbox" checked={rows.length > 0 && selectedInView === rows.length} onChange={toggleAll} className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600" />
+                  <input ref={selectAllRef} type="checkbox" checked={rows.length > 0 && selectedInView === rows.length} disabled={readOnly} onChange={toggleAll} className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 disabled:cursor-not-allowed disabled:opacity-40" />
                   <span className="cursor-pointer text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-300" onClick={() => (sortKey === "name" ? setSortDir((d) => -d) : setSortKey("name"))}>Name</span>
                 </div>
               </th>
@@ -448,14 +477,14 @@ export function SpreadsheetView({ open, onClose }: SpreadsheetViewProps) {
             {rows.map((p) => (
               <Row key={p.id} person={p} selected={selected.has(p.id)} opts={opts}
                 managerName={nameById.get(managerOf[p.id]?.managerId ?? "") ?? ""}
-                onToggleSelect={toggleSelect} onName={onName} onAttr={onAttr} onManager={onManager} />
+                onToggleSelect={toggleSelect} onName={onName} onAttr={onAttr} onManager={onManager} readOnly={readOnly} />
             ))}
           </tbody>
         </table>
       </div>
 
       {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {!readOnly && selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] dark:border-white/10 dark:bg-slate-900">
           <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700 dark:bg-sky-500/20 dark:text-sky-200">{selected.size} selected</span>
 
