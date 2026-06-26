@@ -105,23 +105,95 @@ body {
    Edges are hidden while cards move (their paths only follow committed
    positions, so they'd detach from gliding cards), then fade back in. */
 .lens-transition .react-flow__node {
-  transition: transform 0.7s cubic-bezier(0.25, 1, 0.3, 1);
+  transition:
+    transform 0.82s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.24s ease-out;
+}
+
+.lens-transition .react-flow__node-laneNode,
+.lens-transition .react-flow__node-gridColNode,
+.lens-transition .react-flow__node-gridRowNode,
+.lens-transition .react-flow__node-gridCellNode,
+.lens-transition .react-flow__node-gridGroupNode {
+  transition-duration: 0.66s;
 }
 
 .lens-transition .react-flow__edge {
   opacity: 0 !important;
 }
 
+.lens-edge-reveal .react-flow__edge {
+  animation: relationship-line-reveal 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* Lanes and mirror cards fade in fresh — but only during a lens transition.
    Unscoped, the animation replayed (0.45s invisible) every time React
    re-mounted a lane, which read as flickering while panning/zooming. */
 .lens-transition .lane-fade-in {
-  animation: lane-fade-in 0.5s ease-out 0.45s backwards;
+  animation: lane-fade-in 0.62s cubic-bezier(0.22, 1, 0.36, 1) 0.16s backwards;
 }
 
 @keyframes lane-fade-in {
   from {
     opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.lens-transition .motion-stage-in {
+  animation: motion-stage-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s backwards;
+}
+
+.motion-view-cue {
+  animation: view-cue-pop 0.78s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.motion-context-bar {
+  animation: context-bar-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes motion-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+
+@keyframes view-cue-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.96);
+  }
+  18%,
+  78% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -6px) scale(0.98);
+  }
+}
+
+@keyframes context-bar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+
+@keyframes relationship-line-reveal {
+  from {
+    opacity: 0;
+    filter: saturate(0.7);
+  }
+  to {
+    opacity: 1;
+    filter: saturate(1);
   }
 }
 
@@ -130,6 +202,12 @@ body {
     transition: none;
   }
   .lens-transition .lane-fade-in {
+    animation: none;
+  }
+  .lens-edge-reveal .react-flow__edge,
+  .lens-transition .motion-stage-in,
+  .motion-view-cue,
+  .motion-context-bar {
     animation: none;
   }
 }

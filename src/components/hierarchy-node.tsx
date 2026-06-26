@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
@@ -16,13 +16,13 @@ type NodeActions = {
   addDirectReport: (managerId: string) => void;
   addManager: (nodeId: string) => void;
   addDotted: (nodeId: string) => void;
-  convertToGroup: (nodeId: string) => void;
   duplicate: (nodeId: string) => void;
   copy: (nodeId: string) => void;
   delete: (nodeId: string) => void;
   lockToggle: (nodeId: string) => void;
   colorTag: (nodeId: string, token: string) => void;
   openEditor: (nodeId: string) => void;
+  openOrg: (nodeId: string) => void;
   copySettings: (nodeId: string) => void;
   pasteSettings: (nodeId: string) => void;
 };
@@ -32,36 +32,46 @@ export type HierarchyNodeData = {
   lens: LensId;
   accentColor: string;
   emphasisLabel?: string;
+  relationshipRole?: {
+    label: string;
+    detail?: string;
+    tone: "selected" | "manager" | "report" | "downstream" | "peer" | "matrix";
+  };
   isSelected: boolean;
   highlightTokens: string[];
   actions: NodeActions;
   onSelect: (id: string, additive?: boolean) => void;
+  readOnly?: boolean;
   zoom?: number; // Current zoom level for LOD rendering
   // Hierarchy view: subtree fold chip (People Finder style)
   reportCount?: number; // direct reports
   hiddenCount?: number; // all descendants (shown when collapsed)
   isCollapsed?: boolean;
   onToggleCollapse?: (id: string) => void;
+  hideReportToggle?: boolean;
+  interactionKey?: string;
   // When set, this node anchors a facility / shared service and renders as a container
   unit?: UnitDef;
 };
 
 // Tier badges configuration
 const UNIT_CONTAINER_STYLE = {
-  facility: { glyph: "🏭", accent: "#0f766e", chip: "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200" },
-  "shared-service": { glyph: "🔗", accent: "#7c3aed", chip: "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200" },
+  facility: { glyph: "FAC", accent: "#0f766e", chip: "bg-teal-100 text-teal-800" },
+  "shared-service": { glyph: "SS", accent: "#7c3aed", chip: "bg-violet-100 text-violet-800" },
 } as const;
 
 function Component({ data }: { data: HierarchyNodeData }) {
   const {
-    node, accentColor, emphasisLabel, isSelected, highlightTokens, actions, onSelect, zoom = 1,
-    reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, unit,
+    node, emphasisLabel, isSelected, highlightTokens, actions, onSelect, readOnly = false, zoom = 1,
+    relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false,
+    unit,
   } = data;
 
   // Facility / shared-service container: stands in for a whole group of people
   const isContainer = !!unit && isCollapsed && hiddenCount > 0;
   const containerStyle = unit ? UNIT_CONTAINER_STYLE[unit.type] : null;
   const containerCount = hiddenCount + 1;
+  const opensOrgView = reportCount > 0 || hiddenCount > 0 || isContainer;
 
   const initials = useMemo(
     () =>
@@ -76,6 +86,15 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
   // Level of detail based on zoom - less aggressive for better initial render
   const lodLevel = getLodLevel(zoom);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastClickAtRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    },
+    [],
+  );
 
   // Connection affordances (handle dots + the Dotted/Sponsor labels) are only
   // useful when you're close enough to actually wire a relationship. Hide them
@@ -83,7 +102,9 @@ function Component({ data }: { data: HierarchyNodeData }) {
   // reveal them on hover or when the card is selected. Handles stay mounted
   // either way (opacity only) so existing edges keep attaching.
   const connectorClass = `transition-opacity duration-150 ${
-    lodLevel !== "full"
+    readOnly
+      ? "opacity-0"
+      : lodLevel !== "full"
       ? "opacity-0"
       : isSelected
         ? "opacity-100"
@@ -92,7 +113,44 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
-    onSelect(node.id, additive || event.metaKey || event.ctrlKey || event.shiftKey);
+    const now = Date.now();
+    const isRapidSecondClick = now - lastClickAtRef.current < 340;
+    if (("detail" in event && event.detail > 1) || isRapidSecondClick) {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      lastClickAtRef.current = 0;
+      if (opensOrgView) {
+        actions.openOrg(node.id);
+      } else {
+        actions.openEditor(node.id);
+      }
+      return;
+    }
+    lastClickAtRef.current = now;
+    const shouldAdd = additive || event.metaKey || event.ctrlKey || event.shiftKey;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(
+      () => {
+        onSelect(node.id, shouldAdd);
+        clickTimerRef.current = null;
+      },
+      shouldAdd ? 0 : 180,
+    );
+  };
+
+  const handleOpenDetailsOrOrg = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    if (opensOrgView) {
+      actions.openOrg(node.id);
+    } else {
+      actions.openEditor(node.id);
+    }
   };
 
   const primaryContextBadge =
@@ -102,6 +160,19 @@ function Component({ data }: { data: HierarchyNodeData }) {
       node.attributes.primaryDepartment,
       node.attributes.primaryChannel,
     ]) ?? undefined;
+
+  const relationshipRoleClass =
+    relationshipRole?.tone === "selected"
+      ? "bg-slate-900 text-white ring-slate-900/10 dark:bg-white dark:text-slate-950 dark:ring-white/20"
+      : relationshipRole?.tone === "manager"
+        ? "bg-sky-50 text-sky-800 ring-sky-100 dark:bg-sky-500/15 dark:text-sky-100 dark:ring-sky-400/20"
+        : relationshipRole?.tone === "report"
+          ? "bg-emerald-50 text-emerald-800 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-100 dark:ring-emerald-400/20"
+          : relationshipRole?.tone === "downstream"
+            ? "bg-teal-50 text-teal-800 ring-teal-100 dark:bg-teal-500/15 dark:text-teal-100 dark:ring-teal-400/20"
+            : relationshipRole?.tone === "peer"
+              ? "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10"
+              : "bg-amber-50 text-amber-800 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-400/20";
 
   return (
     <ContextMenu.Root>
@@ -117,10 +188,12 @@ function Component({ data }: { data: HierarchyNodeData }) {
           <button
             type="button"
             onClick={(event) => handleSelect(event, event.shiftKey)}
+            onDoubleClick={handleOpenDetailsOrOrg}
+            title={isContainer ? `Double-click to open ${unit.label}'s team view` : undefined}
             className={[
               "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950",
               isContainer
-                ? "border-2 border-dashed ring-slate-200 dark:ring-white/10"
+                ? "border-slate-200 !bg-white ring-slate-200 dark:!border-slate-200 dark:!bg-white dark:!text-slate-900 dark:!ring-slate-200"
                 : "border-slate-200 ring-slate-200 dark:border-white/10 dark:ring-white/10",
               isSelected
                 ? "border-sky-500 ring-2 ring-sky-300/80 shadow-xl"
@@ -128,25 +201,28 @@ function Component({ data }: { data: HierarchyNodeData }) {
             ].join(" ")}
             style={isContainer && containerStyle ? { borderColor: containerStyle.accent } : undefined}
           >
-            {isContainer && (
-              <>
-                <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 translate-x-1.5 translate-y-1.5 rounded-2xl border border-slate-300 bg-white dark:border-white/15 dark:bg-slate-900" />
-                <span aria-hidden className="pointer-events-none absolute inset-0 -z-20 translate-x-3 translate-y-3 rounded-2xl border border-slate-300 bg-white dark:border-white/10 dark:bg-slate-900" />
-              </>
+            {relationshipRole && lodLevel !== "compact" && (
+              <span
+                className={`absolute left-3 top-3 max-w-[9.5rem] truncate rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${relationshipRoleClass}`}
+                title={relationshipRole.detail ?? relationshipRole.label}
+              >
+                {relationshipRole.label}
+              </span>
             )}
-            <span
-              className="pointer-events-none absolute inset-x-6 top-0 h-1.5 rounded-full"
-              style={{ background: isContainer && containerStyle ? containerStyle.accent : accentColor }}
-            />
             {isContainer && containerStyle && unit ? (
               <div className="flex min-h-[6.5rem] flex-col items-center justify-center gap-1.5">
-                <span className="text-3xl leading-none" aria-hidden>{containerStyle.glyph}</span>
+                <span
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold tracking-wide text-white shadow-sm"
+                  aria-hidden
+                >
+                  {containerStyle.glyph}
+                </span>
                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${containerStyle.chip}`}>
                   {unit.type === "facility" ? "Facility" : "Shared service"}
                 </span>
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-50">{unit.label}</p>
-                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{containerCount} people</p>
-                <p className="text-[10px] text-slate-400">{unit.serves}</p>
+                <p className="text-sm font-bold text-slate-900">{unit.label}</p>
+                <p className="text-xs font-semibold text-slate-700">{containerCount} people</p>
+                <p className="text-[10px] text-slate-500">{unit.serves}</p>
               </div>
             ) : lodLevel === 'compact' ? (
               /* Zoomed way out: counter-scale the name so cards stay legible as chips */
@@ -218,83 +294,116 @@ function Component({ data }: { data: HierarchyNodeData }) {
             position={Position.Bottom}
             id={`${node.id}-manager-source`}
             data-handle-type="manager"
-            className={`${HANDLE_BASE_CLASS} ${connectorClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
+            className={`${HANDLE_BASE_CLASS} ${hideReportToggle ? "opacity-0" : connectorClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
+            style={{ bottom: hideReportToggle ? -5 : undefined }}
           />
 
-          {/* Subtree fold chip, People Finder style: "6 ⌄" expanded, "+12 ▸" collapsed */}
-          {reportCount > 0 && onToggleCollapse && (
+          {/* Subtree fold chip, People Finder style. Collapsed unit cards open
+              their dedicated team view instead of expanding into a noisy canvas. */}
+          {reportCount > 0 && onToggleCollapse && !hideReportToggle && (
             <button
               type="button"
               data-testid={`collapse-chip-${node.id}`}
               aria-label={
-                isCollapsed
+                isContainer && unit
+                  ? `Open ${unit.label} team view, ${containerCount} people`
+                  : isCollapsed
                   ? `Show ${hiddenCount} hidden ${hiddenCount === 1 ? "report" : "reports"}`
                   : `Hide reports of ${node.name}`
               }
               onClick={(event) => {
                 event.stopPropagation();
+                if (isContainer) {
+                  actions.openOrg(node.id);
+                  return;
+                }
                 onToggleCollapse(node.id);
+              }}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                actions.openOrg(node.id);
               }}
               className={[
                 "absolute -bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
-                isCollapsed
+                isContainer
+                  ? "border-violet-200 bg-white text-violet-700 hover:bg-violet-50 dark:border-violet-200 dark:bg-white dark:text-violet-700"
+                  : isCollapsed
                   ? "border-sky-300 bg-sky-500 text-white hover:bg-sky-600"
                   : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
               ].join(" ")}
             >
-              {isCollapsed ? `+${hiddenCount} ▸` : `${reportCount} ⌄`}
+              {isContainer ? `${containerCount} people ▸` : isCollapsed ? `+${hiddenCount} ▸` : `${reportCount} ⌄`}
             </button>
           )}
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Content className="z-50 min-w-[220px] rounded-xl border border-slate-200 bg-white/95 p-1 text-sm shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
         <MenuLabel text={node.name} />
-        <MenuItem onSelect={() => actions.openEditor(node.id)}>Edit person…</MenuItem>
-        <MenuSeparator />
-        <MenuItem onSelect={() => actions.addDirectReport(node.id)}>Add direct report</MenuItem>
-        <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
-        <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
-        <MenuSeparator />
-        <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
-          Copy settings
+        {opensOrgView && (
+          <MenuItem onSelect={() => actions.openOrg(node.id)}>
+            {isContainer && unit ? `Open ${unit.label} team` : "Open org view"}
+          </MenuItem>
+        )}
+        <MenuItem onSelect={() => actions.openEditor(node.id)}>
+          {readOnly ? "Switch to edit…" : "Edit person…"}
         </MenuItem>
-        <MenuItem onSelect={() => actions.pasteSettings(node.id)}>Paste settings</MenuItem>
-        <MenuSeparator />
-        <ContextMenu.Sub>
-          <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
-            Color tag
-            <ChevronRightIcon className="h-4 w-4" />
-          </ContextMenu.SubTrigger>
-          <ContextMenu.SubContent className="min-w-[200px] rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
-            {["Brand", "Channel", "Department"].map((token) => (
-              <MenuItem key={token} onSelect={() => actions.colorTag(node.id, token)}>
-                {token}
-              </MenuItem>
-            ))}
-          </ContextMenu.SubContent>
-        </ContextMenu.Sub>
-        <MenuItem onSelect={() => actions.convertToGroup(node.id)}>Convert to group node</MenuItem>
-        <MenuSeparator />
+        {readOnly ? (
+          <>
+            <MenuSeparator />
+            <MenuLabel text="Explore mode protects org data and layouts" />
+          </>
+        ) : (
+          <>
+            <MenuSeparator />
+            <MenuItem onSelect={() => actions.addDirectReport(node.id)}>Add direct report</MenuItem>
+            <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
+            <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
+            <MenuSeparator />
+            <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
+              Copy settings
+            </MenuItem>
+            <MenuItem onSelect={() => actions.pasteSettings(node.id)}>Paste settings</MenuItem>
+            <MenuSeparator />
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100 focus:outline-none dark:text-slate-300 dark:hover:bg-white/10">
+                Color tag
+                <ChevronRightIcon className="h-4 w-4" />
+              </ContextMenu.SubTrigger>
+              <ContextMenu.SubContent className="min-w-[200px] rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/90">
+                {["Brand", "Channel", "Department"].map((token) => (
+                  <MenuItem key={token} onSelect={() => actions.colorTag(node.id, token)}>
+                    {token}
+                  </MenuItem>
+                ))}
+              </ContextMenu.SubContent>
+            </ContextMenu.Sub>
+            <MenuSeparator />
+          </>
+        )}
         <MenuItem onSelect={() => actions.copy(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
           Copy
         </MenuItem>
-        <MenuItem onSelect={() => actions.duplicate(node.id)}>Duplicate</MenuItem>
-        <MenuItem
-          onSelect={() => actions.lockToggle(node.id)}
-          icon={
-            node.locked ? (
-              <LockClosedIcon className="h-3.5 w-3.5" />
-            ) : (
-              <LockOpen1Icon className="h-3.5 w-3.5" />
-            )
-          }
-        >
-          {node.locked ? "Unlock position" : "Lock position"}
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem destructive onSelect={() => actions.delete(node.id)}>
-          Remove person
-        </MenuItem>
+        {!readOnly && (
+          <>
+            <MenuItem onSelect={() => actions.duplicate(node.id)}>Duplicate</MenuItem>
+            <MenuItem
+              onSelect={() => actions.lockToggle(node.id)}
+              icon={
+                node.locked ? (
+                  <LockClosedIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <LockOpen1Icon className="h-3.5 w-3.5" />
+                )
+              }
+            >
+              {node.locked ? "Unlock position" : "Lock position"}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem destructive onSelect={() => actions.delete(node.id)}>
+              Remove person
+            </MenuItem>
+          </>
+        )}
       </ContextMenu.Content>
     </ContextMenu.Root>
   );
@@ -369,7 +478,13 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
   if (
     prev.isCollapsed !== next.isCollapsed ||
     prev.reportCount !== next.reportCount ||
-    prev.hiddenCount !== next.hiddenCount
+    prev.hiddenCount !== next.hiddenCount ||
+    prev.hideReportToggle !== next.hideReportToggle ||
+    prev.interactionKey !== next.interactionKey ||
+    prev.readOnly !== next.readOnly ||
+    prev.relationshipRole?.label !== next.relationshipRole?.label ||
+    prev.relationshipRole?.detail !== next.relationshipRole?.detail ||
+    prev.relationshipRole?.tone !== next.relationshipRole?.tone
   ) {
     return false;
   }
@@ -379,7 +494,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
       prev.isSelected === next.isSelected &&
       prev.accentColor === next.accentColor &&
       prev.emphasisLabel === next.emphasisLabel &&
-      prev.highlightTokens.length === next.highlightTokens.length) {
+      prev.highlightTokens.length === next.highlightTokens.length &&
+      prev.interactionKey === next.interactionKey) {
     return true;
   }
 
@@ -392,6 +508,7 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.isSelected === next.isSelected &&
     prev.accentColor === next.accentColor &&
     prev.lens === next.lens &&
+    prev.interactionKey === next.interactionKey &&
     prev.highlightTokens.join(',') === next.highlightTokens.join(',')
   );
 }

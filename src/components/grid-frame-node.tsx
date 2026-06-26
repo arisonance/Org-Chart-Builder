@@ -27,7 +27,7 @@ function ColComponent({ data }: { data: GridColNodeData }) {
   const chipFont = Math.min(34, 12 / safeZoom);
   return (
     <div
-      className="pointer-events-none rounded-3xl border-2 border-dashed"
+      className="lane-fade-in pointer-events-none rounded-3xl border-2 border-dashed"
       style={{ width, height, borderColor: `${color}40`, background: `${color}0a` }}
     >
       <div
@@ -56,7 +56,7 @@ function RowComponent({ data }: { data: GridRowNodeData }) {
   const chipFont = Math.min(30, 11 / safeZoom);
   return (
     <div
-      className="pointer-events-none rounded-3xl"
+      className="lane-fade-in pointer-events-none rounded-3xl"
       style={{ width, height: "100%", background: `${color}12`, borderLeft: `8px solid ${color}` }}
     >
       <div className="flex h-full flex-col justify-center gap-2 pl-6" style={{ width: 260 }}>
@@ -103,7 +103,7 @@ function CellComponent({ data }: { data: GridCellNodeData }) {
 
   return (
     <div
-      className="pointer-events-none rounded-2xl"
+      className="lane-fade-in pointer-events-none rounded-2xl"
       style={{
         width,
         height,
@@ -151,7 +151,7 @@ function GroupComponent({ data }: { data: GridGroupNodeData }) {
       type="button"
       onClick={onToggle ? () => onToggle(label) : undefined}
       title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
-      className={`flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 transition ${onToggle ? "cursor-pointer hover:brightness-95" : ""}`}
+      className={`lane-fade-in flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 transition ${onToggle ? "cursor-pointer hover:brightness-95" : ""}`}
       style={{ width, borderColor: `${color}66`, background: `${color}${collapsed ? "22" : "14"}` }}
     >
       <span className="flex items-center gap-2 font-extrabold uppercase tracking-wider" style={{ color, fontSize: labelFont, lineHeight: 1 }}>

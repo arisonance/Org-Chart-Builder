@@ -4,6 +4,7 @@ import { produce } from "immer";
 import cloneDeep from "lodash.clonedeep";
 import { nanoid } from "nanoid";
 import { DEMO_GRAPH_DOCUMENT, DEMO_DEFAULT_COLLAPSED } from "@/data/demo-graph";
+import { DEFAULT_OPERATING_VIEW_ID } from "@/lib/schema/operating-views";
 import {
   buildChildMap,
   calculateLayout,
@@ -34,6 +35,7 @@ import type { Scenario } from "@/lib/scenario/types";
 
 const now = () => new Date().toISOString();
 const HISTORY_LIMIT = 100;
+export type WorkspaceMode = "explore" | "edit" | "publish";
 
 type HistoryStack = {
   past: GraphSnapshot[];
@@ -43,6 +45,8 @@ type HistoryStack = {
 type GraphStoreState = {
   document: GraphDocument;
   selection: SelectionState;
+  editorPersonId: string | null;
+  workspaceMode: WorkspaceMode;
   clipboard: ClipboardPayload | null;
   settingsClipboard: PersonSettingsClipboard | null;
   history: HistoryStack;
@@ -62,6 +66,10 @@ type GraphStoreState = {
   // Header search → canvas: ask the canvas to fly to a person. The nonce lets the
   // same person be re-requested (it always changes), and is not persisted.
   focusRequest: { id: string; nonce: number } | null;
+  // Published operating views → canvas: request a curated official map without
+  // storing it as org data or creating any new reporting relationship.
+  operatingViewRequest: { id: string; nonce: number } | null;
+  activeOperatingViewId: string | null;
 };
 
 type GraphStoreActions = {
@@ -75,7 +83,12 @@ type GraphStoreActions = {
   selectNode: (nodeId: string, additive?: boolean) => void;
   selectEdge: (edgeId: string, additive?: boolean) => void;
   clearSelection: () => void;
+  openEditor: (nodeId: string) => void;
+  closeEditor: () => void;
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
   requestFocus: (nodeId: string) => void;
+  requestOperatingView: (viewId: string) => void;
+  clearOperatingView: () => void;
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
   applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
@@ -100,6 +113,7 @@ type GraphStoreActions = {
   toggleNodeLock: (nodeId: string) => void;
   toggleCollapse: (nodeId: string) => void;
   addCollapsed: (nodeIds: string[]) => void;
+  expandSubtree: (nodeId: string) => void;
   expandAll: () => void;
   reassignToLane: (
     nodeId: string,
@@ -185,6 +199,25 @@ export const buildSettingsPatch = (
 
 const cloneDocument = (document: GraphDocument): GraphDocument => cloneDeep(document);
 
+const DEFAULT_VIEWPORT: LayoutState["viewport"] = { x: 0, y: 0, zoom: 1 };
+
+// The per-lens viewport churns once per animation frame while the user pans.
+// Persisting it would rewrite the entire document blob to localStorage on every
+// pan tick, which is the IO/jank cost this change exists to remove. Strip it from
+// the persisted copy (resetting to the default) so a pan never dirties the blob;
+// the live viewport is persisted separately and cheaply via `currentViewport`.
+export const stripPersistedViewports = (
+  document: GraphDocument,
+): GraphDocument => {
+  const stripped = cloneDocument(document);
+  for (const lensState of Object.values(stripped.lens_state)) {
+    if (lensState?.layout) {
+      lensState.layout.viewport = { ...DEFAULT_VIEWPORT };
+    }
+  }
+  return stripped;
+};
+
 const createSnapshot = (state: GraphStoreState): GraphSnapshot => ({
   document: cloneDocument(state.document),
   selection: {
@@ -199,6 +232,8 @@ const initialState: GraphStoreState = {
     nodeIds: [],
     edgeIds: [],
   },
+  editorPersonId: null,
+  workspaceMode: "explore",
   clipboard: null,
   settingsClipboard: null,
   history: {
@@ -216,6 +251,8 @@ const initialState: GraphStoreState = {
   mirrorLanes: true,
   collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
   focusRequest: null,
+  operatingViewRequest: null,
+  activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
 };
 
 // Hierarchy layout/cleanup should only place people not folded away under a
@@ -247,6 +284,35 @@ const withHistory = (
       state.document.metadata.updatedAt = now();
     }),
   );
+};
+
+const wouldCreateManagerCycle = (
+  edges: GraphEdge[],
+  sourceId: string,
+  targetId: string,
+) => {
+  const childrenByManager = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (edge.metadata.type !== "manager") return;
+    // Adding a new manager for the target replaces its current manager, so
+    // ignore existing inbound manager edges while testing the proposed shape.
+    if (edge.target === targetId) return;
+    const children = childrenByManager.get(edge.source) ?? [];
+    children.push(edge.target);
+    childrenByManager.set(edge.source, children);
+  });
+
+  const visited = new Set<string>();
+  const stack = [targetId];
+  while (stack.length > 0) {
+    const id = stack.pop();
+    if (!id || visited.has(id)) continue;
+    visited.add(id);
+    const children = childrenByManager.get(id) ?? [];
+    if (children.includes(sourceId)) return true;
+    stack.push(...children);
+  }
+  return false;
 };
 
 const applyLaneAssignment = (
@@ -297,6 +363,115 @@ const ensureLensState = (document: GraphDocument, lens: LensId) => {
   }
 };
 
+// Coerce a persisted/unknown viewport into a valid {x,y,zoom}, falling back to
+// the default when any field is missing or non-finite.
+const sanitizeViewport = (
+  value: unknown,
+): GraphStoreState["currentViewport"] => {
+  if (value && typeof value === "object") {
+    const v = value as Partial<GraphStoreState["currentViewport"]>;
+    if (
+      Number.isFinite(v.x) &&
+      Number.isFinite(v.y) &&
+      Number.isFinite(v.zoom) &&
+      (v.zoom as number) > 0
+    ) {
+      return { x: v.x as number, y: v.y as number, zoom: v.zoom as number };
+    }
+  }
+  return { ...DEFAULT_VIEWPORT };
+};
+
+// Exported for unit testing the version-gated persistence migration in isolation.
+// Keep this in sync with the `migrate` reference in the persist config below.
+export const migrateGraphState = (persistedState: unknown) => {
+  if (!persistedState || typeof persistedState !== "object") {
+    return { ...initialState };
+  }
+
+  const maybeState = persistedState as Partial<GraphStoreState>;
+  if (!maybeState.document) {
+    return { ...initialState };
+  }
+
+  try {
+    const sanitizedDocument = parseGraphDocument(maybeState.document);
+
+    // Pre-CSV copies of the bundled demo (identified by name but missing
+    // the real org's people) get refreshed wholesale. Docs already on the
+    // real org keep all their data/edits.
+    const isDemoDoc =
+      sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
+    const hasCsvOrg = sanitizedDocument.nodes.some(
+      (node) => node.id === "person-stephanie-parra",
+    );
+    if (isDemoDoc && !hasCsvOrg) {
+      return {
+        ...initialState,
+        document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+      };
+    }
+
+    const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
+    const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
+    const documentClone = cloneDocument(sanitizedDocument);
+
+    // Migration runs once per version bump: drop all saved layouts so the
+    // latest layout algorithms (lane ranks, grid geometry, collapse-aware
+    // hierarchy) re-run, while people, edges, and scenarios are preserved.
+    (["hierarchy", "brand", "channel", "department", "matrix"] as const).forEach(
+      (lensId) => {
+        const lensState = documentClone.lens_state[lensId];
+        if (lensState) {
+          lensState.layout.positions = {};
+          lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
+        }
+      },
+    );
+
+    const sanitizedSelection: SelectionState = {
+      nodeIds: Array.isArray(maybeState.selection?.nodeIds)
+        ? maybeState.selection.nodeIds.filter(
+            (id): id is string => typeof id === "string" && nodeIds.has(id),
+          )
+        : [],
+      edgeIds: Array.isArray(maybeState.selection?.edgeIds)
+        ? maybeState.selection.edgeIds.filter(
+            (id): id is string => typeof id === "string" && edgeIds.has(id),
+          )
+        : [],
+    };
+
+    return {
+      ...initialState,
+      document: documentClone,
+      selection: sanitizedSelection,
+      clipboard: null,
+      scenarios: maybeState.scenarios ?? {},
+      activeScenarioId: maybeState.activeScenarioId ?? null,
+      activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
+      workspaceMode:
+        maybeState.workspaceMode === "edit" || maybeState.workspaceMode === "publish"
+          ? maybeState.workspaceMode
+          : "explore",
+      mirrorLanes:
+        typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
+      collapsedIds: Array.isArray(maybeState.collapsedIds)
+        ? maybeState.collapsedIds
+        : [...initialState.collapsedIds],
+      // Viewport is no longer stored in the document; restore it from the
+      // separately-persisted key so reload lands where the user left off.
+      currentViewport: sanitizeViewport(maybeState.currentViewport),
+    };
+  } catch (error) {
+    console.warn("Failed to restore persisted org chart state; falling back to demo.", error);
+    return {
+      ...initialState,
+      document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+    };
+  }
+};
+
 export const useGraphStore = create<GraphStore>()(
   persist(
     subscribeWithSelector((set, get) => ({
@@ -306,6 +481,7 @@ export const useGraphStore = create<GraphStore>()(
           produce((state: GraphStoreState) => {
             state.document = cloneDocument(DEMO_GRAPH_DOCUMENT);
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
             state.history = { past: [], future: [] };
             state.clipboard = null;
           }),
@@ -316,6 +492,7 @@ export const useGraphStore = create<GraphStore>()(
           produce((state: GraphStoreState) => {
             state.document = createEmptyGraphDocument();
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
             state.history = { past: [], future: [] };
             state.clipboard = null;
           }),
@@ -326,6 +503,7 @@ export const useGraphStore = create<GraphStore>()(
           produce((state: GraphStoreState) => {
             state.document = cloneDocument(document);
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
             state.history = { past: [], future: [] };
           }),
         );
@@ -334,6 +512,7 @@ export const useGraphStore = create<GraphStore>()(
         withHistory(set, get, (state) => {
           state.document = cloneDocument(document);
           state.selection = { nodeIds: [], edgeIds: [] };
+          state.editorPersonId = null;
         });
       },
       exportDocument: () => cloneDocument(get().document),
@@ -352,6 +531,12 @@ export const useGraphStore = create<GraphStore>()(
               nodeIds: selection.nodeIds ?? state.selection.nodeIds,
               edgeIds: selection.edgeIds ?? state.selection.edgeIds,
             };
+            if (
+              state.editorPersonId &&
+              (state.selection.nodeIds.length !== 1 || state.selection.nodeIds[0] !== state.editorPersonId)
+            ) {
+              state.editorPersonId = null;
+            }
           }),
         );
       },
@@ -362,8 +547,10 @@ export const useGraphStore = create<GraphStore>()(
               if (!state.selection.nodeIds.includes(nodeId)) {
                 state.selection.nodeIds.push(nodeId);
               }
+              state.editorPersonId = null;
             } else {
               state.selection.nodeIds = [nodeId];
+              state.editorPersonId = null;
             }
           }),
         );
@@ -377,6 +564,7 @@ export const useGraphStore = create<GraphStore>()(
               }
             } else {
               state.selection.edgeIds = [edgeId];
+              state.editorPersonId = null;
             }
           }),
         );
@@ -385,12 +573,47 @@ export const useGraphStore = create<GraphStore>()(
         set(
           produce((state: GraphStoreState) => {
             state.selection = { nodeIds: [], edgeIds: [] };
+            state.editorPersonId = null;
+          }),
+        );
+      },
+      openEditor: (nodeId) => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.selection = { nodeIds: [nodeId], edgeIds: [] };
+            state.editorPersonId = nodeId;
+            if (state.workspaceMode === "explore") {
+              state.workspaceMode = "edit";
+            }
+          }),
+        );
+      },
+      closeEditor: () => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.editorPersonId = null;
+          }),
+        );
+      },
+      setWorkspaceMode: (mode) => {
+        set(
+          produce((state: GraphStoreState) => {
+            state.workspaceMode = mode;
+            if (mode === "explore") {
+              state.editorPersonId = null;
+            }
           }),
         );
       },
       requestFocus: (nodeId) => {
         // Bump nonce so the canvas effect re-fires even for the same person.
-        set({ focusRequest: { id: nodeId, nonce: Date.now() } });
+        set({ focusRequest: { id: nodeId, nonce: Date.now() }, activeOperatingViewId: null });
+      },
+      requestOperatingView: (viewId) => {
+        set({ operatingViewRequest: { id: viewId, nonce: Date.now() }, activeOperatingViewId: viewId });
+      },
+      clearOperatingView: () => {
+        set({ activeOperatingViewId: null, operatingViewRequest: null });
       },
       addPerson: (payload) => {
         const id = `person-${nanoid(10)}`;
@@ -482,6 +705,32 @@ export const useGraphStore = create<GraphStore>()(
       clearPersonSettings: () => set({ settingsClipboard: null }),
       addRelationship: (sourceId, targetId, type, meta) => {
         if (sourceId === targetId) return null;
+        const current = get();
+        const nodeIds = new Set(current.document.nodes.map((node) => node.id));
+        if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) return null;
+
+        const existing = current.document.edges.find(
+          (edge) =>
+            edge.source === sourceId &&
+            edge.target === targetId &&
+            edge.metadata.type === type,
+        );
+        if (existing) {
+          set(
+            produce((state: GraphStoreState) => {
+              state.selection.edgeIds = [existing.id];
+            }),
+          );
+          return existing.id;
+        }
+
+        if (
+          type === "manager" &&
+          wouldCreateManagerCycle(current.document.edges, sourceId, targetId)
+        ) {
+          return null;
+        }
+
         const id = `edge-${type}-${nanoid(8)}`;
         withHistory(set, get, (state) => {
           const timestamp = now();
@@ -500,6 +749,11 @@ export const useGraphStore = create<GraphStore>()(
             createdAt: timestamp,
             updatedAt: timestamp,
           };
+          if (type === "manager") {
+            state.document.edges = state.document.edges.filter(
+              (item) => !(item.metadata.type === "manager" && item.target === targetId),
+            );
+          }
           state.document.edges.push(edge);
           state.selection.edgeIds = [id];
         });
@@ -779,6 +1033,31 @@ export const useGraphStore = create<GraphStore>()(
           }),
         );
       },
+      // Unfold one manager's organization without opening the entire company.
+      // This keeps first-click focus useful even in a mostly collapsed overview.
+      expandSubtree: (nodeId) => {
+        set(
+          produce((state: GraphStoreState) => {
+            if (state.collapsedIds.length === 0) return;
+            const childMap = buildChildMap(state.document.edges);
+            const subtreeIds = new Set([nodeId, ...collectDescendants(childMap, [nodeId])]);
+            const nextCollapsed = state.collapsedIds.filter((id) => !subtreeIds.has(id));
+            if (nextCollapsed.length === state.collapsedIds.length) return;
+            state.collapsedIds = nextCollapsed;
+            ensureLensState(state.document, "hierarchy");
+            const positions = calculateCleanupLayout(
+              visibleHierarchyNodes(state),
+              state.document.edges,
+              state.document.lens_state.hierarchy.layout.positions,
+              "spacious",
+            );
+            Object.entries(positions).forEach(([id, position]) => {
+              state.document.lens_state.hierarchy.layout.positions[id] = position;
+            });
+            state.document.lens_state.hierarchy.layout.lastUpdated = now();
+          }),
+        );
+      },
       // Unfold every collapsed subtree at once and reflow the hierarchy.
       // No history entry — this is a view-level presentation toggle.
       expandAll: () => {
@@ -975,95 +1254,29 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 8,
+      version: 9,
       partialize: (state) => ({
-        document: state.document,
+        // Persist the document WITHOUT the volatile per-lens viewport so a pan
+        // gesture never rewrites the whole blob. The viewport rides along in the
+        // small `currentViewport` key instead and is restored on rehydrate.
+        document: stripPersistedViewports(state.document),
         selection: state.selection,
+        editorPersonId: null,
         clipboard: state.clipboard,
+        settingsClipboard: null,
+        history: { past: [], future: [] },
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        comparisonScenarioId: null,
+        focusRequest: null,
+        operatingViewRequest: null,
+        activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
+        workspaceMode: state.workspaceMode,
         mirrorLanes: state.mirrorLanes,
         collapsedIds: state.collapsedIds,
+        currentViewport: state.currentViewport,
       }),
-      migrate: (persistedState: unknown) => {
-        if (!persistedState || typeof persistedState !== "object") {
-          return { ...initialState };
-        }
-
-        const maybeState = persistedState as Partial<GraphStoreState>;
-        if (!maybeState.document) {
-          return { ...initialState };
-        }
-
-        try {
-          const sanitizedDocument = parseGraphDocument(maybeState.document);
-
-          // Pre-CSV copies of the bundled demo (identified by name but missing
-          // the real org's people) get refreshed wholesale. Docs already on the
-          // real org keep all their data/edits.
-          const isDemoDoc =
-            sanitizedDocument.metadata.name === DEMO_GRAPH_DOCUMENT.metadata.name;
-          const hasCsvOrg = sanitizedDocument.nodes.some(
-            (node) => node.id === "person-stephanie-parra",
-          );
-          if (isDemoDoc && !hasCsvOrg) {
-            return {
-              ...initialState,
-              document: cloneDocument(DEMO_GRAPH_DOCUMENT),
-            };
-          }
-
-          const nodeIds = new Set(sanitizedDocument.nodes.map((node) => node.id));
-          const edgeIds = new Set(sanitizedDocument.edges.map((edge) => edge.id));
-          const documentClone = cloneDocument(sanitizedDocument);
-
-          // Migration runs once per version bump: drop all saved layouts so the
-          // latest layout algorithms (lane ranks, grid geometry, collapse-aware
-          // hierarchy) re-run, while people, edges, and scenarios are preserved.
-          (["hierarchy", "brand", "channel", "department", "matrix"] as const).forEach(
-            (lensId) => {
-              const lensState = documentClone.lens_state[lensId];
-              if (lensState) {
-                lensState.layout.positions = {};
-                lensState.layout.viewport = { x: 0, y: 0, zoom: 1 };
-              }
-            },
-          );
-
-          const sanitizedSelection: SelectionState = {
-            nodeIds: Array.isArray(maybeState.selection?.nodeIds)
-              ? maybeState.selection.nodeIds.filter(
-                  (id): id is string => typeof id === "string" && nodeIds.has(id),
-                )
-              : [],
-            edgeIds: Array.isArray(maybeState.selection?.edgeIds)
-              ? maybeState.selection.edgeIds.filter(
-                  (id): id is string => typeof id === "string" && edgeIds.has(id),
-                )
-              : [],
-          };
-
-          return {
-            ...initialState,
-            document: documentClone,
-            selection: sanitizedSelection,
-            clipboard: null,
-            scenarios: maybeState.scenarios ?? {},
-            activeScenarioId: maybeState.activeScenarioId ?? null,
-            mirrorLanes:
-              typeof maybeState.mirrorLanes === "boolean" ? maybeState.mirrorLanes : true,
-            collapsedIds: Array.isArray(maybeState.collapsedIds)
-              ? maybeState.collapsedIds
-              : [...initialState.collapsedIds],
-          };
-        } catch (error) {
-          console.warn("Failed to restore persisted org chart state; falling back to demo.", error);
-          return {
-            ...initialState,
-            document: cloneDocument(DEMO_GRAPH_DOCUMENT),
-          };
-        }
-      },
+      migrate: migrateGraphState,
     },
   ),
 );

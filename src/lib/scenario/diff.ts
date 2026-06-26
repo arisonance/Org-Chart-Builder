@@ -4,7 +4,6 @@ import type {
   NodeDiff,
   EdgeDiff,
   ChangeCategory,
-  Scenario,
 } from "./types";
 
 export function computeScenarioDiff(
@@ -198,7 +197,6 @@ function getEdgeChanges(
 
 export function getAffectedNodes(
   diff: ScenarioDiff,
-  edges: GraphEdge[],
 ): Set<string> {
   const affected = new Set<string>();
 
@@ -335,4 +333,3 @@ export function getChangeDescription(nodeDiff: NodeDiff): string {
   }
   return "No changes";
 }
-

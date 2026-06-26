@@ -35,7 +35,7 @@ export function findDuplicates(
         existingNode: node,
         parsedPerson,
         matchScore: score,
-        matchReasons: getMatchReasons(parsedPerson, node, score),
+        matchReasons: getMatchReasons(parsedPerson, node),
       });
     }
   }
@@ -127,7 +127,7 @@ function compareTitles(title1: string, title2: string): number {
     junior: ["junior", "jr", "jr."],
   };
 
-  for (const [key, variations] of Object.entries(abbrevs)) {
+  for (const variations of Object.values(abbrevs)) {
     const hasT1 = variations.some((v) => t1.includes(v));
     const hasT2 = variations.some((v) => t2.includes(v));
     if (hasT1 && hasT2) return 0.7;
@@ -195,7 +195,6 @@ function levenshteinDistance(str1: string, str2: string): number {
 function getMatchReasons(
   parsed: ParsedPerson,
   existing: PersonNode,
-  score: number,
 ): string[] {
   const reasons: string[] = [];
 
@@ -305,4 +304,3 @@ function detectConflicts(parsed: ParsedPerson, existing: PersonNode): string[] {
 
   return conflicts;
 }
-

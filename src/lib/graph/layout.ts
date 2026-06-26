@@ -104,6 +104,111 @@ export const calculateLayout = (
   return positions;
 };
 
+const TEAM_TREE_GAP_X = 80;
+const TEAM_TREE_GAP_Y = 230;
+
+type TeamTreeSize = {
+  width: number;
+  height: number;
+  rootCenterOffset: number;
+  childRow: { ids: string[]; width: number; height: number } | null;
+};
+
+export const calculateTeamTreeLayout = (
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  rootId: string,
+): Record<string, { x: number; y: number }> => {
+  const personIds = new Set(
+    nodes.filter((node) => node.kind === "person").map((node) => node.id),
+  );
+  if (!personIds.has(rootId)) return calculateLayout(nodes, edges);
+
+  const childrenById: ChildMap = {};
+  edges.filter(isManagerEdge).forEach((edge) => {
+    if (!personIds.has(edge.source) || !personIds.has(edge.target)) return;
+    if (!childrenById[edge.source]) childrenById[edge.source] = [];
+    childrenById[edge.source].push(edge.target);
+  });
+
+  const sizes: Record<string, TeamTreeSize> = {};
+  const measure = (id: string, seen = new Set<string>()): TeamTreeSize => {
+    if (sizes[id] !== undefined) return sizes[id];
+    if (seen.has(id)) {
+      return {
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        rootCenterOffset: NODE_WIDTH / 2,
+        childRow: null,
+      };
+    }
+    seen.add(id);
+    const children = childrenById[id] ?? [];
+    if (children.length === 0) {
+      sizes[id] = {
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        rootCenterOffset: NODE_WIDTH / 2,
+        childRow: null,
+      };
+      return sizes[id];
+    }
+
+    const childSizes = children.map((childId) => measure(childId, new Set(seen)));
+    const childRow = {
+      ids: children,
+      width:
+        childSizes.reduce((sum, childSize) => sum + childSize.width, 0) +
+        (childSizes.length - 1) * TEAM_TREE_GAP_X,
+      height: Math.max(...childSizes.map((childSize) => childSize.height)),
+    };
+    const width = Math.max(NODE_WIDTH, childRow.width);
+    let childLeft = (width - childRow.width) / 2;
+    const childCenters = childRow.ids.map((childId) => {
+      const childSize = measure(childId, new Set(seen));
+      const center = childLeft + childSize.rootCenterOffset;
+      childLeft += childSize.width + TEAM_TREE_GAP_X;
+      return center;
+    });
+    const averageChildCenter =
+      childCenters.reduce((sum, center) => sum + center, 0) / childCenters.length;
+    sizes[id] = {
+      width,
+      height: NODE_HEIGHT + TEAM_TREE_GAP_Y + childRow.height,
+      rootCenterOffset: Math.min(
+        width - NODE_WIDTH / 2,
+        Math.max(NODE_WIDTH / 2, averageChildCenter),
+      ),
+      childRow,
+    };
+    return sizes[id];
+  };
+
+  measure(rootId);
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  const place = (id: string, left: number, top: number, seen = new Set<string>()) => {
+    if (seen.has(id) || !personIds.has(id)) return;
+    seen.add(id);
+    const size = sizes[id] ?? measure(id);
+    positions[id] = {
+      x: left + size.rootCenterOffset - NODE_WIDTH / 2,
+      y: top,
+    };
+    if (!size.childRow) return;
+    const rowTop = top + NODE_HEIGHT + TEAM_TREE_GAP_Y;
+    let childLeft = left + (size.width - size.childRow.width) / 2;
+    size.childRow.ids.forEach((childId) => {
+      const childSize = sizes[childId] ?? measure(childId);
+      place(childId, childLeft, rowTop, new Set(seen));
+      childLeft += childSize.width + TEAM_TREE_GAP_X;
+    });
+  };
+
+  place(rootId, 0, 0);
+  return positions;
+};
+
 export const autoLayoutDocument = (document: GraphDocument) => {
   const positions = calculateLayout(document.nodes, document.edges);
   const layout = document.lens_state[document.lens]?.layout;
@@ -174,6 +279,70 @@ const sortChannelGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
     return diff !== 0 ? diff : a.localeCompare(b);
   });
 
+const MATRIX_RANK_MAX_COLS = 6;
+const MATRIX_RANK_GAP_X = 96;
+const MATRIX_RANK_GAP_Y = 78;
+const MATRIX_RANK_GROUP_GAP_Y = 180;
+const MATRIX_RANK_Y_TOLERANCE = 8;
+const MATRIX_LANE_GAP_X = 360;
+const MATRIX_LANE_GAP_Y = 420;
+const MATRIX_DEPARTMENT_ROW_MAX_WIDTH = 6400;
+
+const colsForMatrixRank = (count: number) => {
+  if (count <= MATRIX_RANK_MAX_COLS) return count;
+  if (count <= 10) return 4;
+  return Math.min(MATRIX_RANK_MAX_COLS, Math.ceil(Math.sqrt(count * 1.35)));
+};
+
+const wrapWideRanks = (
+  rawPositions: Record<string, { x: number; y: number }>,
+): Record<string, { x: number; y: number }> => {
+  const entries = Object.entries(rawPositions).sort(
+    (a, b) => a[1].y - b[1].y || a[1].x - b[1].x || a[0].localeCompare(b[0]),
+  );
+  const ranks: Array<{ y: number; items: Array<{ id: string; x: number }> }> = [];
+  entries.forEach(([id, position]) => {
+    const rank = ranks.find((item) => Math.abs(item.y - position.y) <= MATRIX_RANK_Y_TOLERANCE);
+    if (rank) {
+      rank.items.push({ id, x: position.x });
+      rank.y = (rank.y * (rank.items.length - 1) + position.y) / rank.items.length;
+    } else {
+      ranks.push({ y: position.y, items: [{ id, x: position.x }] });
+    }
+  });
+
+  const rankLayouts = ranks.map((rank) => {
+    const cols = Math.max(1, colsForMatrixRank(rank.items.length));
+    const rows = Math.ceil(rank.items.length / cols);
+    return {
+      ...rank,
+      cols,
+      rows,
+      width: cols * NODE_WIDTH + (cols - 1) * MATRIX_RANK_GAP_X,
+      height: rows * NODE_HEIGHT + (rows - 1) * MATRIX_RANK_GAP_Y,
+    };
+  });
+  const laneWidth = Math.max(NODE_WIDTH, ...rankLayouts.map((rank) => rank.width));
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  let cursorY = 0;
+  rankLayouts.forEach((rank) => {
+    const sorted = [...rank.items].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id));
+    const startX = (laneWidth - rank.width) / 2;
+    sorted.forEach((item, index) => {
+      const row = Math.floor(index / rank.cols);
+      const col = index % rank.cols;
+      positions[item.id] = {
+        x: startX + col * (NODE_WIDTH + MATRIX_RANK_GAP_X),
+        y: cursorY + row * (NODE_HEIGHT + MATRIX_RANK_GAP_Y),
+      };
+    });
+    cursorY += rank.height + MATRIX_RANK_GROUP_GAP_Y;
+  });
+
+  return positions;
+};
+
 /**
  * Swim-lane layout for matrix views: people are grouped into vertical lanes by
  * brand/channel/department, and the reporting hierarchy is laid out within each lane.
@@ -189,8 +358,9 @@ export const calculateMatrixLayout = (
   const groupKeys = dimension === "channel" ? sortChannelGroupKeys(groups) : sortGroupKeys(groups);
 
   const positions: Record<string, { x: number; y: number }> = {};
-  const LANE_GAP = 360;
   let offsetX = 0;
+  let offsetY = 0;
+  let rowHeight = 0;
 
   // Global reporting chain, used to rank people whose direct manager sits in
   // a different lane: link them to their nearest ancestor inside the lane so
@@ -224,22 +394,36 @@ export const calculateMatrixLayout = (
       }
     });
 
-    const groupPositions = calculateLayout(groupNodes, laneEdges);
+    const groupPositions = wrapWideRanks(calculateLayout(groupNodes, laneEdges));
     const xs = Object.values(groupPositions).map((p) => p.x);
     const ys = Object.values(groupPositions).map((p) => p.y);
     if (xs.length === 0) return;
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs) + NODE_WIDTH;
     const minY = Math.min(...ys);
+    const maxY = Math.max(...ys) + NODE_HEIGHT;
+    const laneWidth = maxX - minX;
+    const laneHeight = maxY - minY;
+
+    if (
+      dimension === "department" &&
+      offsetX > 0 &&
+      offsetX + laneWidth > MATRIX_DEPARTMENT_ROW_MAX_WIDTH
+    ) {
+      offsetX = 0;
+      offsetY += rowHeight + MATRIX_LANE_GAP_Y;
+      rowHeight = 0;
+    }
 
     Object.entries(groupPositions).forEach(([nodeId, p]) => {
       positions[nodeId] = {
         x: p.x - minX + offsetX,
-        y: p.y - minY,
+        y: p.y - minY + offsetY,
       };
     });
 
-    offsetX += maxX - minX + LANE_GAP;
+    offsetX += laneWidth + MATRIX_LANE_GAP_X;
+    rowHeight = Math.max(rowHeight, laneHeight);
   });
 
   return positions;

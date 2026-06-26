@@ -2,6 +2,7 @@
 
 import { ArrowTopRightIcon } from "@radix-ui/react-icons";
 import type { ComputedUnit } from "@/lib/graph/org-units";
+import { groupSharedServicePods } from "@/lib/graph/shared-service-groups";
 
 type UnitFoundationProps = {
   units: ComputedUnit[];
@@ -23,17 +24,33 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
 
   const Chip = ({ unit }: { unit: ComputedUnit }) => {
     const style = TYPE_STYLE[unit.def.type];
+    const pods =
+      unit.def.type === "shared-service"
+        ? groupSharedServicePods(unit.members)
+        : [];
+    const podPreview = pods
+      .filter((pod) => pod.label !== unit.def.label)
+      .slice(0, 2)
+      .map((pod) => pod.label);
     return (
       <button
         type="button"
         onClick={() => onJump(unit)}
-        title={`${unit.def.label} — ${unit.members.length} people. Open in chart`}
+        title={`${unit.def.label} — ${unit.members.length} people${pods.length > 1 ? ` across ${pods.length} pods` : ""}. Open in chart`}
+        aria-label={`Open ${unit.def.label} in chart, ${unit.members.length} people`}
         className={`flex items-center gap-1.5 rounded-lg border-l-[3px] border border-slate-200 px-2.5 py-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow dark:border-white/10 ${style.dot}`}
       >
         <span className="text-sm leading-none" aria-hidden>{style.glyph}</span>
         <span className="flex flex-col leading-tight">
           <span className="text-[11px] font-semibold">{unit.def.label}</span>
-          <span className="text-[9px] opacity-70">{unit.members.length} people</span>
+          <span className="text-[9px] opacity-70">
+            {unit.members.length} people{pods.length > 1 ? ` · ${pods.length} pods` : ""}
+          </span>
+          {podPreview.length > 0 && (
+            <span className="max-w-[10rem] truncate text-[8px] opacity-60">
+              {podPreview.join(" · ")}
+            </span>
+          )}
         </span>
       </button>
     );
@@ -45,7 +62,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
           ▤ Shared Foundation
           <span className="ml-2 font-medium normal-case tracking-normal text-slate-400">
-            serves every brand &amp; channel above
+            shared services support the matrix above
           </span>
         </p>
         <button
@@ -53,7 +70,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
           onClick={onOpenSharedServices}
           className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-sky-600 transition hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-500/10"
         >
-          Shared Services view <ArrowTopRightIcon className="h-3 w-3" />
+          Shared services view <ArrowTopRightIcon className="h-3 w-3" aria-hidden />
         </button>
       </div>
       <div className="flex flex-wrap items-stretch gap-3">

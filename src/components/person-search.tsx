@@ -9,10 +9,9 @@ const MAX_RESULTS = 7;
 
 /**
  * Always-visible "find anyone" box for the header. Typing filters people by
- * name / title / department; picking one asks the canvas to fly to and focus
- * them (via the store's focusRequest), routing straight into the focus
- * breadcrumb. This is the primary navigation for a large org — one obvious
- * front door rather than a buried filter panel.
+ * name / title / department. Picking a manager opens that person's org view;
+ * picking an individual contributor frames them in context. This is the primary
+ * navigation for a large org: one obvious front door instead of a buried filter panel.
  */
 export function PersonSearch() {
   const nodes = useGraphStore((state) => state.document.nodes);

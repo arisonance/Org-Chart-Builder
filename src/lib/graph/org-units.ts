@@ -59,6 +59,13 @@ export const UNIT_DEFS: UnitDef[] = [
     departments: ["IT"],
     serves: "Shared service · all brands",
   },
+  {
+    id: "unit-dealer-services",
+    label: "Dealer Services",
+    type: "shared-service",
+    departments: ["Dealer Services"],
+    serves: "Technical support, design services & field support",
+  },
 ];
 
 const deptToUnit = new Map<string, UnitDef>();
@@ -164,4 +171,3 @@ export const computeUnitAnchors = (
   });
   return anchors;
 };
-

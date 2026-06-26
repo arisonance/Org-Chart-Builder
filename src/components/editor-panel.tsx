@@ -6,7 +6,7 @@ import { useGraphStore } from "@/store/graph-store";
 import type { GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
 
 const sectionClass =
-  "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/90 px-5 py-5 shadow-sm ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10";
+  "flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10";
 
 export function EditorPanel() {
   const selection = useGraphStore((state) => state.selection);
@@ -22,6 +22,15 @@ export function EditorPanel() {
         node.kind === "person" && selection.nodeIds.includes(node.id),
     );
   }, [nodes, selection.nodeIds]);
+  const personById = useMemo(() => {
+    const map = new Map<string, PersonNode>();
+    nodes.forEach((node) => {
+      if (node.kind === "person") {
+        map.set(node.id, node);
+      }
+    });
+    return map;
+  }, [nodes]);
 
   const [activeTab, setActiveTab] = useState<"details" | "relationships">("details");
   const historySnapshotTakenRef = useRef(false);
@@ -78,6 +87,22 @@ export function EditorPanel() {
   const dottedEdges = edges.filter(
     (edge) => edge.metadata.type === "dotted" && edge.target === node.id,
   );
+  const managerName = managerEdges
+    .map((edge) => personById.get(edge.source)?.name)
+    .find((name): name is string => Boolean(name));
+  const directReportNames = directReports
+    .map((edge) => personById.get(edge.target)?.name)
+    .filter((name): name is string => Boolean(name));
+  const directReportPreview =
+    directReportNames.length > 0 ? `: ${directReportNames.slice(0, 3).join(", ")}` : "";
+  const directReportOverflow =
+    directReports.length > 3 ? `, +${directReports.length - 3} more` : "";
+  const directReportSummary =
+    directReports.length > 0
+      ? `${directReports.length} direct ${
+          directReports.length === 1 ? "report" : "reports"
+        }${directReportPreview}${directReportOverflow}`
+      : "No direct reports";
 
   const updateAttributes = (updates: Partial<PersonNode["attributes"]>) => {
     ensureHistorySnapshot();
@@ -109,13 +134,21 @@ export function EditorPanel() {
   };
 
   return (
-    <aside className="w-full max-w-md space-y-4">
+    <aside className="w-full space-y-3">
       <div className={sectionClass}>
         <div className="mb-3">
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {node.name}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">{node.attributes.title}</p>
+        </div>
+        <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-slate-700 dark:border-sky-400/15 dark:bg-sky-500/10 dark:text-slate-200">
+          <p className="font-semibold text-sky-900 dark:text-sky-100">
+            {managerName ? `Reports to ${managerName}` : "Top of this chain"}
+          </p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            {directReportSummary}
+          </p>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">

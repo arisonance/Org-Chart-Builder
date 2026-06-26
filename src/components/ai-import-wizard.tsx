@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Image from 'next/image';
 import { Cross2Icon, UploadIcon, CheckIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { useGraphStore } from '@/store/graph-store';
-import { parseOrgChartImage, fileToBase64, validateExtraction, type ParsedOrgChart, type ParsedPerson } from '@/lib/ai/vision-parser';
+import { parseOrgChartImage, fileToBase64, validateExtraction, ImportError, importErrorMessage, type ParsedOrgChart, type ParsedPerson } from '@/lib/ai/vision-parser';
 import { suggestMergeStrategies, type MergeDecision } from '@/lib/ai/duplicate-detection';
 import type { GraphNode, PersonAttributes } from '@/lib/schema/types';
 
@@ -118,8 +119,16 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
         });
       } catch (err) {
         console.error('Processing error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Failed to process file';
-        
+        // ImportError carries a typed category (429/503/500/network/...) that
+        // maps to a clear remedy; validation and other errors are already
+        // phrased for the user, so fall back to their message.
+        const errorMessage =
+          err instanceof ImportError
+            ? importErrorMessage(err.kind)
+            : err instanceof Error
+              ? err.message
+              : 'Failed to process file';
+
         // Update status to error
         setSelectedFiles(prev => {
           const updated = [...prev];
@@ -128,6 +137,18 @@ export function AIImportWizard({ onClose }: { onClose: () => void }) {
           return updated;
         });
       }
+    }
+
+    // If nothing was extracted, every file failed — return to upload with a
+    // clear top-level message rather than advancing to an empty review step.
+    if (extractedResults.length === 0) {
+      setError(
+        selectedFiles.length === 1
+          ? selectedFiles[0].error || 'Import failed. Please try again.'
+          : 'None of the files could be imported. See the errors above and try again.',
+      );
+      setStep('upload');
+      return;
     }
 
     // Combine all extracted people and relationships
@@ -346,9 +367,12 @@ function UploadStep({
                 key={index}
                 className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-800"
               >
-                <img
+                <Image
                   src={fileStatus.previewUrl}
                   alt={fileStatus.file.name}
+                  width={240}
+                  height={135}
+                  unoptimized
                   className="aspect-video w-full object-cover"
                 />
                 <button
@@ -660,4 +684,3 @@ function CompleteStep({ count, onClose }: { count: number; onClose: () => void }
     </div>
   );
 }
-

@@ -12,8 +12,9 @@ export function RelationshipLegend() {
           type="button"
           className="absolute bottom-4 left-4 z-20 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm backdrop-blur transition hover:bg-white hover:shadow-md dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300"
           title="Show relationship types"
+          aria-label="Show relationship types legend"
         >
-          <InfoCircledIcon className="h-3.5 w-3.5" />
+          <InfoCircledIcon className="h-3.5 w-3.5" aria-hidden />
           Legend
         </button>
       </Popover.Trigger>

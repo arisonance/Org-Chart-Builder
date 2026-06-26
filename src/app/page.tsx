@@ -7,6 +7,8 @@ import { ZodError } from 'zod';
 import { HierarchyCanvas } from '@/components/hierarchy-canvas';
 import { EditorPanel } from '@/components/editor-panel';
 import { LensSwitcher } from '@/components/lens-switcher';
+import { PublishedViewSwitcher } from '@/components/published-view-switcher';
+import { WorkspaceModeSwitcher } from '@/components/workspace-mode-switcher';
 import { ScenarioManager } from '@/components/scenario-manager';
 import { ScenarioComparison } from '@/components/scenario-comparison';
 import { AIImportWizard } from '@/components/ai-import-wizard';
@@ -16,12 +18,14 @@ import { PersonSearch } from '@/components/person-search';
 import { SaveStatus } from '@/components/save-status';
 import { useGraphStore } from '@/store/graph-store';
 import { LENS_BY_ID } from '@/lib/schema/lenses';
+import { DEFAULT_OPERATING_VIEW_ID } from '@/lib/schema/operating-views';
 import { parseGraphDocument } from '@/lib/schema/validation';
 
 export default function Home() {
   const documentMeta = useGraphStore((state) => state.document.metadata);
   const lens = useGraphStore((state) => state.document.lens);
   const setLens = useGraphStore((state) => state.setLens);
+  const clearOperatingView = useGraphStore((state) => state.clearOperatingView);
   const undo = useGraphStore((state) => state.undo);
   const redo = useGraphStore((state) => state.redo);
   const autoLayout = useGraphStore((state) => state.autoLayout);
@@ -31,18 +35,38 @@ export default function Home() {
   const scenarios = useGraphStore((state) => state.scenarios);
   const setComparisonScenario = useGraphStore((state) => state.setComparisonScenario);
   const selection = useGraphStore((state) => state.selection);
-  const clearSelection = useGraphStore((state) => state.clearSelection);
+  const editorPersonId = useGraphStore((state) => state.editorPersonId);
+  const closeEditor = useGraphStore((state) => state.closeEditor);
+  const workspaceMode = useGraphStore((state) => state.workspaceMode);
+  const activeOperatingViewId = useGraphStore((state) => state.activeOperatingViewId);
+  const requestOperatingView = useGraphStore((state) => state.requestOperatingView);
+  const canEdit = workspaceMode !== 'explore';
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const requestedDefaultViewRef = useRef(Boolean(activeOperatingViewId));
   const [isCanvasFullScreen, setCanvasFullScreen] = useState(false);
   const [showFullScreenPanel, setShowFullScreenPanel] = useState(false);
   const [showComparisonPicker, setShowComparisonPicker] = useState(false);
   const [showAIImport, setShowAIImport] = useState(false);
   const [showSpreadsheet, setShowSpreadsheet] = useState(false);
 
-  const lensDescription = useMemo(() => LENS_BY_ID[lens].description, [lens]);
-
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
+
+  const handleLensChange = useCallback((nextLens: typeof lens) => {
+    clearOperatingView();
+    setLens(nextLens);
+  }, [clearOperatingView, setLens]);
+
+  const goToSeniorTeam = useCallback(() => {
+    requestOperatingView(DEFAULT_OPERATING_VIEW_ID);
+  }, [requestOperatingView]);
+
+  useEffect(() => {
+    if (!activeOperatingViewId && !requestedDefaultViewRef.current) {
+      requestedDefaultViewRef.current = true;
+      requestOperatingView(DEFAULT_OPERATING_VIEW_ID);
+    }
+  }, [activeOperatingViewId, requestOperatingView]);
 
   // Lens switcher keyboard shortcuts (1-4)
   useEffect(() => {
@@ -121,7 +145,7 @@ export default function Home() {
     <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <ScenarioComparison />
       {showAIImport && <AIImportWizard onClose={() => setShowAIImport(false)} />}
-      <SpreadsheetView open={showSpreadsheet} onClose={() => setShowSpreadsheet(false)} />
+      <SpreadsheetView open={showSpreadsheet} onClose={() => setShowSpreadsheet(false)} readOnly={!canEdit} />
       {showComparisonPicker && (
         <ComparisonPickerDialog
           scenarios={scenarioList}
@@ -148,7 +172,17 @@ export default function Home() {
               {documentMeta.name}
             </h1>
             <SaveStatus />
-            <LensSwitcher activeLens={lens} onChange={setLens} />
+            <button
+              type="button"
+              onClick={goToSeniorTeam}
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              title="Return to the Senior Leadership Team home view"
+            >
+              Senior team
+            </button>
+            <PublishedViewSwitcher />
+            <WorkspaceModeSwitcher />
+            <LensSwitcher activeLens={lens} onChange={handleLensChange} />
             <ScenarioManager />
             <PersonSearch />
           </div>
@@ -156,24 +190,33 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setShowSpreadsheet(true)}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              title={canEdit ? "Open the editable spreadsheet view" : "Open the spreadsheet in read-only mode"}
+              aria-label="Open spreadsheet view"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              <MixerHorizontalIcon className="inline h-4 w-4 mr-1" /> Spreadsheet
+              <MixerHorizontalIcon className="h-4 w-4" />
+              <span>Spreadsheet</span>
             </button>
             <button
               type="button"
               onClick={() => setShowAIImport(true)}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+              disabled={!canEdit}
+              title={canEdit ? "Import org changes with AI" : "Switch to Edit mode to import changes"}
+              aria-label="Import org changes with AI"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-sky-600 text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >
-              <UploadIcon className="inline h-4 w-4 mr-1" /> AI Import
+              <UploadIcon className="h-4 w-4" />
+              <span className="sr-only">AI Import</span>
             </button>
             <button
               type="button"
               onClick={handleExport}
               title="Download this org chart as a JSON file you can share or back up"
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              aria-label="Export org chart"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              <DownloadIcon className="inline h-4 w-4 mr-1" /> Export
+              <DownloadIcon className="h-4 w-4" />
+              <span className="sr-only">Export</span>
             </button>
 
             {/* More Actions Menu */}
@@ -194,6 +237,7 @@ export default function Home() {
                 >
                   <DropdownMenu.Item
                     onSelect={() => autoLayout(lens)}
+                    disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     Auto Layout
@@ -213,6 +257,7 @@ export default function Home() {
                   <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={() => fileInputRef.current?.click()}
+                    disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     <UploadIcon className="h-4 w-4" /> Import JSON
@@ -228,6 +273,7 @@ export default function Home() {
                   <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={resetToDemo}
+                    disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 outline-none hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
                   >
                     <ReloadIcon className="h-4 w-4" /> Reset Demo
@@ -244,6 +290,22 @@ export default function Home() {
             className="hidden"
           />
         </header>
+
+        {workspaceMode === 'publish' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-100">
+            <div>
+              <span className="font-bold">Publish review</span>
+              <span className="ml-2 text-emerald-700 dark:text-emerald-200/80">
+                {activeOperatingViewId
+                  ? "Review this official view before employees rely on it."
+                  : "Choose an official view to review ownership and publish status."}
+              </span>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-950 dark:text-emerald-100 dark:ring-emerald-400/20">
+              Reporting lines remain locked to formal manager data
+            </span>
+          </div>
+        )}
 
         {/* Optional: Search/Filter - Collapsible */}
         <details className="group">
@@ -267,18 +329,18 @@ export default function Home() {
             
             {/* Floating Editor Panel - Only for single selections; multi-select
                 uses the canvas bulk-assign toolbar instead */}
-            {selection.nodeIds.length === 1 && (
-              <div className="absolute right-4 top-4 bottom-4 z-30 w-[min(360px,calc(100%_-_2rem))] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
-                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-900">
+            {canEdit && editorPersonId && selection.nodeIds.length === 1 && selection.nodeIds[0] === editorPersonId && (
+              <div className="absolute bottom-3 right-3 top-3 z-30 w-[min(340px,calc(100%_-_1.5rem))] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-xl [transform:translateZ(0)] dark:border-white/10 dark:bg-slate-900">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Edit Person</h3>
                   <button
-                    onClick={() => clearSelection()}
+                    onClick={() => closeEditor()}
                     className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
                   >
                     <Cross2Icon className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="p-4">
+                <div className="p-3">
                   <EditorPanel />
                 </div>
               </div>

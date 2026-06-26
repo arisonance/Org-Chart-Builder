@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { useGraphStore } from '@/store/graph-store';
-import { computeScenarioDiff, categorizeChanges, getChangeDescription } from '@/lib/scenario/diff';
+import { computeScenarioDiff, categorizeChanges } from '@/lib/scenario/diff';
 import { computeOrgMetrics } from '@/lib/graph/org-metrics';
 
 export function ScenarioComparison() {
@@ -262,4 +262,3 @@ export function ScenarioComparison() {
     </div>
   );
 }
-
