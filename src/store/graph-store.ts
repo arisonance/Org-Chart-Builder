@@ -66,6 +66,15 @@ type GraphStoreState = {
   // Header search → canvas: ask the canvas to fly to a person. The nonce lets the
   // same person be re-requested (it always changes), and is not persisted.
   focusRequest: { id: string; nonce: number } | null;
+  // Header search → canvas: ask the canvas to open a filtered brand/channel/
+  // department/shared-service group and frame it like a real destination.
+  groupFocusRequest: {
+    lens: LensId;
+    label: string;
+    token: string;
+    focusIds: string[];
+    nonce: number;
+  } | null;
   // Published operating views → canvas: request a curated official map without
   // storing it as org data or creating any new reporting relationship.
   operatingViewRequest: { id: string; nonce: number } | null;
@@ -87,6 +96,12 @@ type GraphStoreActions = {
   closeEditor: () => void;
   setWorkspaceMode: (mode: WorkspaceMode) => void;
   requestFocus: (nodeId: string) => void;
+  requestGroupFocus: (payload: {
+    lens: LensId;
+    label: string;
+    token: string;
+    focusIds: string[];
+  }) => void;
   requestOperatingView: (viewId: string) => void;
   clearOperatingView: () => void;
   addPerson: (payload: AddPersonPayload) => string;
@@ -251,6 +266,7 @@ const initialState: GraphStoreState = {
   mirrorLanes: true,
   collapsedIds: [...DEMO_DEFAULT_COLLAPSED],
   focusRequest: null,
+  groupFocusRequest: null,
   operatingViewRequest: null,
   activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
 };
@@ -607,7 +623,23 @@ export const useGraphStore = create<GraphStore>()(
       },
       requestFocus: (nodeId) => {
         // Bump nonce so the canvas effect re-fires even for the same person.
-        set({ focusRequest: { id: nodeId, nonce: Date.now() }, activeOperatingViewId: null });
+        set({
+          focusRequest: { id: nodeId, nonce: Date.now() },
+          groupFocusRequest: null,
+          operatingViewRequest: null,
+          activeOperatingViewId: null,
+        });
+      },
+      requestGroupFocus: (payload) => {
+        set({
+          groupFocusRequest: {
+            ...payload,
+            focusIds: [...payload.focusIds],
+            nonce: Date.now(),
+          },
+          operatingViewRequest: null,
+          activeOperatingViewId: null,
+        });
       },
       requestOperatingView: (viewId) => {
         set({ operatingViewRequest: { id: viewId, nonce: Date.now() }, activeOperatingViewId: viewId });
@@ -1284,6 +1316,7 @@ export const useGraphStore = create<GraphStore>()(
         activeScenarioId: state.activeScenarioId,
         comparisonScenarioId: null,
         focusRequest: null,
+        groupFocusRequest: null,
         operatingViewRequest: null,
         activeOperatingViewId: DEFAULT_OPERATING_VIEW_ID,
         workspaceMode: state.workspaceMode,

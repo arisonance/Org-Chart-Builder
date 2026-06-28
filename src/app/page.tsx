@@ -206,7 +206,7 @@ export default function Home() {
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <div className="hidden 2xl:block">
+            <div className="hidden lg:block">
               <PersonSearch />
             </div>
             <DropdownMenu.Root>
