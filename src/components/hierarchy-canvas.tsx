@@ -371,7 +371,7 @@ const baseEdgeStyle = {
   strokeLinecap: "round" as const,
 };
 
-const MATRIX_WRAP_LAYOUT_STORAGE_KEY = "org-chart-matrix-wrap-layout-v2";
+const MATRIX_WRAP_LAYOUT_STORAGE_KEY = "org-chart-matrix-wrap-layout-v3";
 const TEAM_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-team-view-layouts-v2";
 const OPERATING_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-operating-view-layouts-v1";
 const VIEWPORT_DEFAULTS_STORAGE_KEY = "org-chart-view-frame-defaults-v1";
@@ -1411,14 +1411,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const fitToView = useCallback(
     () =>
       fitVisiblePeopleRef.current({
-        padding: 0.18,
+        padding: lens === "channel" ? 0.26 : 0.18,
         duration: 300,
-        minZoom: 0.35,
+        minZoom: lens === "channel" ? 0.24 : 0.35,
         maxZoom: 1.2,
         reason: "fit",
         expectedIds: defaultFitIdsRef.current ?? undefined,
       }),
-    [],
+    [lens],
   );
 
   const paletteActions = useMemo<PaletteAction[]>(
@@ -3510,9 +3510,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     const restoreWouldBeBlank = target ? !latest.viewportShowsAnyPerson(target, positions) : false;
     const fitLensView = (duration: number) => {
       fitVisiblePeopleRef.current({
-        padding: lens === "channel" || lens === "department" ? 0.18 : 0.15,
+        padding: lens === "channel" ? 0.26 : lens === "department" ? 0.18 : 0.15,
         duration,
-        minZoom: lens === "channel" ? 0.32 : 0.35,
+        minZoom: lens === "channel" ? 0.24 : 0.35,
         maxZoom: lens === "channel" ? 0.86 : 1.2,
         reason: "lens",
         expectedIds: defaultFitIdsRef.current ?? visibleViewportPersonIds,
@@ -3592,7 +3592,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           return;
         }
       }
-      fitVisiblePeopleRef.current({ padding: 0.18, duration: 350, minZoom: 0.35, maxZoom: 1.15, reason: "lens" });
+      fitVisiblePeopleRef.current({
+        padding: dimension === "channel" ? 0.26 : 0.18,
+        duration: 350,
+        minZoom: dimension === "channel" ? 0.24 : 0.35,
+        maxZoom: 1.15,
+        reason: "lens",
+      });
     }, 180);
     return () => window.clearTimeout(timer);
   }, [lens, personNodes.length, cleanupCanvas, rfInstance, teamTree]);
@@ -6323,9 +6329,15 @@ const buildLaneNodes = (
   if (dimension === "channel") {
     const topMinY = Math.min(...laneRects.map((r) => r.minY), 0);
     const byGroup = new Map<string, { minX: number; maxX: number; count: number }>();
+    const channelTemplateLabel = (key: string) => {
+      if (key === "All Channels" || key.startsWith("All ")) return "Both Channels";
+      const group = channelTopGroup(key);
+      if (group === "Commercial") return "Professional";
+      return group;
+    };
     laneRects.forEach((r) => {
-      const g = channelTopGroup(r.key);
-      if (!g) return; // shared "All Channels" / unassigned — no group band
+      const g = channelTemplateLabel(r.key);
+      if (!g) return; // unassigned / unknown channels do not get a top territory band
       const cur = byGroup.get(g);
       if (cur) {
         cur.minX = Math.min(cur.minX, r.minX);
@@ -6340,7 +6352,15 @@ const buildLaneNodes = (
         id: `chgroup:${label}`,
         type: "gridGroupNode",
         position: { x: span.minX, y: topMinY - 180 },
-        data: { label, count: span.count, width: span.maxX - span.minX, color: CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR, zoom },
+        data: {
+          label,
+          count: span.count,
+          width: span.maxX - span.minX,
+          color: label === "Both Channels"
+            ? CHANNEL_COLORS["All Channels"]
+            : CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR,
+          zoom,
+        },
         style: { width: span.maxX - span.minX, height: 120 },
         zIndex: -1,
         draggable: false,

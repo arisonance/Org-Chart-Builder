@@ -1,7 +1,7 @@
 import { graphlib, layout as dagreLayout } from "@dagrejs/dagre";
 import type { GraphDocument, GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
 import type { LensId } from "@/lib/schema/lenses";
-import { channelSortKey, channelTopGroup } from "@/lib/org/channels";
+import { channelSortKey, channelSubGroup, channelTopGroup } from "@/lib/org/channels";
 
 export type ChildMap = Record<string, string[]>;
 
@@ -269,13 +269,25 @@ const sortGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
     return sizeDiff !== 0 ? sizeDiff : a.localeCompare(b);
   });
 
-// Channel lanes follow the taxonomy order so a group's channels stay adjacent
+const isBothChannelsKey = (key: string) =>
+  key === "All Channels" || key.startsWith("All ");
+
+// Channel lanes use the operating-model template:
+// Residential on the left, true both-channel work in the middle,
+// Professional/Commercial on the right.
 const sortChannelGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
   Array.from(groups.keys()).sort((a, b) => {
-    const sa = a === UNASSIGNED_GROUP_KEY || a.startsWith("All ");
-    const sb = b === UNASSIGNED_GROUP_KEY || b.startsWith("All ");
-    if (sa !== sb) return sa ? 1 : -1;
-    const diff = channelSortKey(a) - channelSortKey(b);
+    const rank = (key: string) => {
+      if (key === UNASSIGNED_GROUP_KEY) return 3_000;
+      if (isBothChannelsKey(key)) return 1_000;
+      const topGroup = channelTopGroup(key);
+      if (topGroup === "Residential") return channelSortKey(key);
+      if (topGroup === "Commercial" || channelSubGroup(key) === "Professional") {
+        return 2_000 + channelSortKey(key);
+      }
+      return 3_000 + channelSortKey(key);
+    };
+    const diff = rank(a) - rank(b);
     return diff !== 0 ? diff : a.localeCompare(b);
   });
 

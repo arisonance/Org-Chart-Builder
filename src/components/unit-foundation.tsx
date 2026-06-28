@@ -62,7 +62,7 @@ export function UnitFoundation({ units, onJump, onOpenSharedServices }: UnitFoun
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
           ▤ Shared Foundation
           <span className="ml-2 font-medium normal-case tracking-normal text-slate-400">
-            shared services support the matrix above
+            shared services support Residential, Both Channels, and Professional
           </span>
         </p>
         <button

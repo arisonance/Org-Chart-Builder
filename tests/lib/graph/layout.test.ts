@@ -296,6 +296,28 @@ describe("calculateMatrixLayout", () => {
     makeManagerEdge(DEPARTMENT_SUPER_ROOT_ID, departmentOwnerId),
   ];
 
+  it("orders channel lanes as Residential, Both Channels, then Professional", () => {
+    const people = [
+      makePerson("residential", {
+        primaryChannel: "Luxury Residential",
+        channels: ["Luxury Residential"],
+      }),
+      makePerson("both", {
+        primaryChannel: "All Channels",
+        channels: ["Luxury Residential", "North America Professional", "Enterprise"],
+      }),
+      makePerson("professional", {
+        primaryChannel: "North America Professional",
+        channels: ["North America Professional"],
+      }),
+    ];
+
+    const positions = calculateMatrixLayout(people, [], "channel");
+
+    expect(positions.residential.x).toBeLessThan(positions.both.x);
+    expect(positions.both.x).toBeLessThan(positions.professional.x);
+  });
+
   it("keeps same-manager reports together when a wide brand lane wraps", () => {
     const managers = Array.from({ length: 7 }, (_, index) =>
       makePerson(`manager-${index}`, {
