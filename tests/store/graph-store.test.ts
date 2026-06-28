@@ -141,6 +141,61 @@ describe("addRelationship", () => {
     expect(managerEdges[0].source).toBe(bob);
   });
 
+  it("allows support truth to coexist with one formal manager", () => {
+    const alice = addAlice();
+    const bob = useGraphStore.getState().addPerson({
+      name: "Bob",
+      title: "VP",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+    const carol = useGraphStore.getState().addPerson({
+      name: "Carol",
+      title: "Director",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+
+    useGraphStore.getState().addRelationship(alice, carol, "manager");
+    useGraphStore.getState().addRelationship(bob, carol, "support");
+
+    const edges = useGraphStore.getState().document.edges;
+    expect(edges.filter((edge) => edge.metadata.type === "manager" && edge.target === carol)).toHaveLength(1);
+    expect(edges.filter((edge) => edge.metadata.type === "support" && edge.target === carol)).toHaveLength(1);
+  });
+
+  it("keeps converted reports-to relationships singular", () => {
+    const alice = addAlice();
+    const bob = useGraphStore.getState().addPerson({
+      name: "Bob",
+      title: "VP",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+    const carol = useGraphStore.getState().addPerson({
+      name: "Carol",
+      title: "Director",
+      brands: [],
+      channels: [],
+      departments: [],
+    });
+
+    useGraphStore.getState().addRelationship(alice, carol, "manager");
+    const supportEdgeId = useGraphStore.getState().addRelationship(bob, carol, "support");
+    expect(supportEdgeId).not.toBeNull();
+
+    useGraphStore.getState().updateRelationship(supportEdgeId!, { type: "manager" });
+
+    const managerEdges = useGraphStore
+      .getState()
+      .document.edges.filter((edge) => edge.metadata.type === "manager" && edge.target === carol);
+    expect(managerEdges).toHaveLength(1);
+    expect(managerEdges[0].source).toBe(bob);
+  });
+
   it("undoes a manager replacement back to the previous manager in one step", () => {
     const alice = addAlice();
     const bob = useGraphStore.getState().addPerson({

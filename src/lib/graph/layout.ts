@@ -279,14 +279,129 @@ const sortChannelGroupKeys = (groups: Map<string, PersonNode[]>): string[] =>
     return diff !== 0 ? diff : a.localeCompare(b);
   });
 
+export const DEPARTMENT_SUPER_ROOT_ID = "person-ari-supran";
+export const DEPARTMENT_OWNER_IDS = [
+  "person-pat-mcgaughan",
+  "person-rob-roland",
+  "person-jason-sloan",
+  "person-michael-sonntag",
+  "person-derick-dahl",
+  "person-grace-dryer",
+  "person-jorge-notni",
+] as const;
+
+export const DEPARTMENT_OWNER_LABELS: Record<string, string> = {
+  [DEPARTMENT_SUPER_ROOT_ID]: "CEO office",
+  "person-pat-mcgaughan": "Pat McGaughan",
+  "person-rob-roland": "Rob Roland",
+  "person-jason-sloan": "Jason Sloan",
+  "person-michael-sonntag": "Michael Sonntag",
+  "person-derick-dahl": "Derick Dahl",
+  "person-grace-dryer": "Gigi Dreyer",
+  "person-jorge-notni": "Jorge Notni",
+};
+
+export const isDepartmentExecutiveContextId = (id: string) =>
+  id === DEPARTMENT_SUPER_ROOT_ID || DEPARTMENT_OWNER_IDS.includes(id as typeof DEPARTMENT_OWNER_IDS[number]);
+
+export const GRID_LEADERSHIP_ROW_IDS = [
+  "person-derick-dahl",
+  "person-pat-mcgaughan",
+  "person-grace-dryer",
+  "person-jorge-notni",
+  "person-rob-roland",
+  "person-jason-sloan",
+  "person-michael-sonntag",
+] as const;
+
+export const GRID_EXECUTIVE_CONTEXT_IDS = [
+  DEPARTMENT_SUPER_ROOT_ID,
+  "person-jeana-ceglia",
+  ...GRID_LEADERSHIP_ROW_IDS,
+] as const;
+
+const GRID_EXECUTIVE_CONTEXT_ID_SET = new Set<string>(GRID_EXECUTIVE_CONTEXT_IDS);
+
+export const isGridExecutiveContextId = (id: string) =>
+  GRID_EXECUTIVE_CONTEXT_ID_SET.has(id);
+
+export const buildManagerParentLookup = (edges: GraphEdge[]) => {
+  const parentOf: Record<string, string> = {};
+  edges.filter(isManagerEdge).forEach((edge) => {
+    if (!(edge.target in parentOf)) parentOf[edge.target] = edge.source;
+  });
+  return parentOf;
+};
+
+export const getDepartmentOwnerIdForPerson = (
+  personId: string,
+  parentOf: Record<string, string>,
+): string => {
+  if (personId === DEPARTMENT_SUPER_ROOT_ID) return DEPARTMENT_SUPER_ROOT_ID;
+  if (DEPARTMENT_OWNER_IDS.includes(personId as typeof DEPARTMENT_OWNER_IDS[number])) {
+    return personId;
+  }
+
+  const seen = new Set<string>([personId]);
+  let current = parentOf[personId];
+  while (current && !seen.has(current)) {
+    if (DEPARTMENT_OWNER_IDS.includes(current as typeof DEPARTMENT_OWNER_IDS[number])) {
+      return current;
+    }
+    if (current === DEPARTMENT_SUPER_ROOT_ID) return DEPARTMENT_SUPER_ROOT_ID;
+    seen.add(current);
+    current = parentOf[current];
+  }
+  return DEPARTMENT_SUPER_ROOT_ID;
+};
+
+export const getDepartmentOwnerIdForMembers = (
+  members: PersonNode[],
+  parentOf: Record<string, string>,
+): string => {
+  const tally = new Map<string, number>();
+  members.forEach((member) => {
+    const ownerId = getDepartmentOwnerIdForPerson(member.id, parentOf);
+    tally.set(ownerId, (tally.get(ownerId) ?? 0) + 1);
+  });
+
+  const ownerOrder = new Map<string, number>(
+    [DEPARTMENT_SUPER_ROOT_ID, ...DEPARTMENT_OWNER_IDS].map((id, index) => [id, index]),
+  );
+  return (
+    [...tally.entries()].sort(
+      ([ownerA, countA], [ownerB, countB]) =>
+        countB - countA ||
+        (ownerOrder.get(ownerA) ?? 999) - (ownerOrder.get(ownerB) ?? 999) ||
+        ownerA.localeCompare(ownerB),
+    )[0]?.[0] ?? DEPARTMENT_SUPER_ROOT_ID
+  );
+};
+
+export const buildDepartmentOwnerByKey = (
+  people: PersonNode[],
+  edges: GraphEdge[],
+): Map<string, string> => {
+  const parentOf = buildManagerParentLookup(edges);
+  const groups = groupNodesByDimension(people, "department");
+  const ownerByKey = new Map<string, string>();
+  groups.forEach((members, key) => {
+    ownerByKey.set(key, getDepartmentOwnerIdForMembers(members, parentOf));
+  });
+  return ownerByKey;
+};
+
 const MATRIX_RANK_MAX_COLS = 6;
 const MATRIX_RANK_GAP_X = 96;
 const MATRIX_RANK_GAP_Y = 78;
 const MATRIX_RANK_GROUP_GAP_Y = 180;
 const MATRIX_RANK_Y_TOLERANCE = 8;
 const MATRIX_LANE_GAP_X = 360;
-const MATRIX_LANE_GAP_Y = 420;
-const MATRIX_DEPARTMENT_ROW_MAX_WIDTH = 6400;
+const DEPARTMENT_SUPER_OWNER_GAP_X = 280;
+const DEPARTMENT_SUPER_OWNER_Y = 260;
+const DEPARTMENT_SUPER_LANE_Y = 620;
+const DEPARTMENT_SUPER_LANE_GAP_Y = 360;
+const DEPARTMENT_SUPER_SECTION_MIN_WIDTH = 900;
 
 const colsForMatrixRank = (count: number) => {
   if (count <= MATRIX_RANK_MAX_COLS) return count;
@@ -296,7 +411,12 @@ const colsForMatrixRank = (count: number) => {
 
 const wrapWideRanks = (
   rawPositions: Record<string, { x: number; y: number }>,
+  rankEdges: GraphEdge[] = [],
 ): Record<string, { x: number; y: number }> => {
+  const parentById = new Map<string, string>();
+  rankEdges.filter(isManagerEdge).forEach((edge) => {
+    if (!parentById.has(edge.target)) parentById.set(edge.target, edge.source);
+  });
   const entries = Object.entries(rawPositions).sort(
     (a, b) => a[1].y - b[1].y || a[1].x - b[1].x || a[0].localeCompare(b[0]),
   );
@@ -312,14 +432,74 @@ const wrapWideRanks = (
   });
 
   const rankLayouts = ranks.map((rank) => {
-    const cols = Math.max(1, colsForMatrixRank(rank.items.length));
-    const rows = Math.ceil(rank.items.length / cols);
+    type SiblingGroup = {
+      key: string;
+      items: Array<{ id: string; x: number }>;
+      cols: number;
+      rows: number;
+      width: number;
+      height: number;
+      anchorX: number;
+    };
+    type PackedGroup = SiblingGroup & { x: number };
+    type PackedRow = { groups: PackedGroup[]; width: number; height: number };
+
+    const groupsByParent = new Map<string, Array<{ id: string; x: number }>>();
+    rank.items.forEach((item) => {
+      const parentId = parentById.get(item.id);
+      const key = parentId && rawPositions[parentId] ? `parent:${parentId}` : `solo:${item.id}`;
+      const group = groupsByParent.get(key) ?? [];
+      group.push(item);
+      groupsByParent.set(key, group);
+    });
+    const groups: SiblingGroup[] = [...groupsByParent.entries()]
+      .map(([key, items]) => {
+        const parentId = key.startsWith("parent:") ? key.slice("parent:".length) : null;
+        const cols = Math.max(1, colsForMatrixRank(items.length));
+        const rows = Math.ceil(items.length / cols);
+        return {
+          key,
+          items: [...items].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id)),
+          cols,
+          rows,
+          width: cols * NODE_WIDTH + (cols - 1) * MATRIX_RANK_GAP_X,
+          height: rows * NODE_HEIGHT + (rows - 1) * MATRIX_RANK_GAP_Y,
+          anchorX: parentId
+            ? rawPositions[parentId].x + NODE_WIDTH / 2
+            : items.reduce((sum, item) => sum + item.x + NODE_WIDTH / 2, 0) / items.length,
+        };
+      })
+      .sort((a, b) => a.anchorX - b.anchorX || a.key.localeCompare(b.key));
+
+    const maxCols = Math.max(1, colsForMatrixRank(rank.items.length));
+    const maxRowWidth = maxCols * NODE_WIDTH + (maxCols - 1) * MATRIX_RANK_GAP_X;
+    const rows: PackedRow[] = [];
+    let currentRow: PackedRow = { groups: [], width: 0, height: 0 };
+    groups.forEach((group) => {
+      const nextWidth =
+        currentRow.groups.length === 0
+          ? group.width
+          : currentRow.width + MATRIX_RANK_GAP_X + group.width;
+      if (currentRow.groups.length > 0 && nextWidth > maxRowWidth) {
+        rows.push(currentRow);
+        currentRow = { groups: [], width: 0, height: 0 };
+      }
+      const x = currentRow.width === 0 ? 0 : currentRow.width + MATRIX_RANK_GAP_X;
+      currentRow.groups.push({ ...group, x });
+      currentRow.width = currentRow.groups.length === 1 ? group.width : nextWidth;
+      currentRow.height = Math.max(currentRow.height, group.height);
+    });
+    if (currentRow.groups.length > 0) rows.push(currentRow);
+
+    const width = Math.max(NODE_WIDTH, ...rows.map((row) => row.width));
+    const height =
+      rows.reduce((sum, row) => sum + row.height, 0) +
+      Math.max(0, rows.length - 1) * MATRIX_RANK_GAP_Y;
     return {
       ...rank,
-      cols,
       rows,
-      width: cols * NODE_WIDTH + (cols - 1) * MATRIX_RANK_GAP_X,
-      height: rows * NODE_HEIGHT + (rows - 1) * MATRIX_RANK_GAP_Y,
+      width,
+      height,
     };
   });
   const laneWidth = Math.max(NODE_WIDTH, ...rankLayouts.map((rank) => rank.width));
@@ -327,17 +507,158 @@ const wrapWideRanks = (
   const positions: Record<string, { x: number; y: number }> = {};
   let cursorY = 0;
   rankLayouts.forEach((rank) => {
-    const sorted = [...rank.items].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id));
-    const startX = (laneWidth - rank.width) / 2;
-    sorted.forEach((item, index) => {
-      const row = Math.floor(index / rank.cols);
-      const col = index % rank.cols;
-      positions[item.id] = {
-        x: startX + col * (NODE_WIDTH + MATRIX_RANK_GAP_X),
-        y: cursorY + row * (NODE_HEIGHT + MATRIX_RANK_GAP_Y),
-      };
+    let rowCursorY = cursorY;
+    rank.rows.forEach((row) => {
+      const rowStartX = (laneWidth - row.width) / 2;
+      row.groups.forEach((group) => {
+        group.items.forEach((item, index) => {
+          const innerRow = Math.floor(index / group.cols);
+          const col = index % group.cols;
+          positions[item.id] = {
+            x: rowStartX + group.x + col * (NODE_WIDTH + MATRIX_RANK_GAP_X),
+            y: rowCursorY + innerRow * (NODE_HEIGHT + MATRIX_RANK_GAP_Y),
+          };
+        });
+      });
+      rowCursorY += row.height + MATRIX_RANK_GAP_Y;
     });
     cursorY += rank.height + MATRIX_RANK_GROUP_GAP_Y;
+  });
+
+  return positions;
+};
+
+const calculateDepartmentSuperLayout = (
+  personNodes: PersonNode[],
+  edges: GraphEdge[],
+): Record<string, { x: number; y: number }> => {
+  const parentOf = buildManagerParentLookup(edges);
+  const groups = groupNodesByDimension(personNodes, "department");
+  const availablePeople = new Map(personNodes.map((person) => [person.id, person]));
+
+  const sections = new Map<
+    string,
+    Array<{
+      key: string;
+      positions: Record<string, { x: number; y: number }>;
+      width: number;
+      height: number;
+    }>
+  >();
+
+  const parentWithinLane = (groupNodes: PersonNode[]) => {
+    const groupIds = new Set(groupNodes.map((node) => node.id));
+    const laneEdges: GraphEdge[] = [];
+    groupNodes.forEach((member) => {
+      let ancestor = parentOf[member.id];
+      const seen = new Set<string>([member.id]);
+      while (ancestor && !seen.has(ancestor)) {
+        if (groupIds.has(ancestor)) {
+          laneEdges.push({
+            id: `lane-edge-${ancestor}-${member.id}`,
+            source: ancestor,
+            target: member.id,
+            metadata: { type: "manager" },
+            createdAt: "",
+            updatedAt: "",
+          });
+          break;
+        }
+        seen.add(ancestor);
+        ancestor = parentOf[ancestor];
+      }
+    });
+    return laneEdges;
+  };
+
+  groups.forEach((members, key) => {
+    const ownerId = getDepartmentOwnerIdForMembers(members, parentOf);
+    const laneMembers = members.filter((member) => !isDepartmentExecutiveContextId(member.id));
+    if (laneMembers.length === 0) return;
+
+    const laneEdges = parentWithinLane(laneMembers);
+    const groupPositions = wrapWideRanks(calculateLayout(laneMembers, laneEdges), laneEdges);
+    const xs = Object.values(groupPositions).map((p) => p.x);
+    const ys = Object.values(groupPositions).map((p) => p.y);
+    if (xs.length === 0 || ys.length === 0) return;
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs) + NODE_WIDTH;
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys) + NODE_HEIGHT;
+    const normalizedPositions = Object.fromEntries(
+      Object.entries(groupPositions).map(([nodeId, point]) => [
+        nodeId,
+        { x: point.x - minX, y: point.y - minY },
+      ]),
+    );
+    const lanes = sections.get(ownerId) ?? [];
+    lanes.push({
+      key,
+      positions: normalizedPositions,
+      width: maxX - minX,
+      height: maxY - minY,
+    });
+    sections.set(ownerId, lanes);
+  });
+
+  const ownerIds = DEPARTMENT_OWNER_IDS.filter((ownerId) => availablePeople.has(ownerId));
+  const sectionData = ownerIds.map((ownerId) => {
+    const lanes = [...(sections.get(ownerId) ?? [])].sort((a, b) => {
+      const sizeDiff = Object.keys(b.positions).length - Object.keys(a.positions).length;
+      return sizeDiff !== 0 ? sizeDiff : a.key.localeCompare(b.key);
+    });
+    const width = Math.max(
+      DEPARTMENT_SUPER_SECTION_MIN_WIDTH,
+      NODE_WIDTH + 160,
+      ...lanes.map((lane) => lane.width + 220),
+    );
+    const height = lanes.reduce(
+      (sum, lane, index) => sum + lane.height + (index === 0 ? 0 : DEPARTMENT_SUPER_LANE_GAP_Y),
+      0,
+    );
+    return { ownerId, lanes, width, height };
+  });
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  let offsetX = 0;
+  sectionData.forEach((section) => {
+    positions[section.ownerId] = {
+      x: offsetX + section.width / 2 - NODE_WIDTH / 2,
+      y: DEPARTMENT_SUPER_OWNER_Y,
+    };
+
+    let laneY = DEPARTMENT_SUPER_LANE_Y;
+    section.lanes.forEach((lane) => {
+      const laneX = offsetX + (section.width - lane.width) / 2;
+      Object.entries(lane.positions).forEach(([nodeId, point]) => {
+        positions[nodeId] = {
+          x: laneX + point.x,
+          y: laneY + point.y,
+        };
+      });
+      laneY += lane.height + DEPARTMENT_SUPER_LANE_GAP_Y;
+    });
+
+    offsetX += section.width + DEPARTMENT_SUPER_OWNER_GAP_X;
+  });
+
+  if (availablePeople.has(DEPARTMENT_SUPER_ROOT_ID)) {
+    const totalWidth = Math.max(NODE_WIDTH, offsetX - DEPARTMENT_SUPER_OWNER_GAP_X);
+    positions[DEPARTMENT_SUPER_ROOT_ID] = {
+      x: totalWidth / 2 - NODE_WIDTH / 2,
+      y: 0,
+    };
+  }
+
+  // Preserve visible positions for any remaining people whose departments could
+  // not be assigned to a section. This keeps imported/partial data from
+  // vanishing, while the normal demo data stays in the executive-owned map.
+  let fallbackX = offsetX + DEPARTMENT_SUPER_OWNER_GAP_X;
+  personNodes.forEach((person) => {
+    if (positions[person.id]) return;
+    positions[person.id] = { x: fallbackX, y: DEPARTMENT_SUPER_LANE_Y };
+    fallbackX += NODE_WIDTH + MATRIX_RANK_GAP_X;
   });
 
   return positions;
@@ -354,12 +675,16 @@ export const calculateMatrixLayout = (
   dimension: LensDimension,
 ): Record<string, { x: number; y: number }> => {
   const personNodes = nodes.filter((n): n is PersonNode => n.kind === 'person');
+  if (dimension === "department") {
+    return calculateDepartmentSuperLayout(personNodes, edges);
+  }
+
   const groups = groupNodesByDimension(personNodes, dimension);
   const groupKeys = dimension === "channel" ? sortChannelGroupKeys(groups) : sortGroupKeys(groups);
 
   const positions: Record<string, { x: number; y: number }> = {};
   let offsetX = 0;
-  let offsetY = 0;
+  const offsetY = 0;
   let rowHeight = 0;
 
   // Global reporting chain, used to rank people whose direct manager sits in
@@ -394,7 +719,7 @@ export const calculateMatrixLayout = (
       }
     });
 
-    const groupPositions = wrapWideRanks(calculateLayout(groupNodes, laneEdges));
+    const groupPositions = wrapWideRanks(calculateLayout(groupNodes, laneEdges), laneEdges);
     const xs = Object.values(groupPositions).map((p) => p.x);
     const ys = Object.values(groupPositions).map((p) => p.y);
     if (xs.length === 0) return;
@@ -404,16 +729,6 @@ export const calculateMatrixLayout = (
     const maxY = Math.max(...ys) + NODE_HEIGHT;
     const laneWidth = maxX - minX;
     const laneHeight = maxY - minY;
-
-    if (
-      dimension === "department" &&
-      offsetX > 0 &&
-      offsetX + laneWidth > MATRIX_DEPARTMENT_ROW_MAX_WIDTH
-    ) {
-      offsetX = 0;
-      offsetY += rowHeight + MATRIX_LANE_GAP_Y;
-      rowHeight = 0;
-    }
 
     Object.entries(groupPositions).forEach(([nodeId, p]) => {
       positions[nodeId] = {
@@ -709,12 +1024,57 @@ const computeGrid = (people: PersonNode[], collapsed: Set<string> = new Set()) =
   };
 };
 
+const gridBodyPeople = (people: PersonNode[]) =>
+  people.filter((person) => !isGridExecutiveContextId(person.id));
+
+const applyGridExecutiveContextLayout = (
+  positions: Record<string, { x: number; y: number }>,
+  people: PersonNode[],
+  gridWidth: number,
+) => {
+  const visibleIds = new Set(people.map((person) => person.id));
+  const next = { ...positions };
+  const leadershipIds = GRID_LEADERSHIP_ROW_IDS.filter((id) => visibleIds.has(id));
+  const minRailWidth = Math.max(leadershipIds.length * (NODE_WIDTH + 64) - 64, 1720);
+  const railWidth = Math.min(Math.max(gridWidth - 240, minRailWidth), 2680);
+  const railLeft = Math.max(0, (gridWidth - railWidth) / 2);
+  const railCenterX = railLeft + railWidth / 2 - NODE_WIDTH / 2;
+
+  if (visibleIds.has(DEPARTMENT_SUPER_ROOT_ID)) {
+    next[DEPARTMENT_SUPER_ROOT_ID] = {
+      x: railCenterX,
+      y: -650,
+    };
+  }
+
+  if (visibleIds.has("person-jeana-ceglia")) {
+    next["person-jeana-ceglia"] = {
+      x: Math.max(0, railCenterX - NODE_WIDTH - 88),
+      y: -470,
+    };
+  }
+
+  if (leadershipIds.length > 0) {
+    const rowY = -330;
+    const gap =
+      leadershipIds.length > 1 ? (railWidth - NODE_WIDTH) / (leadershipIds.length - 1) : 0;
+    leadershipIds.forEach((id, index) => {
+      next[id] = {
+        x: leadershipIds.length === 1 ? railCenterX : railLeft + index * gap,
+        y: rowY,
+      };
+    });
+  }
+
+  return next;
+};
+
 export const calculateGridLayout = (
   nodes: GraphNode[],
   collapsed: Set<string> = new Set(),
 ): Record<string, { x: number; y: number }> => {
   const people = nodes.filter((n): n is PersonNode => n.kind === "person");
-  const g = computeGrid(people, collapsed);
+  const g = computeGrid(gridBodyPeople(people), collapsed);
   const positions: Record<string, { x: number; y: number }> = {};
   g.rows.forEach((r) => {
     g.cols.forEach((c) => {
@@ -730,12 +1090,12 @@ export const calculateGridLayout = (
       });
     });
   });
-  return positions;
+  return applyGridExecutiveContextLayout(positions, people, Math.max(g.totalWidth, 1960));
 };
 
 export const getGridGeometry = (nodes: GraphNode[], collapsed: Set<string> = new Set()): GridGeometry => {
   const people = nodes.filter((n): n is PersonNode => n.kind === "person");
-  const g = computeGrid(people, collapsed);
+  const g = computeGrid(gridBodyPeople(people), collapsed);
   const cells: GridGeometry["cells"] = [];
   let maxCell = 0;
   g.rows.forEach((r) => {

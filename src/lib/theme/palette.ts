@@ -52,8 +52,12 @@ export const UNASSIGNED_LANE_COLOR = "#94a3b8";
 
 export const RELATIONSHIP_COLORS: Record<string, string> = {
   manager: "#0284c7",
+  dedicated: "#059669",
+  support: "#0d9488",
+  "shared-service": "#7c3aed",
   sponsor: "#f59e0b",
   dotted: "#a855f7",
+  group: "#64748b",
 };
 
 export const dottedEdgeDash = "6 6";

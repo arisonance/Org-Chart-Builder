@@ -85,6 +85,9 @@ const graphNodeSchema: z.ZodType<GraphNode> = z.union([personNodeSchema, groupNo
 
 const relationshipTypeSchema: z.ZodType<RelationshipType> = z.enum([
   "manager",
+  "dedicated",
+  "support",
+  "shared-service",
   "sponsor",
   "dotted",
   "group",

@@ -138,7 +138,7 @@ export function PersonCard({
       </div>
 
       <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
-        {reportsToName ? `Reports to ${reportsToName}` : "Executive sponsor"}
+        {reportsToName ? `Reports to ${reportsToName}` : "Top of chain"}
       </p>
 
       {affinityBadges.length > 0 && (

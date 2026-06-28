@@ -36,22 +36,22 @@ export function ConnectionHelper() {
               
               <ConnectionType
                 color="bg-sky-500"
-                label="Manager"
-                description="Direct reporting relationship"
+                label="Reports to"
+                description="Formal manager relationship"
                 position="Top & Bottom handles"
               />
               
               <ConnectionType
-                color="bg-amber-500"
-                label="Sponsor"
-                description="Executive sponsor or advisor"
-                position="Right handle"
+                color="bg-teal-500"
+                label="Support truth"
+                description="Dedicated, supports, or shared service"
+                position="Convert from edge menu"
               />
               
               <ConnectionType
                 color="bg-indigo-500"
                 label="Dotted Line"
-                description="Indirect or matrix reporting"
+                description="Matrix relationship, not manager truth"
                 position="Left handle"
               />
             </div>
@@ -104,5 +104,4 @@ function ConnectionType({
     </div>
   );
 }
-
 

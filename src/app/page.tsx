@@ -21,6 +21,8 @@ import { LENS_BY_ID } from '@/lib/schema/lenses';
 import { DEFAULT_OPERATING_VIEW_ID } from '@/lib/schema/operating-views';
 import { parseGraphDocument } from '@/lib/schema/validation';
 
+const LENS_PRESET_TRANSITION_EVENT = "org-chart:lens-preset-transition";
+
 export default function Home() {
   const documentMeta = useGraphStore((state) => state.document.metadata);
   const lens = useGraphStore((state) => state.document.lens);
@@ -49,12 +51,20 @@ export default function Home() {
   const [showComparisonPicker, setShowComparisonPicker] = useState(false);
   const [showAIImport, setShowAIImport] = useState(false);
   const [showSpreadsheet, setShowSpreadsheet] = useState(false);
+  const lensChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
 
   const handleLensChange = useCallback((nextLens: typeof lens) => {
-    clearOperatingView();
-    setLens(nextLens);
+    if (lensChangeTimerRef.current) {
+      clearTimeout(lensChangeTimerRef.current);
+    }
+    window.dispatchEvent(new CustomEvent(LENS_PRESET_TRANSITION_EVENT));
+    lensChangeTimerRef.current = setTimeout(() => {
+      clearOperatingView();
+      setLens(nextLens);
+      lensChangeTimerRef.current = null;
+    }, 24);
   }, [clearOperatingView, setLens]);
 
   const goToSeniorTeam = useCallback(() => {
@@ -67,6 +77,14 @@ export default function Home() {
       requestOperatingView(DEFAULT_OPERATING_VIEW_ID);
     }
   }, [activeOperatingViewId, requestOperatingView]);
+
+  useEffect(() => {
+    return () => {
+      if (lensChangeTimerRef.current) {
+        clearTimeout(lensChangeTimerRef.current);
+      }
+    };
+  }, []);
 
   // Lens switcher keyboard shortcuts (1-4)
   useEffect(() => {
@@ -166,12 +184,14 @@ export default function Home() {
       ) : null}
       <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 sm:px-8">
         {/* Compact Toolbar */}
-        <header className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
+        <header className="flex items-center gap-3 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80">
+          <div className="flex min-w-[14rem] shrink-0 items-center gap-3">
+            <h1 className="text-lg font-semibold leading-tight text-slate-900 dark:text-white">
               {documentMeta.name}
             </h1>
             <SaveStatus />
+          </div>
+          <nav className="flex min-w-0 flex-1 shrink-0 items-center gap-2" aria-label="Primary organization navigation">
             <button
               type="button"
               onClick={goToSeniorTeam}
@@ -180,101 +200,91 @@ export default function Home() {
             >
               Senior team
             </button>
+            <LensSwitcher activeLens={lens} onChange={handleLensChange} />
             <PublishedViewSwitcher />
             <WorkspaceModeSwitcher />
-            <LensSwitcher activeLens={lens} onChange={handleLensChange} />
-            <ScenarioManager />
-            <PersonSearch />
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSpreadsheet(true)}
-              title={canEdit ? "Open the editable spreadsheet view" : "Open the spreadsheet in read-only mode"}
-              aria-label="Open spreadsheet view"
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            >
-              <MixerHorizontalIcon className="h-4 w-4" />
-              <span>Spreadsheet</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAIImport(true)}
-              disabled={!canEdit}
-              title={canEdit ? "Import org changes with AI" : "Switch to Edit mode to import changes"}
-              aria-label="Import org changes with AI"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-sky-600 text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
-            >
-              <UploadIcon className="h-4 w-4" />
-              <span className="sr-only">AI Import</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              title="Download this org chart as a JSON file you can share or back up"
-              aria-label="Export org chart"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            >
-              <DownloadIcon className="h-4 w-4" />
-              <span className="sr-only">Export</span>
-            </button>
+          </nav>
 
-            {/* More Actions Menu */}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className="hidden 2xl:block">
+              <PersonSearch />
+            </div>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  aria-label="More tools"
                 >
                   <DotsHorizontalIcon className="h-4 w-4" />
+                  <span>More</span>
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content
-                  className="z-50 min-w-[200px] rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-slate-900"
+                  className="z-50 max-h-[min(70vh,36rem)] min-w-[240px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-slate-900"
                   sideOffset={5}
                   align="end"
                 >
                   <DropdownMenu.Item
+                    onSelect={() => setShowSpreadsheet(true)}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
+                  >
+                    <MixerHorizontalIcon className="h-4 w-4" /> Spreadsheet
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => setShowAIImport(true)}
+                    disabled={!canEdit}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
+                  >
+                    <UploadIcon className="h-4 w-4" /> AI Import
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={handleExport}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
+                  >
+                    <DownloadIcon className="h-4 w-4" /> Export JSON
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => fileInputRef.current?.click()}
+                    disabled={!canEdit}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
+                  >
+                    <UploadIcon className="h-4 w-4" /> Import JSON
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Separator className="my-2 h-px bg-slate-200 dark:bg-slate-700" />
+                  <DropdownMenu.Item
                     onSelect={() => autoLayout(lens)}
                     disabled={!canEdit}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                   >
                     Auto Layout
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={undo}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                   >
                     Undo
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={redo}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                   >
                     Redo
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
-                  <DropdownMenu.Item
-                    onSelect={() => fileInputRef.current?.click()}
-                    disabled={!canEdit}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <UploadIcon className="h-4 w-4" /> Import JSON
                   </DropdownMenu.Item>
                   {scenarioList.length >= 2 && (
                     <DropdownMenu.Item
                       onSelect={() => setShowComparisonPicker(true)}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                     >
                       Compare Scenarios
                     </DropdownMenu.Item>
                   )}
-                  <DropdownMenu.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
+                  <DropdownMenu.Separator className="my-2 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={resetToDemo}
                     disabled={!canEdit}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 outline-none hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 outline-none hover:bg-rose-50 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20 dark:data-[highlighted]:bg-rose-900/20"
                   >
                     <ReloadIcon className="h-4 w-4" /> Reset Demo
                   </DropdownMenu.Item>
@@ -309,16 +319,19 @@ export default function Home() {
 
         {/* Optional: Search/Filter - Collapsible */}
         <details className="group">
-          <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200">
+          <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-white dark:border-white/10 dark:bg-slate-900/50 dark:text-slate-300">
             <span className="inline-flex items-center gap-2">
-              <svg className="h-4 w-4 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
               Search & Filter
             </span>
           </summary>
           <div className="mt-2">
-            <SearchFilterBar />
+            <div className="flex flex-wrap items-center gap-3">
+              <SearchFilterBar />
+              <ScenarioManager />
+            </div>
           </div>
         </details>
 

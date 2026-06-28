@@ -38,14 +38,16 @@ export const buildManagerRoute = ({
 
   if (sourceRect && targetRect) {
     const sourceCenterX = sourceRect.x + sourceRect.width / 2;
+    const sourceBottomY = sourceRect.y + sourceRect.height;
     const targetCenterX = targetRect.x + targetRect.width / 2;
-    const verticalGap = targetY - sourceY;
+    const targetTopY = targetRect.y;
+    const verticalGap = targetTopY - sourceBottomY;
 
     if (verticalGap > 36) {
-      const startX = sourceX || sourceCenterX;
-      const startY = sourceY;
-      const targetEntryX = targetX || targetCenterX;
-      const targetEntryY = targetY;
+      const startX = sourceCenterX;
+      const startY = sourceBottomY;
+      const targetEntryX = targetCenterX;
+      const targetEntryY = targetTopY;
       const desiredDrop = Math.max(42, Math.min(86, verticalGap * 0.32));
       const laneOffset = branchLane * 12;
       const routedBusY =
@@ -85,6 +87,34 @@ export const buildManagerRoute = ({
     path: `M ${sourceX},${sourceY} L ${sourceX},${busY} L ${targetX},${busY} L ${targetX},${targetY}`,
     labelX: (sourceX + targetX) / 2,
     labelY: busY,
+    points,
+  };
+};
+
+export const buildCuratedPeerReportRoute = ({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourceRect,
+  targetRect,
+}: ManagerRouteInput) => {
+  const sourceBottom = sourceRect ? sourceRect.y + sourceRect.height : sourceY;
+  const targetBottom = targetRect ? targetRect.y + targetRect.height : targetY;
+  const rowBottom = Math.max(sourceBottom, targetBottom);
+  const busY = rowBottom + 10;
+  const labelY = busY + 14;
+  const points = [
+    { x: sourceX, y: sourceY },
+    { x: sourceX, y: busY },
+    { x: targetX, y: busY },
+    { x: targetX, y: targetY },
+  ];
+
+  return {
+    path: `M ${sourceX},${sourceY} L ${sourceX},${busY} L ${targetX},${busY} L ${targetX},${targetY}`,
+    labelX: targetX,
+    labelY,
     points,
   };
 };

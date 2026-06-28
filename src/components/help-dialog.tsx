@@ -18,6 +18,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["5"], label: "Business Grid" },
       { keys: ["0"], label: "Fit everything to view" },
       { keys: ["Click manager"], label: "Open that person's org view" },
+      { keys: ["Double-click canvas"], label: "Step back from an isolated org view" },
       { keys: ["+"], label: "Zoom in" },
       { keys: ["−"], label: "Zoom out" },
     ],
@@ -68,8 +69,10 @@ function LineSample({ color, dashed, diamond }: { color: string; dashed?: boolea
 
 const LEGEND = [
   { color: RELATIONSHIP_COLORS.manager, label: "Reports to", desc: "Formal manager relationship" },
-  { color: RELATIONSHIP_COLORS.sponsor, label: "Executive support", desc: "Sponsor or operating support", diamond: true },
-  { color: RELATIONSHIP_COLORS.dotted, label: "Matrix support", desc: "Collaborative / advisory support", dashed: true },
+  { color: RELATIONSHIP_COLORS.dedicated, label: "Dedicated to", desc: "Dedicated support, not a manager line", diamond: true },
+  { color: RELATIONSHIP_COLORS.support, label: "Supports", desc: "Operating support, not a manager line", diamond: true },
+  { color: RELATIONSHIP_COLORS["shared-service"], label: "Shared service", desc: "Platform pod support", diamond: true },
+  { color: RELATIONSHIP_COLORS.dotted, label: "Dotted line", desc: "Matrix or advisory relationship", dashed: true },
 ];
 
 export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

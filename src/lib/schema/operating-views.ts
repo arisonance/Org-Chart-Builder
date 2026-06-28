@@ -29,6 +29,17 @@ export type PublishedOperatingView =
       owner: string;
       publishedBy: string;
       publishedAt: string;
+      kind: "formation";
+      lens: LensId;
+      formation: "residential";
+    }
+  | {
+      id: string;
+      label: string;
+      description: string;
+      owner: string;
+      publishedBy: string;
+      publishedAt: string;
       kind: "dimension";
       lens: LensId;
       dimension: LensDimension;
@@ -47,6 +58,17 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     publishedAt: "2026-06-24",
     kind: "overview",
     lens: "hierarchy",
+  },
+  {
+    id: "all-residential",
+    label: "All Residential",
+    description: "Residential formation: branch owners, direct support pods, and shared foundation.",
+    owner: "Residential SLT",
+    publishedBy: "Residential SLT",
+    publishedAt: "2026-06-24",
+    kind: "formation",
+    lens: "hierarchy",
+    formation: "residential",
   },
   {
     id: "luxury-residential",

@@ -96,7 +96,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
     [],
   );
 
-  // Connection affordances (handle dots + the Dotted/Sponsor labels) are only
+  // Connection affordances (handle dots + support labels) are only
   // useful when you're close enough to actually wire a relationship. Hide them
   // when zoomed out so they don't turn into noise on every card; at full zoom
   // reveal them on hover or when the card is selected. Handles stay mounted
@@ -279,8 +279,8 @@ function Component({ data }: { data: HierarchyNodeData }) {
             )}
           </button>
           {/* Dotted-line connector: a subtle dot at the left edge, revealed on
-              hover. No protruding text label (it bled past the card), and the
-              Sponsor connector has been removed. */}
+              hover. No protruding text label; support types can be set from
+              the edge context menu after a link is created. */}
           <Handle
             type="source"
             position={Position.Left}
@@ -296,6 +296,15 @@ function Component({ data }: { data: HierarchyNodeData }) {
             data-handle-type="manager"
             className={`${HANDLE_BASE_CLASS} ${hideReportToggle ? "opacity-0" : connectorClass} !bg-sky-500 hover:!bg-sky-600 dark:!bg-sky-400`}
             style={{ bottom: hideReportToggle ? -5 : undefined }}
+          />
+
+          <Handle
+            type="target"
+            position={Position.Bottom}
+            id={`${node.id}-manager-peer-target`}
+            data-handle-type="manager"
+            className={`${HANDLE_BASE_CLASS} pointer-events-none opacity-0 !bg-slate-400`}
+            style={{ bottom: -5 }}
           />
 
           {/* Subtree fold chip, People Finder style. Collapsed unit cards open

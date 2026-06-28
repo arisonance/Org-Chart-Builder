@@ -2,7 +2,14 @@ import type { LensId } from "./lenses";
 
 export const SCHEMA_VERSION = "2024.10.01";
 
-export type RelationshipType = "manager" | "sponsor" | "dotted" | "group";
+export type RelationshipType =
+  | "manager"
+  | "dedicated"
+  | "support"
+  | "shared-service"
+  | "dotted"
+  | "sponsor"
+  | "group";
 
 export type NodeKind = "person" | "group";
 

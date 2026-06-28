@@ -21,7 +21,7 @@ export type ParsedOrgChart = {
   relationships: Array<{
     from: string; // person name
     to: string; // person name
-    type: "manager" | "sponsor" | "dotted";
+    type: "manager" | "dedicated" | "support" | "shared-service" | "dotted" | "sponsor";
     confidence: number;
   }>;
   metadata: {
@@ -60,19 +60,22 @@ const ORG_CHART_EXTRACTION_PROMPT = `You are an expert at analyzing organization
 
 2. **Relationships** - Identify ALL connections:
    - **Solid line pointing UP** = "manager" (from: person, to: their manager)
-   - **Dotted/dashed line** = "dotted" (advisory/collaborative relationship)
-   - **Diamond marker or special indicator** = "sponsor" (executive sponsor)
+   - **Dedicated support label** = "dedicated" (dedicated to a business area, not a manager)
+   - **Support/service label** = "support" (supports an area, not a manager)
+   - **Shared service or platform pod** = "shared-service" (shared team supporting multiple areas)
+   - **Dotted/dashed line** = "dotted" (advisory/collaborative relationship, not a manager)
+   - **Diamond marker or special indicator** = "support" unless it explicitly says sponsor
    - For each relationship specify: from (person name), to (person name), type, confidence
 
 3. **Matrix Structure** - Pay special attention to:
    - People shown in multiple boxes or with multiple labels = cross-functional roles
    - Swim lanes or columns often indicate brands/channels/departments
    - Color coding or visual grouping
-   - Reporting lines that cross boundaries = matrix relationships
+   - Reporting lines that cross boundaries may be matrix support relationships; do not call them "manager" unless the chart clearly says they report to that person
 
 4. **Error Recovery**:
    - If name is unclear, include "?" and set confidence < 0.7
-   - If relationship type is ambiguous, default to "manager" with lower confidence
+   - If relationship type is ambiguous, default to "support" with lower confidence unless it is clearly a formal reporting line
    - Extract partial data rather than skipping entirely
    - For incomplete information, set low confidence rather than omitting
 
@@ -93,7 +96,7 @@ const ORG_CHART_EXTRACTION_PROMPT = `You are an expert at analyzing organization
   "relationships": [
     {
       "from": "Person Name",
-      "to": "Manager/Sponsor Name",
+      "to": "Manager or Supported Area",
       "type": "manager",
       "confidence": 0.9
     }
@@ -343,4 +346,3 @@ export function validateExtraction(data: ParsedOrgChart): {
  * Export the prompt so the API route can use it
  */
 export { ORG_CHART_EXTRACTION_PROMPT };
-

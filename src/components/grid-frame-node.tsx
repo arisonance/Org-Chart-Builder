@@ -136,13 +136,48 @@ export type GridGroupNodeData = {
   color: string;
   zoom: number;
   collapsed?: boolean;
+  variant?: "group" | "owner-band";
   onToggle?: (label: string) => void;
 };
 
 // Top-level channel-group header spanning its member columns; click to collapse/expand
 function GroupComponent({ data }: { data: GridGroupNodeData }) {
-  const { label, count, width, color, zoom, collapsed, onToggle } = data;
+  const { label, count, width, color, zoom, collapsed, variant, onToggle } = data;
   const safeZoom = Math.max(zoom || 1, 0.12);
+  const isOwnerBand = variant === "owner-band";
+
+  if (isOwnerBand) {
+    const ownerLabel = label.replace(/\s+portfolio$/i, "");
+    const labelFont = Math.min(22, 12 / safeZoom);
+    const chipFont = Math.min(18, 10 / safeZoom);
+
+    return (
+      <div
+        className="lane-fade-in pointer-events-none flex h-full w-full items-start justify-between gap-4 rounded-2xl border px-5 py-3"
+        style={{ width, borderColor: `${color}40`, background: `${color}08` }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ background: color }}
+          />
+          <span
+            className="truncate font-bold uppercase tracking-[0.18em]"
+            style={{ color, fontSize: labelFont, lineHeight: 1.1 }}
+          >
+            {ownerLabel}
+          </span>
+        </div>
+        <span
+          className="shrink-0 rounded-full bg-white/85 px-3 py-0.5 font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-white/10"
+          style={{ fontSize: chipFont }}
+        >
+          Portfolio · {count} {count === 1 ? "person" : "people"}
+        </span>
+      </div>
+    );
+  }
+
   const labelFont = Math.min(64, 26 / safeZoom);
   const chipFont = Math.min(34, 12 / safeZoom);
   const toggleFont = Math.min(48, 20 / safeZoom);

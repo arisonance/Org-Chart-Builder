@@ -16,6 +16,7 @@ type ViewContext = {
   publishedAt?: string;
   dimension?: "brand" | "channel" | "department";
   value?: string;
+  formation?: "residential";
 };
 
 const EMPTY_IDS: string[] = [];
@@ -54,6 +55,11 @@ export function CanvasContextBar({
     canManage: boolean;
     publishedAt?: string;
     publishedBy?: string;
+    approvalStatus?: "draft" | "pending_approval" | "approved" | "rejected";
+    pendingReason?: string;
+    dirtyLabel?: string;
+    savedLabel?: string;
+    saveLabel?: string;
     onPublish: () => void;
     onDiscard: () => void;
     onReset: () => void;
@@ -253,11 +259,11 @@ export function CanvasContextBar({
   };
 
   return (
-    <div className="pointer-events-none absolute left-1/2 top-4 z-30 flex max-w-[88vw] -translate-x-1/2 flex-col items-center gap-2">
+    <div className="pointer-events-none absolute left-1/2 top-16 z-30 flex w-[calc(100vw-2rem)] max-w-7xl -translate-x-1/2 flex-col items-center gap-2">
       {focusedId && !teamTreeRoot && (
         <nav
           aria-label="Reporting chain"
-          className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-1 overflow-x-auto rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10"
+          className="motion-context-bar pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10"
         >
           <span className="inline-flex h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-sky-500" />
           {chain.map((id, index) => {
@@ -292,7 +298,7 @@ export function CanvasContextBar({
       {focusedId && !teamTreeRoot && (
         <div
           aria-label={`${focusedName}'s relationship truth`}
-          className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-1.5 overflow-x-auto rounded-full border border-sky-200 bg-white/95 px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10"
+          className="motion-context-bar pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-full border border-sky-200 bg-white/95 px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10"
         >
           <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-200">
             Selected
@@ -336,7 +342,7 @@ export function CanvasContextBar({
       )}
 
       {teamTreeRoot && (
-        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
+        <div className="motion-context-bar pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs shadow-lg ring-1 ring-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:ring-emerald-400/10">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-semibold text-emerald-900 dark:text-emerald-100">
             {viewContext?.kind === "operating-view"
@@ -404,71 +410,122 @@ export function CanvasContextBar({
       )}
 
       {subsetActive && (
-        <div className="motion-context-bar pointer-events-auto flex max-w-[88vw] flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/95 dark:text-slate-700 dark:ring-slate-200">
-          <span className="font-semibold text-slate-950 dark:text-slate-950">{contextTitle}</span>
-          <span className="text-slate-500 dark:text-slate-500">{descriptors.join(" · ")}</span>
-          {viewContext?.owner && (
-            <TruthPill label="Owner" value={viewContext.owner} tone="emerald" />
-          )}
-          {viewContext?.publishedAt && (
-            <TruthPill label="Published" value={viewContext.publishedAt} tone="emerald" />
-          )}
-          {operatingViewSummary && (
-            <>
-              <TruthPill label="Core team" value={`${operatingViewSummary.dedicatedCount} primary`} tone="sky" />
-              <TruthPill label="Shared support" value={`${operatingViewSummary.broadSupportCount} supporting`} tone="violet" />
-              <TruthPill label="Pods" value={`${operatingViewSummary.podCount} support pods`} tone="violet" />
-            </>
-          )}
-          {viewContext?.kind === "operating-view" && (
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200">
-              Reporting lines stay formal
+        <div className="motion-context-bar pointer-events-auto flex w-fit max-w-full flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/95 dark:text-slate-700 dark:ring-slate-200">
+          <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
+            <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-500">
+              {contextTitle}
             </span>
-          )}
-          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
-            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-slate-950 dark:text-amber-100 dark:ring-amber-400/20">
-              Draft changes saved
+            <span className="max-w-[16rem] truncate font-semibold text-slate-950 dark:text-slate-950">
+              {viewContext?.label ?? LENS_BY_ID[lens].label}
             </span>
-          )}
-          {viewContext?.kind === "operating-view" && !officialLayoutControls?.dirty && officialLayoutControls?.saved && (
-            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-950 dark:text-emerald-100 dark:ring-emerald-400/20">
-              Published layout{officialLayoutControls.publishedAt ? ` · ${officialLayoutControls.publishedAt}` : ""}
-            </span>
-          )}
-          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
-            <>
+            {focusIds.length > 0 && !focusedId && (
+              <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-600 dark:ring-slate-200">
+                {focusIds.length} {focusIds.length === 1 ? "person" : "people"}
+              </span>
+            )}
+            {activeTokens.length > 0 && (
+              <span className="max-w-[14rem] truncate rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-800 ring-1 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100">
+                Filtered: {activeTokens.join(", ")}
+              </span>
+            )}
+            <span className="hidden h-5 w-px bg-slate-200 dark:bg-slate-200 sm:block" />
+            {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
+              <span className="whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-50 dark:text-amber-800 dark:ring-amber-200">
+                {officialLayoutControls.dirtyLabel ?? "Arrangement draft"}
+              </span>
+            )}
+            {viewContext?.kind === "operating-view" &&
+              officialLayoutControls?.canManage &&
+              officialLayoutControls.approvalStatus === "pending_approval" && (
+                <span
+                  title={officialLayoutControls.pendingReason}
+                  className="whitespace-nowrap rounded-full bg-sky-50 px-2.5 py-1 font-bold text-sky-800 ring-1 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100"
+                >
+                  Pending admin approval
+                </span>
+              )}
+            {viewContext?.kind === "operating-view" &&
+              officialLayoutControls?.canManage &&
+              officialLayoutControls.approvalStatus === "rejected" && (
+                <span
+                  title={officialLayoutControls.pendingReason}
+                  className="whitespace-nowrap rounded-full bg-rose-50 px-2.5 py-1 font-bold text-rose-700 ring-1 ring-rose-100 dark:bg-rose-50 dark:text-rose-700 dark:ring-rose-100"
+                >
+                  Needs revision
+                </span>
+              )}
+            {viewContext?.kind === "operating-view" && !officialLayoutControls?.dirty && officialLayoutControls?.saved && (
+              <span className="whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-50 dark:text-emerald-800 dark:ring-emerald-100">
+                {officialLayoutControls.savedLabel ?? "Saved arrangement"}
+              </span>
+            )}
+            {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
+              <>
+                <button
+                  type="button"
+                  onClick={officialLayoutControls.onPublish}
+                  className="whitespace-nowrap rounded-full bg-slate-950 px-3 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-slate-950 dark:text-white dark:hover:bg-slate-700"
+                >
+                  {officialLayoutControls.saveLabel ?? "Save arrangement"}
+                </button>
+                <button
+                  type="button"
+                  onClick={officialLayoutControls.onDiscard}
+                  className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-50 dark:bg-white dark:text-amber-700 dark:ring-amber-100 dark:hover:bg-amber-50"
+                >
+                  Discard draft
+                </button>
+              </>
+            )}
+            {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && (officialLayoutControls.dirty || officialLayoutControls.saved) && (
               <button
                 type="button"
-                onClick={officialLayoutControls.onPublish}
-                className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                onClick={officialLayoutControls.onReset}
+                className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-50 dark:bg-white dark:text-amber-700 dark:ring-amber-100 dark:hover:bg-amber-50"
               >
-                Publish view
+                Reset arrangement
               </button>
-              <button
-                type="button"
-                onClick={officialLayoutControls.onDiscard}
-                className="rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:ring-amber-400/20 dark:hover:bg-slate-800"
-              >
-                Discard draft
-              </button>
-            </>
-          )}
-          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && (officialLayoutControls.dirty || officialLayoutControls.saved) && (
+            )}
             <button
               type="button"
-              onClick={officialLayoutControls.onReset}
-              className="rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:ring-amber-400/20 dark:hover:bg-slate-800"
+              onClick={onResetView}
+              className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200 dark:hover:bg-slate-200"
             >
-              Reset arrangement
+              Reset view
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onResetView}
-            className="rounded-full bg-slate-950 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-          >
-            Reset view
-          </button>
+            {(viewContext?.owner || viewContext?.publishedAt || hiddenIds.length > 0 || operatingViewSummary || viewContext?.kind === "operating-view") && (
+              <details className="group relative">
+                <summary className="cursor-pointer list-none whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50">
+                  View details
+                </summary>
+                <div className="absolute right-0 top-9 z-10 flex w-[min(22rem,80vw)] flex-wrap justify-end gap-1.5 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-100 dark:border-slate-200 dark:bg-white dark:ring-slate-100">
+                  {viewContext?.owner && (
+                    <TruthPill label="Owner" value={viewContext.owner} tone="emerald" />
+                  )}
+                  {viewContext?.publishedAt && (
+                    <TruthPill label="Published" value={viewContext.publishedAt} tone="emerald" />
+                  )}
+                  {operatingViewSummary && (
+                    <>
+                      <TruthPill label="Core team" value={`${operatingViewSummary.dedicatedCount} primary`} tone="sky" />
+                      <TruthPill label="Shared support" value={`${operatingViewSummary.broadSupportCount} supporting`} tone="violet" />
+                      <TruthPill label="Pods" value={`${operatingViewSummary.podCount} support pods`} tone="violet" />
+                    </>
+                  )}
+                  {viewContext?.kind === "operating-view" && (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200">
+                      Reporting lines stay formal
+                    </span>
+                  )}
+                  {hiddenIds.length > 0 && (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200">
+                      {hiddenIds.length} hidden
+                    </span>
+                  )}
+                </div>
+              </details>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -760,9 +760,24 @@ export const useGraphStore = create<GraphStore>()(
         return id;
       },
       updateRelationship: (edgeId, updates) => {
+        const current = get();
+        const currentEdge = current.document.edges.find((item) => item.id === edgeId);
+        if (!currentEdge) return;
+        if (
+          updates.type === "manager" &&
+          wouldCreateManagerCycle(current.document.edges, currentEdge.source, currentEdge.target)
+        ) {
+          return;
+        }
+
         withHistory(set, get, (state) => {
           const edge = state.document.edges.find((item) => item.id === edgeId);
           if (!edge) return;
+          if (updates.type === "manager") {
+            state.document.edges = state.document.edges.filter(
+              (item) => item.id === edgeId || !(item.metadata.type === "manager" && item.target === edge.target),
+            );
+          }
           edge.metadata = {
             ...edge.metadata,
             ...updates,

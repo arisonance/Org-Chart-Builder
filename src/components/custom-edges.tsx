@@ -4,7 +4,8 @@ import { memo, useMemo } from 'react';
 import { BaseEdge, EdgeLabelRenderer, EdgeProps, getSmoothStepPath } from '@xyflow/react';
 import { RELATIONSHIP_COLORS } from '@/lib/theme/palette';
 import type { GraphEdge } from '@/lib/schema/types';
-import { buildManagerRoute } from '@/lib/graph/edge-routing';
+import { buildCuratedPeerReportRoute, buildManagerRoute } from '@/lib/graph/edge-routing';
+import { getRelationshipDefinition } from '@/lib/schema/relationships';
 
 type EnhancedEdgeData = GraphEdge & {
   relationshipLabel?: string;
@@ -13,6 +14,7 @@ type EnhancedEdgeData = GraphEdge & {
   routeBusY?: number;
   sourceRect?: CardRect;
   targetRect?: CardRect;
+  visualTreatment?: "curated-peer-report";
   truthIssue?: {
     level: "warning" | "danger";
     message: string;
@@ -44,9 +46,28 @@ function ManagerEdgeComponent({
   const edgeData = data as EnhancedEdgeData | undefined;
   const truthIssue = edgeData?.showTruthIssue ? edgeData.truthIssue : undefined;
   const truthColor = truthIssue?.level === "danger" ? "#ef4444" : "#f59e0b";
+  const isCuratedPeerReport = edgeData?.visualTreatment === "curated-peer-report";
+  const shouldUseManagerRoute =
+    edgeData?.sourceRect && edgeData?.targetRect
+      ? edgeData.targetRect.y > edgeData.sourceRect.y + edgeData.sourceRect.height
+      : targetY > sourceY;
   const [edgePath, labelX, labelY] = useMemo(
     () => {
-      if (targetY > sourceY) {
+      if (isCuratedPeerReport) {
+        const route = buildCuratedPeerReportRoute({
+          id,
+          sourceId: edgeData?.source,
+          sourceX,
+          sourceY,
+          targetX,
+          targetY,
+          routeLane: edgeData?.routeLane,
+          sourceRect: edgeData?.sourceRect,
+          targetRect: edgeData?.targetRect,
+        });
+        return [route.path, route.labelX, route.labelY] as const;
+      }
+      if (shouldUseManagerRoute) {
         const route = buildManagerRoute({
           id,
           sourceId: edgeData?.source,
@@ -70,7 +91,7 @@ function ManagerEdgeComponent({
         targetPosition,
       });
     },
-    [edgeData?.routeBusY, edgeData?.routeLane, edgeData?.source, edgeData?.sourceRect, edgeData?.targetRect, id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+    [edgeData?.routeBusY, edgeData?.routeLane, edgeData?.source, edgeData?.sourceRect, edgeData?.targetRect, id, isCuratedPeerReport, shouldUseManagerRoute, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
   );
 
   const edgeStyle = useMemo(
@@ -92,7 +113,7 @@ function ManagerEdgeComponent({
         path={edgePath}
         style={{
           stroke: 'rgba(255, 255, 255, 0.92)',
-          strokeWidth: selected || truthIssue ? 9 : 7,
+          strokeWidth: isCuratedPeerReport ? (selected || truthIssue ? 4 : 0) : selected || truthIssue ? 9 : 7,
           strokeLinecap: 'round',
           vectorEffect: 'non-scaling-stroke',
         }}
@@ -142,7 +163,12 @@ function SponsorEdgeComponent({
   targetPosition,
   style,
   selected,
+  data,
 }: EdgeProps<EnhancedEdgeData>) {
+  const edgeData = data as EnhancedEdgeData | undefined;
+  const relationshipType = edgeData?.metadata.type ?? "support";
+  const color = RELATIONSHIP_COLORS[relationshipType] ?? RELATIONSHIP_COLORS.support;
+  const definition = getRelationshipDefinition(relationshipType);
   const [edgePath] = useMemo(
     () =>
       getSmoothStepPath({
@@ -158,15 +184,16 @@ function SponsorEdgeComponent({
 
   const edgeStyle = useMemo(
     () => ({
-      stroke: RELATIONSHIP_COLORS.sponsor,
+      stroke: color,
       strokeWidth: selected ? 3 : 2.5,
       vectorEffect: 'non-scaling-stroke' as const,
       ...(style || {}),
     }),
-    [selected, style]
+    [color, selected, style]
   );
 
   const markerId = `diamond-${id}`;
+  const showLabel = selected || edgeData?.showLabel;
 
   return (
     <>
@@ -182,7 +209,7 @@ function SponsorEdgeComponent({
           <path
             d="M0,7 L7,0 L14,7 L7,14 z"
             fill="none"
-            stroke={RELATIONSHIP_COLORS.sponsor}
+            stroke={color}
             strokeWidth="2"
           />
         </marker>
@@ -201,6 +228,20 @@ function SponsorEdgeComponent({
         markerEnd={`url(#${markerId})`}
         style={edgeStyle}
       />
+      {showLabel && edgeData?.relationshipLabel && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan pointer-events-none absolute max-w-[220px] -translate-x-1/2 -translate-y-1/2 rounded-full border bg-white/95 px-2.5 py-1 text-[10px] font-semibold leading-tight shadow-sm ring-1 ring-white/80 dark:bg-slate-950/95 dark:ring-slate-900"
+            style={{
+              color,
+              borderColor: `${color}55`,
+              transform: `translate(-50%, -50%) translate(${(sourceX + targetX) / 2}px, ${(sourceY + targetY) / 2}px)`,
+            }}
+          >
+            {definition.shortLabel}: {edgeData.relationshipLabel}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }
@@ -217,7 +258,12 @@ function DottedEdgeComponent({
   style,
   markerEnd,
   selected,
+  data,
 }: EdgeProps<EnhancedEdgeData>) {
+  const edgeData = data as EnhancedEdgeData | undefined;
+  const relationshipType = edgeData?.metadata.type ?? "dotted";
+  const color = RELATIONSHIP_COLORS[relationshipType] ?? RELATIONSHIP_COLORS.dotted;
+  const definition = getRelationshipDefinition(relationshipType);
   const [edgePath] = useMemo(
     () =>
       getSmoothStepPath({
@@ -233,14 +279,15 @@ function DottedEdgeComponent({
 
   const edgeStyle = useMemo(
     () => ({
-      stroke: RELATIONSHIP_COLORS.dotted,
+      stroke: color,
       strokeWidth: selected ? 3 : 2.5,
       strokeDasharray: '6 6',
       vectorEffect: 'non-scaling-stroke' as const,
       ...(style || {}),
     }),
-    [selected, style]
+    [color, selected, style]
   );
+  const showLabel = selected || edgeData?.showLabel;
 
   return (
     <>
@@ -258,6 +305,20 @@ function DottedEdgeComponent({
         markerEnd={markerEnd}
         style={edgeStyle}
       />
+      {showLabel && edgeData?.relationshipLabel && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan pointer-events-none absolute max-w-[220px] -translate-x-1/2 -translate-y-1/2 rounded-full border bg-white/95 px-2.5 py-1 text-[10px] font-semibold leading-tight shadow-sm ring-1 ring-white/80 dark:bg-slate-950/95 dark:ring-slate-900"
+            style={{
+              color,
+              borderColor: `${color}55`,
+              transform: `translate(-50%, -50%) translate(${(sourceX + targetX) / 2}px, ${(sourceY + targetY) / 2}px)`,
+            }}
+          >
+            {definition.shortLabel}: {edgeData.relationshipLabel}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }
@@ -267,6 +328,7 @@ export const DottedEdge = memo(DottedEdgeComponent);
 // Export edge types object for React Flow
 export const customEdgeTypes = {
   manager: ManagerEdge,
+  support: SponsorEdge,
   sponsor: SponsorEdge,
   dotted: DottedEdge,
 };

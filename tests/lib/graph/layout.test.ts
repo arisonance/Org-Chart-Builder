@@ -15,6 +15,10 @@ import {
   calculateGridLayout,
   getGridGeometry,
   isGridLens,
+  GRID_LEADERSHIP_ROW_IDS,
+  isGridExecutiveContextId,
+  DEPARTMENT_SUPER_ROOT_ID,
+  DEPARTMENT_OWNER_IDS,
   UNASSIGNED_GROUP_KEY,
   GRID_ROW_LABEL_WIDTH,
   GRID_COL_HEADER_HEIGHT,
@@ -275,36 +279,128 @@ describe("groupNodesByDimension", () => {
 });
 
 describe("calculateMatrixLayout", () => {
-  it("wraps large peer ranks instead of laying a lane out as one unreadable row", () => {
-    const people = Array.from({ length: 24 }, (_, index) =>
+  const departmentOwnerId = DEPARTMENT_OWNER_IDS[0];
+  const departmentLeaders = [
+    makePerson(DEPARTMENT_SUPER_ROOT_ID, {
+      name: "Ari Supran",
+      primaryDepartment: "Executive",
+      departments: ["Executive"],
+    }),
+    makePerson(departmentOwnerId, {
+      name: "Pat McGaughan",
+      primaryDepartment: "Finance",
+      departments: ["Finance"],
+    }),
+  ];
+  const departmentLeaderEdges = [
+    makeManagerEdge(DEPARTMENT_SUPER_ROOT_ID, departmentOwnerId),
+  ];
+
+  it("keeps same-manager reports together when a wide brand lane wraps", () => {
+    const managers = Array.from({ length: 7 }, (_, index) =>
+      makePerson(`manager-${index}`, {
+        primaryBrand: "All Brands",
+        brands: ["All Brands"],
+      }),
+    );
+    const children = managers.flatMap((manager, managerIndex) =>
+      Array.from({ length: 4 }, (_, childIndex) =>
+        makePerson(`child-${managerIndex}-${childIndex}`, {
+          primaryBrand: "All Brands",
+          brands: ["All Brands"],
+        }),
+      ),
+    );
+    const positions = calculateMatrixLayout(
+      [...managers, ...children],
+      children.map((child) => {
+        const managerIndex = Number(child.id.split("-")[1]);
+        return makeManagerEdge(`manager-${managerIndex}`, child.id);
+      }),
+      "brand",
+    );
+    const targetChildren = children
+      .filter((child) => child.id.startsWith("child-3-"))
+      .map((child) => positions[child.id]);
+    const childRows = new Set(targetChildren.map((position) => position.y));
+    const childMinX = Math.min(...targetChildren.map((position) => position.x));
+    const childMaxX = Math.max(...targetChildren.map((position) => position.x + NODE_WIDTH));
+
+    expect(childRows.size).toBe(1);
+    expect(childMaxX - childMinX).toBeLessThan(6 * NODE_WIDTH);
+  });
+
+  it("places SLT ownership above the department portfolio", () => {
+    const people = [
+      ...departmentLeaders,
+      makePerson("finance-1", {
+        primaryDepartment: "Finance",
+        departments: ["Finance"],
+      }),
+      makePerson("finance-2", {
+        primaryDepartment: "Finance",
+        departments: ["Finance"],
+      }),
+    ];
+    const positions = calculateMatrixLayout(
+      people,
+      [
+        ...departmentLeaderEdges,
+        makeManagerEdge(departmentOwnerId, "finance-1"),
+        makeManagerEdge(departmentOwnerId, "finance-2"),
+      ],
+      "department",
+    );
+
+    expect(positions[DEPARTMENT_SUPER_ROOT_ID].y).toBeLessThan(positions[departmentOwnerId].y);
+    expect(positions[departmentOwnerId].y).toBeLessThan(positions["finance-1"].y);
+    expect(positions["finance-1"].y).toBe(positions["finance-2"].y);
+  });
+
+  it("wraps large department peer ranks instead of laying a lane out as one unreadable row", () => {
+    const peers = Array.from({ length: 24 }, (_, index) =>
       makePerson(`p${index}`, {
         primaryDepartment: "James Manufacturing - Direct",
         departments: ["James Manufacturing - Direct"],
       }),
     );
-    const positions = calculateMatrixLayout(people, [], "department");
-    const values = Object.values(positions);
+    const positions = calculateMatrixLayout(
+      [...departmentLeaders, ...peers],
+      [
+        ...departmentLeaderEdges,
+        ...peers.map((person) => makeManagerEdge(departmentOwnerId, person.id)),
+      ],
+      "department",
+    );
+    const values = peers.map((person) => positions[person.id]);
     const minX = Math.min(...values.map((position) => position.x));
     const maxX = Math.max(...values.map((position) => position.x + NODE_WIDTH));
     const rows = new Set(values.map((position) => position.y));
 
-    expect(Object.keys(positions)).toHaveLength(24);
+    expect(Object.keys(positions)).toHaveLength(26);
     expect(rows.size).toBeGreaterThan(1);
     expect(maxX - minX).toBeLessThan(24 * NODE_WIDTH);
   });
 
-  it("wraps department lanes into multiple rows when there are many departments", () => {
-    const people = Array.from({ length: 72 }, (_, index) => {
+  it("stacks multiple department lanes underneath their SLT owner", () => {
+    const departmentPeople = Array.from({ length: 72 }, (_, index) => {
       const department = `Department ${Math.floor(index / 12) + 1}`;
       return makePerson(`p${index}`, {
         primaryDepartment: department,
         departments: [department],
       });
     });
-    const positions = calculateMatrixLayout(people, [], "department");
+    const positions = calculateMatrixLayout(
+      [...departmentLeaders, ...departmentPeople],
+      [
+        ...departmentLeaderEdges,
+        ...departmentPeople.map((person) => makeManagerEdge(departmentOwnerId, person.id)),
+      ],
+      "department",
+    );
     const firstDepartmentY = positions.p0.y;
     const lastDepartmentY = positions.p60.y;
-    const xs = Object.values(positions).map((position) => position.x);
+    const xs = departmentPeople.map((person) => positions[person.id].x);
 
     expect(lastDepartmentY).toBeGreaterThan(firstDepartmentY);
     expect(Math.max(...xs) - Math.min(...xs) + NODE_WIDTH).toBeLessThan(7000);
@@ -344,6 +440,27 @@ describe("calculateGridLayout", () => {
 
   it("returns an empty map when there are no people", () => {
     expect(calculateGridLayout([])).toEqual({});
+  });
+
+  it("keeps SLT context in a leadership rail instead of ordinary grid cells", () => {
+    const people = [
+      makePerson("person-ari-supran", { primaryBrand: "All Brands", primaryChannel: "All Channels" }),
+      makePerson("person-jason-sloan", { primaryBrand: "All Brands", primaryChannel: "Luxury Residential" }),
+      makePerson("person-michael-sonntag", { primaryBrand: "All Brands", primaryChannel: "North America Professional" }),
+      makePerson("sales", { primaryBrand: "Sonance", primaryChannel: "Luxury Residential" }),
+      makePerson("pro", { primaryBrand: "Sonance", primaryChannel: "North America Professional" }),
+    ];
+
+    const positions = calculateGridLayout(people);
+    const geo = getGridGeometry(people);
+
+    expect(positions["person-ari-supran"].y).toBeLessThan(0);
+    GRID_LEADERSHIP_ROW_IDS.filter((id) => positions[id]).forEach((id) => {
+      expect(positions[id].y).toBeLessThan(0);
+    });
+    expect(positions.sales.y).toBeGreaterThanOrEqual(GRID_COL_HEADER_HEIGHT);
+    expect(geo.rows.every((row) => row.key !== "All Brands")).toBe(true);
+    expect(isGridExecutiveContextId("person-jason-sloan")).toBe(true);
   });
 });
 

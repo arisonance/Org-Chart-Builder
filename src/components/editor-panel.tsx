@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEMO_LENS_LABELS } from "@/data/demo-graph";
 import { useGraphStore } from "@/store/graph-store";
 import type { GraphEdge, GraphNode, PersonNode } from "@/lib/schema/types";
+import { getRelationshipDefinition, isSupportRelationship } from "@/lib/schema/relationships";
 
 const sectionClass =
   "flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm ring-1 ring-black/5 dark:border-white/10 dark:bg-slate-950/70 dark:ring-white/10";
@@ -67,7 +68,7 @@ export function EditorPanel() {
           </p>
           <ul className="list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400">
             <li>Click a card to edit it here; right-click for quick actions.</li>
-            <li>Drag handles to create manager, sponsor, or dotted-line relationships.</li>
+            <li>Drag handles to create reporting or support-truth relationships.</li>
             <li>Press 1-5 to switch between lenses.</li>
           </ul>
         </div>
@@ -81,11 +82,11 @@ export function EditorPanel() {
   const directReports = edges.filter(
     (edge) => edge.metadata.type === "manager" && edge.source === node.id,
   );
-  const sponsorEdges = edges.filter(
-    (edge) => edge.metadata.type === "sponsor" && edge.target === node.id,
+  const supportReceivedEdges = edges.filter(
+    (edge) => isSupportRelationship(edge.metadata.type) && edge.target === node.id,
   );
-  const dottedEdges = edges.filter(
-    (edge) => edge.metadata.type === "dotted" && edge.target === node.id,
+  const supportProvidedEdges = edges.filter(
+    (edge) => isSupportRelationship(edge.metadata.type) && edge.source === node.id,
   );
   const managerName = managerEdges
     .map((edge) => personById.get(edge.source)?.name)
@@ -280,19 +281,27 @@ export function EditorPanel() {
               variant="outbound"
             />
             <RelationshipGroup
-              title="Executive sponsors"
-              edges={sponsorEdges}
+              title="Support received"
+              edges={supportReceivedEdges}
               nodes={nodes}
               onRemove={(edgeId) => removeRelationship(edgeId)}
-              color="text-amber-600"
+              color="text-teal-700"
+              labelAccessor={(edge) => {
+                const definition = getRelationshipDefinition(edge.metadata.type);
+                return edge.metadata.label ?? definition.label;
+              }}
             />
             <RelationshipGroup
-              title="Dotted lines"
-              edges={dottedEdges}
+              title="Support provided"
+              edges={supportProvidedEdges}
               nodes={nodes}
+              variant="outbound"
               onRemove={(edgeId) => removeRelationship(edgeId)}
-              color="text-indigo-600"
-              labelAccessor={(edge) => edge.metadata.label}
+              color="text-teal-700"
+              labelAccessor={(edge) => {
+                const definition = getRelationshipDefinition(edge.metadata.type);
+                return edge.metadata.label ?? definition.label;
+              }}
             />
           </div>
         )}

@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
 }
 
 function getDefaultPrompt(): string {
-  return `Extract people and relationships from this org chart image. Return JSON with "people" (array with name, title, confidence, brands, channels, departments, location) and "relationships" (array with from, to, type, confidence).`;
+  return `Extract people and relationships from this org chart image. Return JSON with "people" (array with name, title, confidence, brands, channels, departments, location) and "relationships" (array with from, to, type, confidence). Relationship type must be one of: manager, dedicated, support, shared-service, dotted. Use manager only for formal reports-to lines; use the support types for matrix/support relationships.`;
 }
 
 async function parseWithClaude(base64Image: string, mimeType: string = 'image/png', prompt: string) {
@@ -277,4 +277,3 @@ function getMockData() {
     }
   };
 }
-
