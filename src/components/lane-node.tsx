@@ -10,10 +10,11 @@ export type LaneNodeData = {
   vacancies: number;
   tiers: { label: string; count: number }[];
   zoom: number;
+  detail?: string;
 };
 
 function Component({ data }: { data: LaneNodeData }) {
-  const { label, color, count, crossAssigned, vacancies, tiers, zoom } = data;
+  const { label, color, count, crossAssigned, vacancies, tiers, zoom, detail } = data;
 
   // Counter-scale the header so lane names stay readable when zoomed out
   const safeZoom = Math.max(zoom || 1, 0.15);
@@ -35,11 +36,21 @@ function Component({ data }: { data: LaneNodeData }) {
           className="rounded-full"
           style={{ background: color, width: dotSize, height: dotSize }}
         />
-        <span
-          className="font-bold uppercase tracking-wide"
-          style={{ color, fontSize: headerFont, lineHeight: 1.1 }}
-        >
-          {label}
+        <span className="min-w-0">
+          <span
+            className="block truncate font-bold uppercase tracking-wide"
+            style={{ color, fontSize: headerFont, lineHeight: 1.1 }}
+          >
+            {label}
+          </span>
+          {detail ? (
+            <span
+              className="mt-1 block truncate font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400"
+              style={{ fontSize: Math.min(30, 9 / safeZoom), lineHeight: 1.1 }}
+            >
+              {detail}
+            </span>
+          ) : null}
         </span>
         <span
           className="rounded-full bg-white/85 px-3 py-1 font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-white/10"

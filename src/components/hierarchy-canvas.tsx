@@ -377,6 +377,7 @@ const OPERATING_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-operating-view-layouts-v1"
 const VIEWPORT_DEFAULTS_STORAGE_KEY = "org-chart-view-frame-defaults-v1";
 const LENS_PRESET_TRANSITION_EVENT = "org-chart:lens-preset-transition";
 const TEAM_TREE_FULL_DESCENDANT_LIMIT = 80;
+const CHANNEL_FIT_MIN_ZOOM = 0.18;
 
 type SavedViewportDefaults = Record<string, ViewportState>;
 
@@ -1413,7 +1414,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       fitVisiblePeopleRef.current({
         padding: lens === "channel" ? 0.26 : 0.18,
         duration: 300,
-        minZoom: lens === "channel" ? 0.24 : 0.35,
+        minZoom: lens === "channel" ? CHANNEL_FIT_MIN_ZOOM : 0.35,
         maxZoom: 1.2,
         reason: "fit",
         expectedIds: defaultFitIdsRef.current ?? undefined,
@@ -2278,6 +2279,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const focusPersonFromCard = useCallback(
     (id: string, additive?: boolean) => {
       const hasReports = (childMap[id]?.length ?? 0) > 0;
+      const isFocusedPerson = selection.nodeIds.length === 1 && selection.nodeIds[0] === id;
+      if (!additive && lens === "hierarchy" && hasReports && isFocusedPerson && teamTree?.rootId !== id) {
+        openTeamTree(id);
+        return;
+      }
       const hasHiddenReportsInCurrentTree =
         Boolean(teamTree && teamTree.rootId !== id && hasReports) &&
         Array.from(collectDescendants(childMap, [id])).some((descendantId) => !teamTree?.ids.has(descendantId));
@@ -2294,7 +2300,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }
       selectNode(id, additive);
     },
-    [childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, teamTree],
+    [childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, selection.nodeIds, teamTree],
   );
 
   const showOrientationOverview = useCallback((
@@ -3512,7 +3518,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       fitVisiblePeopleRef.current({
         padding: lens === "channel" ? 0.26 : lens === "department" ? 0.18 : 0.15,
         duration,
-        minZoom: lens === "channel" ? 0.24 : 0.35,
+        minZoom: lens === "channel" ? CHANNEL_FIT_MIN_ZOOM : 0.35,
         maxZoom: lens === "channel" ? 0.86 : 1.2,
         reason: "lens",
         expectedIds: defaultFitIdsRef.current ?? visibleViewportPersonIds,
@@ -3595,7 +3601,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       fitVisiblePeopleRef.current({
         padding: dimension === "channel" ? 0.26 : 0.18,
         duration: 350,
-        minZoom: dimension === "channel" ? 0.24 : 0.35,
+        minZoom: dimension === "channel" ? CHANNEL_FIT_MIN_ZOOM : 0.35,
         maxZoom: 1.15,
         reason: "lens",
       });
@@ -6126,6 +6132,27 @@ const buildLaneNodes = (
   const laneNodes: Node[] = [];
   const mirrorNodes: Node[] = [];
   const laneRects: Array<{ key: string; minX: number; maxX: number; minY: number; count: number }> = [];
+  const channelTemplateLabel = (key: string) => {
+    if (key === "All Channels" || key.startsWith("All ")) return "Both Channels";
+    const group = channelTopGroup(key);
+    if (group === "Commercial") return "Professional";
+    return group;
+  };
+  const channelTemplateDetail = (label: string) => {
+    if (label === "Residential") return "Dedicated residential channels";
+    if (label === "Both Channels") return "Shared channel backbone";
+    if (label === "Professional") return "Professional + enterprise channels";
+    return undefined;
+  };
+  const channelLaneDetail = (key: string) => {
+    if (key === "All Channels" || key.startsWith("All ")) return "Shared channel backbone";
+    if (key === "Enterprise") return "Enterprise channel";
+    if (channelTopGroup(key) === "Residential") return "Residential channel";
+    if (channelTopGroup(key) === "Commercial" || channelSubGroup(key) === "Professional") {
+      return "Professional channel";
+    }
+    return undefined;
+  };
 
   const resolveContextPeople = (key: string) => {
     if (dimension === "brand") {
@@ -6309,6 +6336,7 @@ const buildLaneNodes = (
       vacancies: members.filter(isVacantRole).length,
       tiers,
       zoom,
+      detail: dimension === "channel" ? channelLaneDetail(key) : undefined,
     };
     laneNodes.push({
       id: `lane:${key}`,
@@ -6329,12 +6357,6 @@ const buildLaneNodes = (
   if (dimension === "channel") {
     const topMinY = Math.min(...laneRects.map((r) => r.minY), 0);
     const byGroup = new Map<string, { minX: number; maxX: number; count: number }>();
-    const channelTemplateLabel = (key: string) => {
-      if (key === "All Channels" || key.startsWith("All ")) return "Both Channels";
-      const group = channelTopGroup(key);
-      if (group === "Commercial") return "Professional";
-      return group;
-    };
     laneRects.forEach((r) => {
       const g = channelTemplateLabel(r.key);
       if (!g) return; // unassigned / unknown channels do not get a top territory band
@@ -6356,10 +6378,13 @@ const buildLaneNodes = (
           label,
           count: span.count,
           width: span.maxX - span.minX,
+          detail: channelTemplateDetail(label),
+          align: label === "Professional" ? "start" : "center",
           color: label === "Both Channels"
             ? CHANNEL_COLORS["All Channels"]
             : CHANNEL_GROUP_COLORS[label] ?? UNASSIGNED_LANE_COLOR,
           zoom,
+          variant: "channel-template",
         },
         style: { width: span.maxX - span.minX, height: 120 },
         zIndex: -1,

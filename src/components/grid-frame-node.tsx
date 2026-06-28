@@ -135,16 +135,19 @@ export type GridGroupNodeData = {
   width: number;
   color: string;
   zoom: number;
+  detail?: string;
+  align?: "start" | "center";
   collapsed?: boolean;
-  variant?: "group" | "owner-band";
+  variant?: "group" | "owner-band" | "channel-template";
   onToggle?: (label: string) => void;
 };
 
 // Top-level channel-group header spanning its member columns; click to collapse/expand
 function GroupComponent({ data }: { data: GridGroupNodeData }) {
-  const { label, count, width, color, zoom, collapsed, variant, onToggle } = data;
+  const { label, count, width, color, zoom, detail, align, collapsed, variant, onToggle } = data;
   const safeZoom = Math.max(zoom || 1, 0.12);
   const isOwnerBand = variant === "owner-band";
+  const isChannelTemplate = variant === "channel-template";
 
   if (isOwnerBand) {
     const ownerLabel = label.replace(/\s+portfolio$/i, "");
@@ -173,6 +176,53 @@ function GroupComponent({ data }: { data: GridGroupNodeData }) {
           style={{ fontSize: chipFont }}
         >
           Portfolio · {count} {count === 1 ? "person" : "people"}
+        </span>
+      </div>
+    );
+  }
+
+  if (isChannelTemplate) {
+    const labelFont = Math.min(54, 20 / safeZoom);
+    const detailFont = Math.min(28, 10 / safeZoom);
+    const chipFont = Math.min(30, 11 / safeZoom);
+    const alignStart = align === "start";
+
+    return (
+      <div
+        className={[
+          "lane-fade-in pointer-events-none flex h-full w-full items-center gap-6 overflow-hidden rounded-2xl border px-7 py-4",
+          alignStart ? "justify-between" : "justify-center text-center",
+        ].join(" ")}
+        style={{
+          width,
+          borderColor: `${color}55`,
+          background: `linear-gradient(90deg, ${color}1f 0%, ${color}0e 64%, ${color}08 100%)`,
+        }}
+      >
+        <div className={["flex min-w-0 items-center gap-3", alignStart ? "" : "justify-center"].join(" ")}>
+          <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+          <span className="min-w-0">
+            <span
+              className="block truncate font-extrabold uppercase tracking-[0.14em]"
+              style={{ color, fontSize: labelFont, lineHeight: 1 }}
+            >
+              {label}
+            </span>
+            {detail ? (
+              <span
+                className="mt-1 block truncate font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400"
+                style={{ fontSize: detailFont, lineHeight: 1.1 }}
+              >
+                {detail}
+              </span>
+            ) : null}
+          </span>
+        </div>
+        <span
+          className="shrink-0 rounded-full bg-white/85 px-3 py-0.5 font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-white/10"
+          style={{ fontSize: chipFont }}
+        >
+          {count} {count === 1 ? "person" : "people"}
         </span>
       </div>
     );
