@@ -170,6 +170,7 @@ export function CanvasContextBar({
     descendantIds.length > directReportIds.length
       ? `${descendantIds.length + 1} total people`
       : null;
+  const focusedFirstName = focusedName.split(/\s+/)[0] || focusedName;
 
   const focusIds = filters?.focusIds ?? EMPTY_IDS;
   const activeTokens = filters?.activeTokens ?? EMPTY_TOKENS;
@@ -367,6 +368,36 @@ export function CanvasContextBar({
             <span className="rounded-full bg-white/80 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:ring-emerald-400/20">
               Published {viewContext.publishedAt}
             </span>
+          )}
+          {focusedId && focusedId !== teamTreeRoot.id && (
+            <>
+              <span className="hidden h-5 w-px bg-emerald-200 dark:bg-emerald-400/20 sm:block" />
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-white/90 px-2.5 py-0.5 font-semibold text-emerald-900 ring-1 ring-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:ring-emerald-400/20">
+                <span className="text-[9px] uppercase tracking-wide text-emerald-600 dark:text-emerald-200/70">
+                  Preview
+                </span>
+                <span className="max-w-[18rem] truncate">
+                  {focusedName} inside {teamTreeRoot.name}{"'s org"}
+                </span>
+              </span>
+              <TruthPill label="Downstream" value={directReportSummary} tone="emerald" />
+              {directReportIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onOpenTeamTree(focusedId)}
+                  className="rounded-full bg-slate-900 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                >
+                  Open {focusedFirstName}{"'s org"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => clearSelection()}
+                className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
+              >
+                Back to {teamTreeRoot.name}
+              </button>
+            </>
           )}
           {teamLayoutControls?.dirty && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/20">
