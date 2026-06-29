@@ -379,6 +379,21 @@ const LENS_PRESET_TRANSITION_EVENT = "org-chart:lens-preset-transition";
 const TEAM_TREE_FULL_DESCENDANT_LIMIT = 80;
 const CHANNEL_FIT_MIN_ZOOM = 0.18;
 
+const getLensFitMinZoom = (lens: LensId, width = 1400) => {
+  if (lens === "channel") return width < 560 ? 0.1 : width < 900 ? 0.13 : width < 1280 ? 0.16 : CHANNEL_FIT_MIN_ZOOM;
+  if (lens === "matrix") return width < 900 ? 0.12 : width < 1280 ? 0.16 : 0.22;
+  if (lens === "brand") return width < 560 ? 0.1 : width < 1280 ? 0.11 : 0.12;
+  if (lens === "department") return width < 560 ? 0.16 : width < 900 ? 0.18 : width < 1280 ? 0.22 : 0.28;
+  return width < 900 ? 0.32 : 0.35;
+};
+
+const getLensFitPadding = (lens: LensId) => {
+  if (lens === "channel") return 0.26;
+  if (lens === "matrix") return 0.24;
+  if (lens === "brand") return 0.22;
+  return 0.18;
+};
+
 type SavedViewportDefaults = Record<string, ViewportState>;
 
 const loadTeamViewLayouts = (): TeamViewLayouts => {
@@ -1412,9 +1427,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const fitToView = useCallback(
     () =>
       fitVisiblePeopleRef.current({
-        padding: lens === "channel" ? 0.26 : 0.18,
+        padding: getLensFitPadding(lens),
         duration: 300,
-        minZoom: lens === "channel" ? CHANNEL_FIT_MIN_ZOOM : 0.35,
+        minZoom: getLensFitMinZoom(lens, wrapperRef.current?.clientWidth),
         maxZoom: 1.2,
         reason: "fit",
         expectedIds: defaultFitIdsRef.current ?? undefined,
@@ -3243,8 +3258,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     const highLevelIds = new Set<string>();
     if (lens === "brand") {
-      SENIOR_LEADERSHIP_CONTEXT_IDS.forEach((id) => highLevelIds.add(id));
-      (BRAND_CONTEXT_BY_BRAND.iPort ?? []).forEach((id) => highLevelIds.add(id));
+      Object.values(BRAND_CONTEXT_BY_BRAND).flat().forEach((id) => highLevelIds.add(id));
+      personNodes.forEach((person) => {
+        const tier = person.attributes.tier;
+        const brand = person.attributes.primaryBrand ?? person.attributes.brands[0];
+        if (!brand) return;
+        if (tier === "vp" || tier === "director") highLevelIds.add(person.id);
+      });
     } else if (lens === "channel") {
       Object.values(CHANNEL_CONTEXT_BY_KEY).flat().forEach((id) => highLevelIds.add(id));
       personNodes.forEach((person) => {
@@ -3505,23 +3525,26 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     // Presets have their own saved framing. If none exists, fall back to a
     // safe fit instead of borrowing the last camera position from another view.
-    const persisted = savedViewportDefaults[`lens:${lens}`] ?? currentLensLayout.viewport;
+    const savedDefault = savedViewportDefaults[`lens:${lens}`];
+    const persisted = hasSavedViewport(savedDefault) ? savedDefault : null;
     const persistedIsDefault =
       !persisted ||
       (persisted.x === 0 && persisted.y === 0 && persisted.zoom === 1);
-    const target = persistedIsDefault ? currentLensLayout.viewport : persisted;
+    const target = persistedIsDefault ? null : persisted;
     const isDefault =
       !target || (target.x === 0 && target.y === 0 && target.zoom === 1);
     const positions = currentLensLayout.positions ?? {};
     const restoreWouldBeBlank = target ? !latest.viewportShowsAnyPerson(target, positions) : false;
     const fitLensView = (duration: number) => {
+      const wrapperWidth = wrapperRef.current?.clientWidth;
+      const expectedIds = defaultFitIdsRef.current ?? visibleViewportPersonIds;
       fitVisiblePeopleRef.current({
-        padding: lens === "channel" ? 0.26 : lens === "department" ? 0.18 : 0.15,
+        padding: getLensFitPadding(lens),
         duration,
-        minZoom: lens === "channel" ? CHANNEL_FIT_MIN_ZOOM : 0.35,
+        minZoom: getLensFitMinZoom(lens, wrapperWidth),
         maxZoom: lens === "channel" ? 0.86 : 1.2,
         reason: "lens",
-        expectedIds: defaultFitIdsRef.current ?? visibleViewportPersonIds,
+        expectedIds,
       });
     };
 
@@ -3599,9 +3622,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         }
       }
       fitVisiblePeopleRef.current({
-        padding: dimension === "channel" ? 0.26 : 0.18,
+        padding: getLensFitPadding(lens),
         duration: 350,
-        minZoom: dimension === "channel" ? CHANNEL_FIT_MIN_ZOOM : 0.35,
+        minZoom: getLensFitMinZoom(lens, wrapperRef.current?.clientWidth),
         maxZoom: 1.15,
         reason: "lens",
       });

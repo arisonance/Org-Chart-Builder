@@ -184,14 +184,14 @@ export default function Home() {
       ) : null}
       <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 sm:px-8">
         {/* Compact Toolbar */}
-        <header className="flex items-center gap-3 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80">
-          <div className="flex min-w-[14rem] shrink-0 items-center gap-3">
+        <header className="flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80 xl:flex-nowrap">
+          <div className="flex min-w-0 flex-1 items-center gap-3 xl:min-w-[14rem] xl:flex-none">
             <h1 className="text-lg font-semibold leading-tight text-slate-900 dark:text-white">
               {documentMeta.name}
             </h1>
             <SaveStatus />
           </div>
-          <nav className="flex min-w-0 flex-1 shrink-0 items-center gap-2" aria-label="Primary organization navigation">
+          <nav className="order-3 flex w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto xl:order-none xl:w-auto xl:flex-1" aria-label="Primary organization navigation">
             <button
               type="button"
               onClick={goToSeniorTeam}
@@ -205,8 +205,8 @@ export default function Home() {
             <WorkspaceModeSwitcher />
           </nav>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <div className="hidden lg:block">
+          <div className="order-2 ml-auto flex shrink-0 items-center gap-2 xl:order-none">
+            <div className="hidden xl:block">
               <PersonSearch />
             </div>
             <DropdownMenu.Root>
@@ -217,7 +217,7 @@ export default function Home() {
                   aria-label="More tools"
                 >
                   <DotsHorizontalIcon className="h-4 w-4" />
-                  <span>More</span>
+                  <span className="hidden sm:inline">More</span>
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
