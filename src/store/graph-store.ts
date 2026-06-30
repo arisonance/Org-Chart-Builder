@@ -216,6 +216,36 @@ const cloneDocument = (document: GraphDocument): GraphDocument => cloneDeep(docu
 
 const DEFAULT_VIEWPORT: LayoutState["viewport"] = { x: 0, y: 0, zoom: 1 };
 
+const CANONICAL_PERSON_NAMES: Record<string, string> = {
+  "person-grace-dryer": "Gigi Dryer",
+};
+
+export const normalizeKnownPersonNames = (
+  document: GraphDocument,
+): GraphDocument => {
+  let changed = false;
+  const nodes = document.nodes.map((node) => {
+    const canonicalName = CANONICAL_PERSON_NAMES[node.id];
+    if (!canonicalName || node.kind !== "person" || node.name === canonicalName) {
+      return node;
+    }
+    changed = true;
+    return { ...node, name: canonicalName };
+  });
+
+  return changed ? { ...document, nodes } : document;
+};
+
+const cloneNormalizedDocument = (document: GraphDocument): GraphDocument =>
+  normalizeKnownPersonNames(cloneDocument(document));
+
+const isGraphDocumentLike = (value: unknown): value is GraphDocument =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      Array.isArray((value as { nodes?: unknown }).nodes),
+  );
+
 // The per-lens viewport churns once per animation frame while the user pans.
 // Persisting it would rewrite the entire document blob to localStorage on every
 // pan tick, which is the IO/jank cost this change exists to remove. Strip it from
@@ -242,7 +272,7 @@ const createSnapshot = (state: GraphStoreState): GraphSnapshot => ({
 });
 
 const initialState: GraphStoreState = {
-  document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+  document: cloneNormalizedDocument(DEMO_GRAPH_DOCUMENT),
   selection: {
     nodeIds: [],
     edgeIds: [],
@@ -411,7 +441,9 @@ export const migrateGraphState = (persistedState: unknown) => {
   }
 
   try {
-    const sanitizedDocument = parseGraphDocument(maybeState.document);
+    const sanitizedDocument = normalizeKnownPersonNames(
+      parseGraphDocument(maybeState.document),
+    );
 
     // Pre-CSV copies of the bundled demo (identified by name but missing
     // the real org's people) get refreshed wholesale. Docs already on the
@@ -424,7 +456,7 @@ export const migrateGraphState = (persistedState: unknown) => {
     if (isDemoDoc && !hasCsvOrg) {
       return {
         ...initialState,
-        document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+        document: cloneNormalizedDocument(DEMO_GRAPH_DOCUMENT),
       };
     }
 
@@ -483,7 +515,7 @@ export const migrateGraphState = (persistedState: unknown) => {
     console.warn("Failed to restore persisted org chart state; falling back to demo.", error);
     return {
       ...initialState,
-      document: cloneDocument(DEMO_GRAPH_DOCUMENT),
+      document: cloneNormalizedDocument(DEMO_GRAPH_DOCUMENT),
     };
   }
 };
@@ -495,7 +527,7 @@ export const useGraphStore = create<GraphStore>()(
       resetToDemo: () => {
         set(
           produce((state: GraphStoreState) => {
-            state.document = cloneDocument(DEMO_GRAPH_DOCUMENT);
+            state.document = cloneNormalizedDocument(DEMO_GRAPH_DOCUMENT);
             state.selection = { nodeIds: [], edgeIds: [] };
             state.editorPersonId = null;
             state.history = { past: [], future: [] };
@@ -517,7 +549,7 @@ export const useGraphStore = create<GraphStore>()(
       loadDocument: (document) => {
         set(
           produce((state: GraphStoreState) => {
-            state.document = cloneDocument(document);
+            state.document = cloneNormalizedDocument(document);
             state.selection = { nodeIds: [], edgeIds: [] };
             state.editorPersonId = null;
             state.history = { past: [], future: [] };
@@ -526,12 +558,12 @@ export const useGraphStore = create<GraphStore>()(
       },
       importDocument: (document) => {
         withHistory(set, get, (state) => {
-          state.document = cloneDocument(document);
+          state.document = cloneNormalizedDocument(document);
           state.selection = { nodeIds: [], edgeIds: [] };
           state.editorPersonId = null;
         });
       },
-      exportDocument: () => cloneDocument(get().document),
+      exportDocument: () => cloneNormalizedDocument(get().document),
       setLens: (lens) => {
         set(
           produce((state: GraphStoreState) => {
@@ -1182,7 +1214,7 @@ export const useGraphStore = create<GraphStore>()(
             if (state.history.future.length > HISTORY_LIMIT) {
               state.history.future.pop();
             }
-            state.document = snapshot.document;
+            state.document = normalizeKnownPersonNames(snapshot.document);
             state.selection = snapshot.selection;
           }),
         );
@@ -1197,7 +1229,7 @@ export const useGraphStore = create<GraphStore>()(
             if (state.history.past.length > HISTORY_LIMIT) {
               state.history.past.shift();
             }
-            state.document = snapshot.document;
+            state.document = normalizeKnownPersonNames(snapshot.document);
             state.selection = snapshot.selection;
           }),
         );
@@ -1223,7 +1255,7 @@ export const useGraphStore = create<GraphStore>()(
               description,
               createdAt: now(),
               document: fromCurrent
-                ? cloneDocument(state.document)
+                ? cloneNormalizedDocument(state.document)
                 : createEmptyGraphDocument(),
             };
             state.scenarios[id] = scenario;
@@ -1238,7 +1270,7 @@ export const useGraphStore = create<GraphStore>()(
         set(
           produce((state: GraphStoreState) => {
             if (state.scenarios[id]) {
-              state.document = cloneDocument(state.scenarios[id].document);
+              state.document = cloneNormalizedDocument(state.scenarios[id].document);
               state.activeScenarioId = id;
               state.selection = { nodeIds: [], edgeIds: [] };
               state.history = { past: [], future: [] };
@@ -1254,7 +1286,7 @@ export const useGraphStore = create<GraphStore>()(
               const remainingIds = Object.keys(state.scenarios);
               state.activeScenarioId = remainingIds.length > 0 ? remainingIds[0] : null;
               if (state.activeScenarioId) {
-                state.document = cloneDocument(state.scenarios[state.activeScenarioId].document);
+                state.document = cloneNormalizedDocument(state.scenarios[state.activeScenarioId].document);
               }
             }
             if (state.comparisonScenarioId === id) {
@@ -1301,12 +1333,12 @@ export const useGraphStore = create<GraphStore>()(
     })),
     {
       name: "org-chart-graph-state",
-      version: 9,
+      version: 10,
       partialize: (state) => ({
         // Persist the document WITHOUT the volatile per-lens viewport so a pan
         // gesture never rewrites the whole blob. The viewport rides along in the
         // small `currentViewport` key instead and is restored on rehydrate.
-        document: stripPersistedViewports(state.document),
+        document: stripPersistedViewports(normalizeKnownPersonNames(state.document)),
         selection: state.selection,
         editorPersonId: null,
         clipboard: state.clipboard,
@@ -1325,6 +1357,21 @@ export const useGraphStore = create<GraphStore>()(
         currentViewport: state.currentViewport,
       }),
       migrate: migrateGraphState,
+      merge: (persistedState, currentState) => {
+        if (!persistedState || typeof persistedState !== "object") {
+          return currentState;
+        }
+        const merged = {
+          ...currentState,
+          ...(persistedState as Partial<GraphStoreState>),
+        };
+        return {
+          ...merged,
+          document: isGraphDocumentLike(merged.document)
+            ? normalizeKnownPersonNames(merged.document)
+            : currentState.document,
+        };
+      },
     },
   ),
 );

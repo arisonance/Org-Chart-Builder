@@ -379,7 +379,7 @@ describe("calculateMatrixLayout", () => {
     expect(positions["finance-1"].y).toBe(positions["finance-2"].y);
   });
 
-  it("wraps large department peer ranks instead of laying a lane out as one unreadable row", () => {
+  it("keeps same-manager department reports on one row to avoid fake reporting chains", () => {
     const peers = Array.from({ length: 24 }, (_, index) =>
       makePerson(`p${index}`, {
         primaryDepartment: "James Manufacturing - Direct",
@@ -400,8 +400,61 @@ describe("calculateMatrixLayout", () => {
     const rows = new Set(values.map((position) => position.y));
 
     expect(Object.keys(positions)).toHaveLength(26);
-    expect(rows.size).toBeGreaterThan(1);
-    expect(maxX - minX).toBeLessThan(24 * NODE_WIDTH);
+    expect(rows.size).toBe(1);
+    expect(maxX - minX).toBeGreaterThan(20 * NODE_WIDTH);
+  });
+
+  it("does not place Juan's reports under Kanila in the Sales Ops department lane", () => {
+    const people = [
+      ...departmentLeaders,
+      makePerson("jenna", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+      makePerson("brett", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+      makePerson("juan", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+      makePerson("kanila", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+      makePerson("courtney", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+      makePerson("ryan", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+      makePerson("brian", {
+        primaryDepartment: "Sales Ops",
+        departments: ["Sales Ops"],
+      }),
+    ];
+    const positions = calculateMatrixLayout(
+      people,
+      [
+        ...departmentLeaderEdges,
+        makeManagerEdge(departmentOwnerId, "jenna"),
+        makeManagerEdge("jenna", "brett"),
+        makeManagerEdge("jenna", "juan"),
+        makeManagerEdge("brett", "kanila"),
+        makeManagerEdge("brett", "courtney"),
+        makeManagerEdge("juan", "ryan"),
+        makeManagerEdge("juan", "brian"),
+      ],
+      "department",
+    );
+
+    expect(positions.ryan.y).toBe(positions.kanila.y);
+    expect(positions.brian.y).toBe(positions.kanila.y);
+    expect(positions.ryan.x).not.toBe(positions.kanila.x);
+    expect(positions.brian.x).not.toBe(positions.ryan.x);
   });
 
   it("stacks multiple department lanes underneath their SLT owner", () => {

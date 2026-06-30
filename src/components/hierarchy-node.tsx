@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
+import { ArrowTopRightIcon, ChevronRightIcon, CopyIcon, LockClosedIcon, LockOpen1Icon } from "@radix-ui/react-icons";
 import type { LensId } from "@/lib/schema/lenses";
 import type { PersonNode } from "@/lib/schema/types";
 import type { UnitDef } from "@/lib/graph/org-units";
@@ -25,6 +25,16 @@ type NodeActions = {
   openOrg: (nodeId: string) => void;
   copySettings: (nodeId: string) => void;
   pasteSettings: (nodeId: string) => void;
+};
+
+export type PortfolioArea = {
+  id: string;
+  label: string;
+  count: number;
+  kind: string;
+  leadName?: string;
+  accentColor: string;
+  onOpen: () => void;
 };
 
 export type HierarchyNodeData = {
@@ -52,6 +62,7 @@ export type HierarchyNodeData = {
   interactionKey?: string;
   // When set, this node anchors a facility / shared service and renders as a container
   unit?: UnitDef;
+  portfolioAreas?: PortfolioArea[];
 };
 
 // Tier badges configuration
@@ -64,7 +75,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
   const {
     node, emphasisLabel, isSelected, highlightTokens, actions, onSelect, readOnly = false, zoom = 1,
     relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false,
-    unit,
+    unit, portfolioAreas = [],
   } = data;
 
   // Facility / shared-service container: stands in for a whole group of people
@@ -86,6 +97,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
   // Level of detail based on zoom - less aggressive for better initial render
   const lodLevel = getLodLevel(zoom);
+  const visiblePortfolioAreas = portfolioAreas;
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickAtRef = useRef(0);
 
@@ -110,6 +122,8 @@ function Component({ data }: { data: HierarchyNodeData }) {
         ? "opacity-100"
         : "opacity-0 group-hover:opacity-100"
   }`;
+
+  const hasPortfolioShelf = portfolioAreas.length > 0;
 
   const handleSelect = (event: React.MouseEvent | React.KeyboardEvent, additive = false) => {
     event.stopPropagation();
@@ -191,7 +205,8 @@ function Component({ data }: { data: HierarchyNodeData }) {
             onDoubleClick={handleOpenDetailsOrOrg}
             title={isContainer ? `Double-click to open ${unit.label}'s team view` : undefined}
             className={[
-              "relative flex w-[16rem] flex-col items-center gap-3 rounded-2xl border bg-white px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950",
+              "relative flex w-[16rem] flex-col items-center gap-3 border bg-white px-5 py-5 text-center shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 dark:bg-slate-950",
+              hasPortfolioShelf && lodLevel !== "compact" ? "rounded-t-2xl rounded-b-lg" : "rounded-2xl",
               isContainer
                 ? "border-slate-200 !bg-white ring-slate-200 dark:!border-slate-200 dark:!bg-white dark:!text-slate-900 dark:!ring-slate-200"
                 : "border-slate-200 ring-slate-200 dark:border-white/10 dark:ring-white/10",
@@ -278,6 +293,55 @@ function Component({ data }: { data: HierarchyNodeData }) {
               </>
             )}
           </button>
+          {hasPortfolioShelf && lodLevel !== "compact" ? (
+            <div className="relative -mt-2 flex w-[16rem] flex-col overflow-hidden rounded-b-2xl border border-t-0 border-slate-200 bg-white shadow-lg ring-1 ring-slate-200 dark:border-white/10 dark:bg-slate-950 dark:ring-white/10">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-left dark:border-white/10 dark:bg-white/5">
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  Owns
+                </span>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-300 dark:ring-white/10">
+                  {portfolioAreas.length === 1 ? "1 area" : `${portfolioAreas.length} areas`}
+                </span>
+              </div>
+              <div className="grid gap-1.5 p-2">
+                {visiblePortfolioAreas.map((area) => (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      area.onOpen();
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                      area.onOpen();
+                    }}
+                    className="nodrag nopan group/area grid grid-cols-[3px_1fr_auto] items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-white/5"
+                    title={`Open ${area.label}`}
+                  >
+                    <span className="h-full min-h-9 rounded-full" style={{ background: area.accentColor }} aria-hidden />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12px] font-black text-slate-900 dark:text-slate-50">
+                        {area.label}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-500 dark:text-slate-300">
+                        {area.leadName ? `Lead: ${area.leadName}` : area.kind}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                        style={{ background: area.accentColor }}
+                      >
+                        {area.count}
+                      </span>
+                      <ArrowTopRightIcon className="h-3 w-3 text-slate-400 transition group-hover/area:text-sky-600" aria-hidden />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {/* Dotted-line connector: a subtle dot at the left edge, revealed on
               hover. No protruding text label; support types can be set from
               the edge context menu after a link is created. */}
@@ -471,6 +535,12 @@ const getLodLevel = (zoom: number): 'full' | 'medium' | 'compact' => {
 function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data: HierarchyNodeData }): boolean {
   const prev = prevProps.data;
   const next = nextProps.data;
+  const prevPortfolioKey = (prev.portfolioAreas ?? [])
+    .map((area) => `${area.id}:${area.count}:${area.label}:${area.leadName ?? ""}`)
+    .join("|");
+  const nextPortfolioKey = (next.portfolioAreas ?? [])
+    .map((area) => `${area.id}:${area.count}:${area.label}:${area.leadName ?? ""}`)
+    .join("|");
 
   // Re-render whenever the zoom crosses an LOD boundary
   const prevLod = getLodLevel(prev.zoom ?? 1);
@@ -493,7 +563,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.readOnly !== next.readOnly ||
     prev.relationshipRole?.label !== next.relationshipRole?.label ||
     prev.relationshipRole?.detail !== next.relationshipRole?.detail ||
-    prev.relationshipRole?.tone !== next.relationshipRole?.tone
+    prev.relationshipRole?.tone !== next.relationshipRole?.tone ||
+    prevPortfolioKey !== nextPortfolioKey
   ) {
     return false;
   }
@@ -504,7 +575,8 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
       prev.accentColor === next.accentColor &&
       prev.emphasisLabel === next.emphasisLabel &&
       prev.highlightTokens.length === next.highlightTokens.length &&
-      prev.interactionKey === next.interactionKey) {
+      prev.interactionKey === next.interactionKey &&
+      prevPortfolioKey === nextPortfolioKey) {
     return true;
   }
 
@@ -518,6 +590,7 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.accentColor === next.accentColor &&
     prev.lens === next.lens &&
     prev.interactionKey === next.interactionKey &&
+    prevPortfolioKey === nextPortfolioKey &&
     prev.highlightTokens.join(',') === next.highlightTokens.join(',')
   );
 }

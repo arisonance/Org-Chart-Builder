@@ -44,4 +44,34 @@ describe("buildManagerRoute", () => {
     expect(route.points[1].y).toBe(248);
     expect(route.points[2].y).toBe(248);
   });
+
+  it("routes around unrelated cards in the target column", () => {
+    const route = buildManagerRoute({
+      id: "edge-juan-ryan",
+      sourceId: "person-juan-rincon",
+      sourceX: 640,
+      sourceY: 300,
+      targetX: 500,
+      targetY: 760,
+      routeLane: 0,
+      routeBusY: 500,
+      sourceRect: { x: 510, y: 150, width: 260, height: 150 },
+      targetRect: { x: 370, y: 760, width: 260, height: 150 },
+      avoidRects: [{ x: 370, y: 520, width: 260, height: 150 }],
+    });
+
+    expect(route.points.length).toBeGreaterThan(4);
+    const verticalSegments = route.points
+      .slice(0, -1)
+      .map((point, index) => [point, route.points[index + 1]] as const)
+      .filter(([start, end]) => start.x === end.x);
+    expect(
+      verticalSegments.some(
+        ([start, end]) =>
+          start.x === 500 &&
+          Math.max(Math.min(start.y, end.y), 520) <=
+            Math.min(Math.max(start.y, end.y), 670),
+      ),
+    ).toBe(false);
+  });
 });

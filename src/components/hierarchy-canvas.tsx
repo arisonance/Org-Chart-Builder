@@ -21,7 +21,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MixerHorizontalIcon, QuestionMarkCircledIcon } from "@radix-ui/react-icons";
-import { HierarchyNode, type HierarchyNodeData } from "@/components/hierarchy-node";
+import { HierarchyNode, type HierarchyNodeData, type PortfolioArea } from "@/components/hierarchy-node";
 import { LaneNode, type LaneNodeData } from "@/components/lane-node";
 import { FormationBandNode, type FormationBandNodeData } from "@/components/formation-band-node";
 import { AreaCardNode, type AreaCardNodeData } from "@/components/area-card-node";
@@ -232,6 +232,7 @@ type AreaCardSpec = {
   label: string;
   displayUnderId: string;
   ownerId?: string;
+  leadId?: string;
   rootId?: string;
   memberIds: string[];
   kind: string;
@@ -288,9 +289,28 @@ const RESIDENTIAL_BRANCH_ROOT_IDS = [
   "person-aron-mckay",
   "person-jay-lazzaro-jr",
 ];
+const AREA_CARD_PREFIX = "area-card:";
 const FORMATION_LAYER_PREFIX = "formation-layer:";
 const FORMATION_POD_PREFIX = "formation-pod:";
+const FINANCE_AREA_ID = "area-finance";
+const PAT_ID = "person-pat-mcgaughan";
+const ROB_ID = "person-rob-roland";
+const JASON_ID = "person-jason-sloan";
+const MICHAEL_ID = "person-michael-sonntag";
+const GIGI_ID = "person-grace-dryer";
+const JORGE_ID = "person-jorge-notni";
+const PAT_NON_FINANCE_DIRECT_REPORT_IDS = new Set([
+  GIGI_ID,
+  JORGE_ID,
+]);
+const SENIOR_PORTFOLIO_FRAME_ANCHOR_IDS = new Set([
+  PAT_ID,
+  ROB_ID,
+  GIGI_ID,
+  JORGE_ID,
+]);
 
+const isAreaCardNodeId = (id: string) => id.startsWith(AREA_CARD_PREFIX);
 const isFormationPodNodeId = (id: string) => id.startsWith(FORMATION_POD_PREFIX);
 const isResidentialFormationContext = (context: ViewContext | null) =>
   context?.kind === "operating-view" &&
@@ -299,16 +319,21 @@ const isResidentialFormationContext = (context: ViewContext | null) =>
 const isSeniorLeadershipContextId = (id: string) =>
   SENIOR_LEADERSHIP_CONTEXT_IDS.includes(id);
 
+const isPatNonFinanceDirectReportEdge = (edge: GraphEdge) =>
+  edge.source === PAT_ID && PAT_NON_FINANCE_DIRECT_REPORT_IDS.has(edge.target);
+
 const isCuratedLeadershipReportEdge = (edge: GraphEdge) =>
   edge.metadata.type === "manager" &&
   edge.source !== EXECUTIVE_ROOT_ID &&
+  !isPatNonFinanceDirectReportEdge(edge) &&
   isSeniorLeadershipContextId(edge.source) &&
   isSeniorLeadershipContextId(edge.target);
 
 const SENIOR_TEAM_AREA_CARD_IDS = new Set([
   "area-residential",
   "area-professional",
-  "area-finance",
+  FINANCE_AREA_ID,
+  "area-tech-it",
   "area-admin-hr",
   "area-product-engineering",
   "area-dealer-services",
@@ -316,6 +341,118 @@ const SENIOR_TEAM_AREA_CARD_IDS = new Set([
   "area-minden-production",
   "area-ops-sc",
 ]);
+
+const SENIOR_AREA_CARD_WIDTH = 240;
+const SENIOR_AREA_CARD_HEIGHT = 174;
+const SENIOR_AREA_CARD_GAP_X = 34;
+const SENIOR_AREA_CARD_GAP_Y = 104;
+const SENIOR_AREA_CARD_SIDECAR_GAP_X = 42;
+const SENIOR_AREA_CARD_SIDECAR_GAP_Y = 34;
+const SENIOR_OWNER_FRAME_PAD_X = 20;
+const SENIOR_OWNER_FRAME_TOP_PAD = 62;
+const SENIOR_OWNER_FRAME_BOTTOM_PAD = 24;
+const FORMATION_POD_WIDTH = 256;
+const FORMATION_POD_HEIGHT = 164;
+
+const SENIOR_AREA_CARD_SIDE_BY_ANCHOR: Record<string, "left" | "right"> = {
+  "person-jorge-notni": "right",
+};
+
+const SENIOR_AREA_CARD_COLUMNS_BY_ANCHOR: Record<string, number> = {
+  [ROB_ID]: 2,
+  [JORGE_ID]: 2,
+};
+
+const getSeniorTeamAreaCardPosition = ({
+  areaId,
+  anchorId,
+  anchor,
+  childPositions,
+  index,
+  columns,
+}: {
+  areaId: string;
+  anchorId: string;
+  anchor: { x: number; y: number };
+  childPositions: Array<{ x: number; y: number }>;
+  index: number;
+  columns: number;
+}) => {
+  const col = index % columns;
+  const row = index;
+
+  if (areaId === FINANCE_AREA_ID && childPositions.length > 0) {
+    const childBottom = Math.max(...childPositions.map((position) => position.y + NODE_HEIGHT));
+    return {
+      x: anchor.x + NODE_WIDTH / 2 - SENIOR_AREA_CARD_WIDTH / 2,
+      y: childBottom + 76 + row * SENIOR_AREA_CARD_GAP_Y,
+    };
+  }
+
+  const rowIndex = Math.floor(index / columns);
+  const rowWidth = columns * SENIOR_AREA_CARD_WIDTH + (columns - 1) * SENIOR_AREA_CARD_GAP_X;
+  const side = SENIOR_AREA_CARD_SIDE_BY_ANCHOR[anchorId];
+  if (anchorId === JORGE_ID) {
+    return {
+      x: anchor.x + NODE_WIDTH / 2 - 10 + col * (SENIOR_AREA_CARD_WIDTH + SENIOR_AREA_CARD_GAP_X),
+      y:
+        anchor.y +
+        NODE_HEIGHT +
+        78 +
+        rowIndex * (SENIOR_AREA_CARD_HEIGHT + SENIOR_AREA_CARD_SIDECAR_GAP_Y),
+    };
+  }
+  if (!side) {
+    return {
+      x: anchor.x + NODE_WIDTH / 2 - rowWidth / 2 + col * (SENIOR_AREA_CARD_WIDTH + SENIOR_AREA_CARD_GAP_X),
+      y:
+        anchor.y +
+        NODE_HEIGHT +
+        70 +
+        rowIndex * (SENIOR_AREA_CARD_HEIGHT + SENIOR_AREA_CARD_SIDECAR_GAP_Y),
+    };
+  }
+
+  return {
+    x:
+      side === "left"
+        ? anchor.x - rowWidth - SENIOR_AREA_CARD_SIDECAR_GAP_X + col * (SENIOR_AREA_CARD_WIDTH + SENIOR_AREA_CARD_GAP_X)
+        : anchor.x + NODE_WIDTH + SENIOR_AREA_CARD_SIDECAR_GAP_X + col * (SENIOR_AREA_CARD_WIDTH + SENIOR_AREA_CARD_GAP_X),
+    y:
+      anchor.y +
+      NODE_HEIGHT +
+      70 +
+      rowIndex * (SENIOR_AREA_CARD_HEIGHT + SENIOR_AREA_CARD_SIDECAR_GAP_Y),
+  };
+};
+
+const compressSeniorLeadershipTeamLayout = (
+  positions: Record<string, { x: number; y: number }>,
+  directReportIds: string[],
+) => {
+  const next = { ...positions };
+  directReportIds.forEach((id) => {
+    if (next[id]) next[id] = { ...next[id], y: 310 };
+  });
+  PAT_NON_FINANCE_DIRECT_REPORT_IDS.forEach((id) => {
+    if (next[id]) next[id] = { ...next[id], y: 640 };
+  });
+  if (next[PAT_ID] && next[GIGI_ID]) next[GIGI_ID] = { ...next[GIGI_ID], x: next[PAT_ID].x - 320 };
+  if (next[PAT_ID] && next[JORGE_ID]) next[JORGE_ID] = { ...next[JORGE_ID], x: next[PAT_ID].x + 320 };
+  if (next[PAT_ID] && next[ROB_ID]) next[ROB_ID] = { ...next[ROB_ID], x: next[PAT_ID].x + 660 };
+  if (next[PAT_ID] && next[JASON_ID]) next[JASON_ID] = { ...next[JASON_ID], x: next[PAT_ID].x + 990 };
+  if (next[PAT_ID] && next[MICHAEL_ID]) next[MICHAEL_ID] = { ...next[MICHAEL_ID], x: next[PAT_ID].x + 1260 };
+  if (next[EXECUTIVE_ROOT_ID]) next[EXECUTIVE_ROOT_ID] = { ...next[EXECUTIVE_ROOT_ID], y: 0 };
+  return next;
+};
+
+const getPortfolioNodeHeight = (areaCount: number) =>
+  areaCount > 0 ? NODE_HEIGHT + 44 + areaCount * 44 : NODE_HEIGHT;
+
+const getFlowNodeRoutingHeight = (node: Node | undefined) => {
+  const areaCount = ((node?.data as Partial<HierarchyNodeData> | undefined)?.portfolioAreas ?? []).length;
+  return getPortfolioNodeHeight(areaCount);
+};
 
 const CHANNEL_ROOT_BY_CHANNEL: Record<string, string> = {
   "Luxury Residential": "person-jason-sloan",
@@ -371,8 +508,15 @@ const baseEdgeStyle = {
   strokeLinecap: "round" as const,
 };
 
-const MATRIX_WRAP_LAYOUT_STORAGE_KEY = "org-chart-matrix-wrap-layout-v3";
-const TEAM_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-team-view-layouts-v2";
+const MATRIX_WRAP_LAYOUT_STORAGE_KEY = "org-chart-matrix-wrap-layout-v4";
+const TEAM_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-team-view-layouts-v7";
+const TEAM_VIEW_LAYOUTS_LEGACY_STORAGE_KEYS = [
+  "org-chart-team-view-layouts-v6",
+  "org-chart-team-view-layouts-v5",
+  "org-chart-team-view-layouts-v4",
+  "org-chart-team-view-layouts-v3",
+  "org-chart-team-view-layouts-v2",
+];
 const OPERATING_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-operating-view-layouts-v1";
 const VIEWPORT_DEFAULTS_STORAGE_KEY = "org-chart-view-frame-defaults-v1";
 const LENS_PRESET_TRANSITION_EVENT = "org-chart:lens-preset-transition";
@@ -396,13 +540,58 @@ const getLensFitPadding = (lens: LensId) => {
 
 type SavedViewportDefaults = Record<string, ViewportState>;
 
+const sanitizeTeamViewLayouts = (
+  layouts: unknown,
+  options: { stripExecutivePositions?: boolean; stripExecutiveAreaCardPositions?: boolean } = {},
+): TeamViewLayouts => {
+  if (!layouts || typeof layouts !== "object" || Array.isArray(layouts)) return {};
+  const sanitized: TeamViewLayouts = {};
+  Object.entries(layouts as Record<string, unknown>).forEach(([rootId, rawPositions]) => {
+    if (!rawPositions || typeof rawPositions !== "object" || Array.isArray(rawPositions)) return;
+    const positions: Record<string, { x: number; y: number }> = {};
+    Object.entries(rawPositions as Record<string, unknown>).forEach(([nodeId, rawPosition]) => {
+      if (
+        rootId === EXECUTIVE_ROOT_ID &&
+        (options.stripExecutivePositions ||
+          (options.stripExecutiveAreaCardPositions && isAreaCardNodeId(nodeId)))
+      ) {
+        return;
+      }
+      if (!rawPosition || typeof rawPosition !== "object" || Array.isArray(rawPosition)) return;
+      const candidate = rawPosition as Partial<{ x: number; y: number }>;
+      if (
+        typeof candidate.x !== "number" ||
+        typeof candidate.y !== "number" ||
+        !Number.isFinite(candidate.x) ||
+        !Number.isFinite(candidate.y)
+      ) {
+        return;
+      }
+      positions[nodeId] = { x: candidate.x, y: candidate.y };
+    });
+    if (Object.keys(positions).length > 0) {
+      sanitized[rootId] = positions;
+    }
+  });
+  return sanitized;
+};
+
 const loadTeamViewLayouts = (): TeamViewLayouts => {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(TEAM_VIEW_LAYOUTS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed as TeamViewLayouts : {};
+    if (raw) return sanitizeTeamViewLayouts(JSON.parse(raw));
+    for (const legacyKey of TEAM_VIEW_LAYOUTS_LEGACY_STORAGE_KEYS) {
+      const legacyRaw = window.localStorage.getItem(legacyKey);
+      if (!legacyRaw) continue;
+      const migrated = sanitizeTeamViewLayouts(JSON.parse(legacyRaw), {
+        stripExecutivePositions: true,
+        stripExecutiveAreaCardPositions: true,
+      });
+      window.localStorage.setItem(TEAM_VIEW_LAYOUTS_STORAGE_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
+    return {};
   } catch {
     return {};
   }
@@ -502,6 +691,7 @@ const saveRemoteOperatingViewLayout = async (
 
 const isPersonFlowNodeId = (id: string) =>
   !id.startsWith("lane:") &&
+  !id.startsWith(AREA_CARD_PREFIX) &&
   !id.startsWith("mirror:") &&
   !id.startsWith("context:") &&
   !id.startsWith("mirror-group:") &&
@@ -606,28 +796,31 @@ const buildResidentialFormationSpec = (
   orgUnits: ComputedUnit[],
 ): ResidentialFormationSpec => {
   const branchRootIds = uniqueExistingIds(RESIDENTIAL_BRANCH_ROOT_IDS, personById);
+  const branchRootSet = new Set(branchRootIds);
   const branchReportIds = collectVisibleDirectReports(branchRootIds, childMap, personById);
   const peopleIds = new Set(
     uniqueExistingIds([RESIDENTIAL_ROOT_ID, ...branchRootIds, ...branchReportIds], personById),
   );
 
   const positions: Record<string, { x: number; y: number }> = {};
-  positions[RESIDENTIAL_ROOT_ID] = { x: 900, y: 80 };
+  positions[RESIDENTIAL_ROOT_ID] = { x: 1320, y: 80 };
 
-  const branchX = [120, 610, 1100, 1590];
+  const branchX = [0, 840, 1680, 2520];
   branchRootIds.forEach((rootId, index) => {
-    const x = branchX[index] ?? 120 + index * 480;
+    const x = branchX[index] ?? index * 840;
     positions[rootId] = { x, y: 360 };
-    const reports = uniqueExistingIds(childMap[rootId] ?? [], personById);
-    const cols = Math.max(1, Math.min(3, reports.length || 1));
-    const gapX = NODE_WIDTH + 58;
-    const gapY = NODE_HEIGHT + 84;
-    const rowWidth = cols * NODE_WIDTH + (cols - 1) * 58;
+    const reports = uniqueExistingIds(childMap[rootId] ?? [], personById)
+      .filter((reportId) => !branchRootSet.has(reportId));
+    const cols = Math.max(1, Math.min(2, reports.length || 1));
+    const gapX = NODE_WIDTH + 70;
+    const gapY = NODE_HEIGHT + 74;
+    const rowWidth = cols * NODE_WIDTH + (cols - 1) * 70;
+    const reportShiftX = rootId === "person-nathan-whitesel" ? NODE_WIDTH * 0.65 : 0;
     reports.forEach((reportId, reportIndex) => {
       const col = reportIndex % cols;
       const row = Math.floor(reportIndex / cols);
       positions[reportId] = {
-        x: x + NODE_WIDTH / 2 - rowWidth / 2 + col * gapX,
+        x: x + NODE_WIDTH / 2 - rowWidth / 2 + col * gapX + reportShiftX,
         y: 620 + row * gapY,
       };
     });
@@ -697,7 +890,7 @@ const buildResidentialFormationSpec = (
       tier: "direct",
       memberIds: insideSalesIds,
       leadId: "person-juan-rincon",
-      position: { x: 120, y: 1030 },
+      position: { x: 140, y: 1120 },
       accentColor: "#0ea5e9",
       homeLane: "Sales Ops",
       targetLane: "Residential",
@@ -709,7 +902,7 @@ const buildResidentialFormationSpec = (
       tier: "direct",
       memberIds: brandMediaIds,
       leadId: "person-christian-serge-nelson",
-      position: { x: 430, y: 1030 },
+      position: { x: 470, y: 1120 },
       accentColor: "#8b5cf6",
       homeLane: "Brand Marketing",
       targetLane: "Residential",
@@ -721,7 +914,7 @@ const buildResidentialFormationSpec = (
       tier: "direct",
       memberIds: dealerServicesIds,
       leadId: "person-brad-thiess",
-      position: { x: 740, y: 1030 },
+      position: { x: 800, y: 1120 },
       accentColor: "#14b8a6",
       homeLane: "Dealer Services",
       targetLane: "Residential",
@@ -733,7 +926,7 @@ const buildResidentialFormationSpec = (
       tier: "capability",
       memberIds: chinaCapabilityIds,
       leadId: "person-morgan-west",
-      position: { x: 1050, y: 1030 },
+      position: { x: 1130, y: 1120 },
       accentColor: "#f97316",
       homeLane: "Operations",
       targetLane: "Residential",
@@ -745,7 +938,7 @@ const buildResidentialFormationSpec = (
       tier: "shared",
       memberIds: salesOpsIds,
       leadId: "person-jenna-campfield",
-      position: { x: 260, y: 1370 },
+      position: { x: 300, y: 1450 },
       accentColor: "#0284c7",
       homeLane: "Sales Ops",
       targetLane: "Residential",
@@ -757,7 +950,7 @@ const buildResidentialFormationSpec = (
       tier: "shared",
       memberIds: engineeringSupportIds,
       leadId: "person-derick-dahl",
-      position: { x: 570, y: 1370 },
+      position: { x: 630, y: 1450 },
       accentColor: "#2563eb",
       homeLane: "R&D / Technology",
       targetLane: "Residential",
@@ -769,7 +962,7 @@ const buildResidentialFormationSpec = (
       tier: "shared",
       memberIds: operationsSupportIds,
       leadId: "person-jorge-notni",
-      position: { x: 880, y: 1370 },
+      position: { x: 960, y: 1450 },
       accentColor: "#0891b2",
       homeLane: "Operations",
       targetLane: "Residential",
@@ -781,7 +974,7 @@ const buildResidentialFormationSpec = (
       tier: "enterprise",
       memberIds: unitMembers("unit-finance"),
       leadId: "person-pat-mcgaughan",
-      position: { x: 120, y: 1710 },
+      position: { x: 140, y: 1780 },
       accentColor: "#64748b",
       homeLane: "Finance",
       targetLane: "all businesses",
@@ -793,7 +986,7 @@ const buildResidentialFormationSpec = (
       tier: "enterprise",
       memberIds: unitMembers("unit-administration"),
       leadId: "person-grace-dryer",
-      position: { x: 430, y: 1710 },
+      position: { x: 470, y: 1780 },
       accentColor: "#64748b",
       homeLane: "Administration",
       targetLane: "all businesses",
@@ -805,7 +998,7 @@ const buildResidentialFormationSpec = (
       tier: "enterprise",
       memberIds: unitMembers("unit-it"),
       leadId: "person-mark-litz",
-      position: { x: 740, y: 1710 },
+      position: { x: 800, y: 1780 },
       accentColor: "#64748b",
       homeLane: "IT",
       targetLane: "all businesses",
@@ -817,7 +1010,7 @@ const buildResidentialFormationSpec = (
       tier: "facility",
       memberIds: unitMembers("unit-fontana-warehouse"),
       leadId: "person-fred-salehi",
-      position: { x: 120, y: 2050 },
+      position: { x: 140, y: 2110 },
       accentColor: "#10b981",
       homeLane: "Ops FNT",
       targetLane: "Residential",
@@ -828,7 +1021,7 @@ const buildResidentialFormationSpec = (
       service: "Minden Production",
       tier: "facility",
       memberIds: unitMembers("unit-minden-production"),
-      position: { x: 430, y: 2050 },
+      position: { x: 470, y: 2110 },
       accentColor: "#10b981",
       homeLane: "James Manufacturing",
       targetLane: "Residential",
@@ -840,7 +1033,7 @@ const buildResidentialFormationSpec = (
       tier: "facility",
       memberIds: unitMembers("unit-minden-operations"),
       leadId: "person-joe-timpone",
-      position: { x: 740, y: 2050 },
+      position: { x: 800, y: 2110 },
       accentColor: "#10b981",
       homeLane: "Ops MND",
       targetLane: "Residential",
@@ -852,40 +1045,40 @@ const buildResidentialFormationSpec = (
       id: "residential-branches",
       label: "Residential branches",
       color: "#7c3aed",
-      position: { x: -80, y: 260 },
-      size: { width: 2100, height: 700 },
+      position: { x: -220, y: 260 },
+      size: { width: 3260, height: 790 },
       count: peopleIds.size,
     },
     {
       id: "direct-support",
       label: "Direct support pods",
       color: "#0ea5e9",
-      position: { x: -80, y: 970 },
-      size: { width: 2100, height: 290 },
+      position: { x: -220, y: 1070 },
+      size: { width: 3260, height: 260 },
       count: pods.filter((pod) => pod.tier === "direct" || pod.tier === "capability").length,
     },
     {
       id: "shared-support",
       label: "Shared support",
       color: "#6366f1",
-      position: { x: -80, y: 1310 },
-      size: { width: 2100, height: 290 },
+      position: { x: -220, y: 1400 },
+      size: { width: 3260, height: 260 },
       count: pods.filter((pod) => pod.tier === "shared").length,
     },
     {
       id: "enterprise-foundation",
       label: "Enterprise foundation",
       color: "#64748b",
-      position: { x: -80, y: 1650 },
-      size: { width: 2100, height: 290 },
+      position: { x: -220, y: 1730 },
+      size: { width: 3260, height: 260 },
       count: pods.filter((pod) => pod.tier === "enterprise").length,
     },
     {
       id: "physical-foundation",
       label: "Facilities foundation",
       color: "#10b981",
-      position: { x: -80, y: 1990 },
-      size: { width: 2100, height: 290 },
+      position: { x: -220, y: 2060 },
+      size: { width: 3260, height: 260 },
       count: pods.filter((pod) => pod.tier === "facility").length,
     },
   ];
@@ -1067,13 +1260,29 @@ const buildAreaCardSpecs = (
       id: "area-finance",
       label: "Finance",
       displayUnderId: "person-pat-mcgaughan",
-      ownerId: "person-mike-neves",
+      ownerId: "person-pat-mcgaughan",
+      leadId: "person-mike-neves",
       rootId: "person-mike-neves",
       memberIds: unitIds("unit-finance"),
       kind: "Shared service",
-      detail: "Back-office finance foundation",
+      detail: "Finance foundation",
       accentColor: "#475569",
       action: { type: "team", rootId: "person-mike-neves" },
+    }),
+    addSpec({
+      id: "area-tech-it",
+      label: "Technology & IT",
+      displayUnderId: "person-derick-dahl",
+      ownerId: "person-derick-dahl",
+      rootId: "person-derick-dahl",
+      memberIds: uniqueExistingIds(
+        [...departmentIds(["Technology and Innovation"]), ...unitIds("unit-it")],
+        personById,
+      ),
+      kind: "Capability pod",
+      detail: "Technology, innovation, and IT support",
+      accentColor: "#0d9488",
+      action: { type: "team", rootId: "person-derick-dahl" },
     }),
     addSpec({
       id: "area-admin-hr",
@@ -1091,7 +1300,8 @@ const buildAreaCardSpecs = (
       id: "area-product-engineering",
       label: "Product & Engineering",
       displayUnderId: "person-rob-roland",
-      ownerId: "person-mike-paganini",
+      ownerId: "person-rob-roland",
+      leadId: "person-mike-paganini",
       rootId: "person-mike-paganini",
       memberIds: departmentIds(["Technology and Innovation", "R&D Engineering", "R&D Electronics Engineering", "R&D Speaker Engineering", "R&D iPort Engineering"]),
       kind: "Shared capability",
@@ -1103,7 +1313,8 @@ const buildAreaCardSpecs = (
       id: "area-dealer-services",
       label: "Dealer Services",
       displayUnderId: "person-rob-roland",
-      ownerId: "person-brad-thiess",
+      ownerId: "person-rob-roland",
+      leadId: "person-brad-thiess",
       rootId: "person-brad-thiess",
       memberIds: unitIds("unit-dealer-services"),
       kind: "Shared service",
@@ -1115,7 +1326,8 @@ const buildAreaCardSpecs = (
       id: "area-minden-operations",
       label: "Minden Operations",
       displayUnderId: "person-jorge-notni",
-      ownerId: "person-joe-timpone",
+      ownerId: "person-jorge-notni",
+      leadId: "person-joe-timpone",
       rootId: "person-joe-timpone",
       memberIds: uniqueExistingIds([...unitIds("unit-minden-operations"), ...subtreeIds("person-joe-timpone")], personById),
       kind: "Facility area",
@@ -1127,7 +1339,8 @@ const buildAreaCardSpecs = (
       id: "area-minden-production",
       label: "Minden Production",
       displayUnderId: "person-jorge-notni",
-      ownerId: "person-alberto-gomez",
+      ownerId: "person-jorge-notni",
+      leadId: "person-alberto-gomez",
       rootId: "person-alberto-gomez",
       memberIds: unitIds("unit-minden-production"),
       kind: "Facility area",
@@ -1139,7 +1352,8 @@ const buildAreaCardSpecs = (
       id: "area-ops-sc",
       label: "San Clemente Operations",
       displayUnderId: "person-jorge-notni",
-      ownerId: "person-morgan-west",
+      ownerId: "person-jorge-notni",
+      leadId: "person-morgan-west",
       rootId: "person-morgan-west",
       memberIds: departmentIds(["Ops SC", "Quality Control"]),
       kind: "Operations area",
@@ -1504,7 +1718,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // Brand/Channel get the left rail; the Grid gets a full-width foundation band instead
   const showUnitRail = false;
   const showUnitFoundation =
-    (isGridLens(lens) || lens === "brand" || lens === "channel") && noFocus && orgUnits.length > 0;
+    isGridLens(lens) && noFocus && orgUnits.length > 0;
 
   // Dedicated support-groups view: show shared-service units as pods first;
   // opening a pod drills into the people behind that shared-service group.
@@ -1652,12 +1866,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         visibleIds.has(edge.source) &&
         visibleIds.has(edge.target),
     );
+    const positions = calculateTeamTreeLayout(scopedNodes, scopedEdges, teamRootId);
     return {
       rootId: teamRootId,
       ids: visibleIds,
       directReportIds,
       descendantIds,
-      positions: calculateTeamTreeLayout(scopedNodes, scopedEdges, teamRootId),
+      positions:
+        teamRootId === EXECUTIVE_ROOT_ID
+          ? compressSeniorLeadershipTeamLayout(positions, directReportIds)
+          : positions,
     };
   }, [teamRootId, childMap, nodesData, edgesData]);
 
@@ -1669,6 +1887,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     teamTree.ids.forEach((id) => {
       if (saved[id]) positions[id] = saved[id];
       if (draft[id]) positions[id] = draft[id];
+    });
+    Object.entries(saved).forEach(([id, position]) => {
+      if (isAreaCardNodeId(id)) positions[id] = position;
+    });
+    Object.entries(draft).forEach(([id, position]) => {
+      if (isAreaCardNodeId(id)) positions[id] = position;
     });
     return positions;
   }, [savedTeamLayouts, teamLayoutDraft, teamTree]);
@@ -1798,9 +2022,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const saveTeamViewLayout = useCallback(() => {
     if (!teamTree || !activeTeamPositions) return;
     const positions: Record<string, { x: number; y: number }> = {};
-    teamTree.ids.forEach((id) => {
-      const position = activeTeamPositions[id];
-      if (position) positions[id] = position;
+    Object.entries(activeTeamPositions).forEach(([id, position]) => {
+      if (teamTree.ids.has(id) || isAreaCardNodeId(id)) {
+        positions[id] = position;
+      }
     });
     const next = { ...savedTeamLayouts, [teamTree.rootId]: positions };
     setSavedTeamLayouts(next);
@@ -2254,9 +2479,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const centerY = (minY + maxY) / 2;
       const targetX = availableLeft + availableWidth / 2;
       const isTeamRootFrame = teamTree?.rootId === id;
+      const isExecutiveTeamRootFrame = isTeamRootFrame && id === EXECUTIVE_ROOT_ID;
       const rootPosition = isTeamRootFrame || shouldFrameLocalOrg ? framePositions[id] : null;
       const targetY = isTeamRootFrame
-        ? rect.top + 135
+        ? rect.top + (isExecutiveTeamRootFrame ? 72 : 135)
         : shouldFrameLocalOrg
           ? rect.top + rect.height * 0.36
         : rect.top + rect.height * 0.46;
@@ -2352,6 +2578,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         visibleIds.has(edge.target),
     );
     const positions = calculateTeamTreeLayout(scopedNodes, scopedEdges, overviewRootId);
+    const framePositions =
+      overviewRootId === EXECUTIVE_ROOT_ID
+        ? compressSeniorLeadershipTeamLayout(positions, directReportIds)
+        : positions;
     const overviewFrameIds =
       overviewRootId === EXECUTIVE_ROOT_ID
         ? [overviewRootId, ...directReportIds, ...SENIOR_LEADERSHIP_CONTEXT_IDS]
@@ -2377,15 +2607,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     setLensFilters("hierarchy", { focusIds: [], hiddenIds: [], activeTokens: [] });
     setTeamRootId(overviewRootId);
     clearSelection();
-    showToast(`Showing ${personNameById.get(overviewRootId) ?? "top-level"} overview`);
 
     const frameOverview = () => {
-      const didFrame = framePositionMap(frameIds, positions, {
-        padding: 0.18,
-        duration: 520,
-        minZoom: 0.42,
-        maxZoom: 1.05,
-        verticalBias: 0.32,
+      const didFrame = framePositionMap(frameIds, framePositions, {
+          padding: 0.18,
+          duration: 520,
+          minZoom: 0.42,
+          maxZoom: 1.05,
+          verticalBias: 0.22,
       });
       if (!didFrame) {
         fitVisiblePeopleRef.current({
@@ -2409,7 +2638,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             duration: 360,
             minZoom: 0.42,
             maxZoom: 1.05,
-            verticalBias: 0.32,
+            verticalBias: 0.22,
           }),
       });
     };
@@ -2427,7 +2656,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     selection.nodeIds,
     setLensFilters,
     setLensStore,
-    showToast,
     scheduleOrientationLoop,
     teamRootId,
     topOverviewRootId,
@@ -2592,7 +2820,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           value: RESIDENTIAL_FORMATION_VALUE,
           formation: view.formation,
         });
-        showToast(`Showing ${view.label}`);
         const frameFormation = () => {
           if (applySavedViewport(savedViewFrame, { duration: 560 })) return;
           const didFrame = framePositionMap(residentialFormationSpec.frameIds, framePositions, {
@@ -2600,7 +2827,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             duration: 560,
             minZoom: 0.22,
             maxZoom: 0.82,
-            verticalBias: 0.44,
+            verticalBias: 0.3,
           });
           if (!didFrame) {
             fitVisiblePeopleRef.current({
@@ -2626,7 +2853,6 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       residentialFormationSpec,
       setLensFilters,
       setLensStore,
-      showToast,
       workspaceMode,
     ],
   );
@@ -3071,11 +3297,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   useEffect(() => {
     if (!teamTree || !rfInstance) return;
-    const timers = [80, 420].map((delay) =>
-      setTimeout(() => framePersonContext(teamTree.rootId), delay),
-    );
+    const frameScopedTeam = () => {
+      if (lens === "hierarchy") {
+        framePersonContext(teamTree.rootId);
+        return;
+      }
+      fitVisiblePeopleRef.current({
+        padding: 0.18,
+        duration: 420,
+        minZoom: lens === "matrix" ? 0.18 : 0.26,
+        maxZoom: lens === "channel" ? 0.78 : 0.9,
+        reason: "team-lens",
+        expectedIds: [...teamTree.ids],
+      });
+    };
+    const timers = [120, 520].map((delay) => setTimeout(frameScopedTeam, delay));
     return () => timers.forEach((timer) => clearTimeout(timer));
-  }, [teamTree, rfInstance, framePersonContext]);
+  }, [teamTree, rfInstance, framePersonContext, lens]);
 
   // Person focus mode: selecting a single person spotlights their formal
   // reporting context plus support-truth links, and dims everyone else.
@@ -3795,6 +4033,27 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       );
     }
 
+    const seniorPortfolioAreasByOwner = new Map<string, PortfolioArea[]>();
+    if (lens === "hierarchy" && teamTree?.rootId === EXECUTIVE_ROOT_ID) {
+      areaCardSpecs.forEach((area) => {
+        if (!SENIOR_TEAM_AREA_CARD_IDS.has(area.id)) return;
+        const anchorId = area.displayUnderId;
+        if (!teamTree.ids.has(anchorId)) return;
+        const lead = area.leadId ? personById.get(area.leadId) : undefined;
+        const list = seniorPortfolioAreasByOwner.get(anchorId) ?? [];
+        list.push({
+          id: area.id,
+          label: area.label,
+          count: area.memberIds.length,
+          kind: area.kind,
+          leadName: lead?.name,
+          accentColor: area.accentColor,
+          onOpen: () => openAreaCard(area.id),
+        });
+        seniorPortfolioAreasByOwner.set(anchorId, list);
+      });
+    }
+
     const personFlowNodes: Node[] = filteredNodes.map((node) => {
       const position =
         displayPositions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
@@ -3829,6 +4088,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         ].join(":"),
         // When this node is a facility / shared-service anchor, render it as a container
         unit: unitForNode,
+        portfolioAreas: seniorPortfolioAreasByOwner.get(node.id),
         actions: {
           addDirectReport: (managerId) => {
             const manager = personNodes.find((n) => n.id === managerId);
@@ -4006,6 +4266,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     const areaFlowNodes: Node[] =
       lens === "hierarchy" && teamTree && !isResidentialFormation
         ? (() => {
+            if (teamTree.rootId === EXECUTIVE_ROOT_ID) {
+              return [];
+            }
             const grouped = new Map<string, AreaCardSpec[]>();
             areaCardSpecs.forEach((area) => {
               if (framedAreaIds.has(area.id)) return;
@@ -4029,49 +4292,120 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               grouped.set(preferredAnchor, list);
             });
 
-            const areaWidth = 240;
-            const gapX = 22;
-            const gapY = 104;
-            const nodes: Node[] = [];
+            const ownerFrameNodes: Node[] = [];
+            const cardNodes: Node[] = [];
             grouped.forEach((areas, anchorId) => {
               const anchor = displayPositions[anchorId];
               if (!anchor) return;
               const columns =
                 teamTree.rootId === EXECUTIVE_ROOT_ID
-                  ? 1
+                  ? Math.min(
+                      Math.max(1, SENIOR_AREA_CARD_COLUMNS_BY_ANCHOR[anchorId] ?? 1),
+                      areas.length,
+                    )
                   : Math.min(2, Math.max(1, areas.length));
-              const rowWidth = columns * areaWidth + (columns - 1) * gapX;
+              const rowWidth = columns * SENIOR_AREA_CARD_WIDTH + (columns - 1) * SENIOR_AREA_CARD_GAP_X;
+              const childPositions =
+                (childMap[anchorId] ?? [])
+                  .map((childId) => displayPositions[childId])
+                  .filter((position): position is { x: number; y: number } => Boolean(position));
+              const cardPositions: Array<{ x: number; y: number }> = [];
               areas.forEach((area, index) => {
                 const col = index % columns;
                 const row = Math.floor(index / columns);
+                const position =
+                  activeTeamPositions?.[`${AREA_CARD_PREFIX}${area.id}`] ??
+                  (teamTree.rootId === EXECUTIVE_ROOT_ID
+                    ? getSeniorTeamAreaCardPosition({
+                        areaId: area.id,
+                        anchorId,
+                        anchor,
+                        childPositions,
+                        index,
+                        columns,
+                      })
+                    : {
+                        x: anchor.x + NODE_WIDTH / 2 - rowWidth / 2 + col * (SENIOR_AREA_CARD_WIDTH + SENIOR_AREA_CARD_GAP_X),
+                        y: anchor.y + NODE_HEIGHT + 54 + row * SENIOR_AREA_CARD_GAP_Y,
+                      });
+                cardPositions.push(position);
                 const owner = area.ownerId ? personById.get(area.ownerId) : undefined;
+                const lead = area.leadId ? personById.get(area.leadId) : undefined;
                 const data: AreaCardNodeData = {
                   label: area.label,
                   ownerName: owner?.name,
+                  leadName: lead?.name,
                   count: area.memberIds.length,
                   kind: area.kind,
                   detail: area.detail,
                   accentColor: area.accentColor,
                   onOpen: () => openAreaCard(area.id),
                 };
-                nodes.push({
-                  id: `area-card:${area.id}`,
+                cardNodes.push({
+                  id: `${AREA_CARD_PREFIX}${area.id}`,
                   type: "areaCardNode",
-                  position: {
-                    x: anchor.x + NODE_WIDTH / 2 - rowWidth / 2 + col * (areaWidth + gapX),
-                    y: anchor.y + NODE_HEIGHT + 54 + row * gapY,
-                  },
+                  position,
                   data,
-                  draggable: false,
+                  draggable: canDragNodes,
                   selectable: false,
                   focusable: false,
-                  style: { width: areaWidth, pointerEvents: "all" },
+                  style: { width: SENIOR_AREA_CARD_WIDTH, pointerEvents: "all" },
                   zIndex: 6,
                   ariaLabel: `${area.label} area card`,
                 });
               });
+              if (
+                teamTree.rootId === EXECUTIVE_ROOT_ID &&
+                cardPositions.length > 0 &&
+                SENIOR_PORTFOLIO_FRAME_ANCHOR_IDS.has(anchorId)
+              ) {
+                const owner = personById.get(anchorId);
+                const ownerFirstName = owner?.name.split(/\s+/)[0] ?? "Leader";
+                const accentColor = areas[0]?.accentColor ?? "#64748b";
+                const minX = Math.min(...cardPositions.map((position) => position.x));
+                const minY = Math.min(...cardPositions.map((position) => position.y));
+                const maxX = Math.max(
+                  ...cardPositions.map((position) => position.x + SENIOR_AREA_CARD_WIDTH),
+                );
+                const maxY = Math.max(
+                  ...cardPositions.map((position) => position.y + SENIOR_AREA_CARD_HEIGHT),
+                );
+                const labels = areas.map((area) => area.label).join(", ");
+                const frameData: AreaFrameNodeData = {
+                  label: `${ownerFirstName} owns`,
+                  ownerName: undefined,
+                  count: areas.length,
+                  kind: areas.length === 1 ? "Owned area" : "Owned areas",
+                  detail: labels,
+                  accentColor,
+                  nested: true,
+                };
+                ownerFrameNodes.push({
+                  id: `owner-frame:${anchorId}`,
+                  type: "areaFrameNode",
+                  position: {
+                    x: minX - SENIOR_OWNER_FRAME_PAD_X,
+                    y: minY - SENIOR_OWNER_FRAME_TOP_PAD,
+                  },
+                  data: frameData,
+                  draggable: false,
+                  selectable: false,
+                  focusable: false,
+                  style: {
+                    width: maxX - minX + SENIOR_OWNER_FRAME_PAD_X * 2,
+                    height:
+                      maxY -
+                      minY +
+                      SENIOR_OWNER_FRAME_TOP_PAD +
+                      SENIOR_OWNER_FRAME_BOTTOM_PAD,
+                    pointerEvents: "none",
+                  },
+                  zIndex: -2,
+                  ariaLabel: `${owner?.name ?? "Leader"} owned areas frame`,
+                });
+              }
             });
-            return nodes;
+            return [...ownerFrameNodes, ...cardNodes];
           })()
         : [];
 
@@ -4225,6 +4559,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     const lanes = new Map<string, number>();
     const personFlowNodes = computedNodes.filter((node) => isPersonFlowNodeId(node.id));
+    const nodeById = new Map(personFlowNodes.map((node) => [node.id, node]));
     const positionById = new Map(personFlowNodes.map((node) => [node.id, node.position]));
     const visibleIds = new Set(personFlowNodes.map((node) => node.id));
     const segments: RouteSegment[] = [];
@@ -4239,7 +4574,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       if (!sourcePosition || !targetPosition) return;
 
       const sourceX = sourcePosition.x + NODE_WIDTH / 2;
-      const sourceY = sourcePosition.y + NODE_HEIGHT;
+      const sourceY = sourcePosition.y + getFlowNodeRoutingHeight(nodeById.get(edge.source));
       const targetX = targetPosition.x + NODE_WIDTH / 2;
       const targetY = targetPosition.y;
       if (targetY <= sourceY) return;
@@ -4292,6 +4627,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const managerRouteBusYByEdgeId = useMemo(() => {
     const buses = new Map<string, number>();
     const personFlowNodes = computedNodes.filter((node) => isPersonFlowNodeId(node.id));
+    const nodeById = new Map(personFlowNodes.map((node) => [node.id, node]));
     const positionById = new Map(personFlowNodes.map((node) => [node.id, node.position]));
     const visibleIds = new Set(personFlowNodes.map((node) => node.id));
     const bySource = new Map<
@@ -4305,7 +4641,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const source = positionById.get(edge.source);
       const target = positionById.get(edge.target);
       if (!source || !target) return;
-      const sourceBottom = source.y + NODE_HEIGHT;
+      const sourceBottom = source.y + getFlowNodeRoutingHeight(nodeById.get(edge.source));
       const targetTop = target.y;
       if (targetTop - sourceBottom <= 36) return;
       const rows = bySource.get(edge.source) ?? [];
@@ -4427,6 +4763,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     const activeTokens = filters?.activeTokens ?? [];
     const focusIds = filters?.focusIds ?? [];
     if (viewContext?.kind === "shared-services") return [];
+    const isResidentialFormationView =
+      viewContext?.kind === "operating-view" &&
+      (viewContext.formation === "residential" || viewContext.value === RESIDENTIAL_FORMATION_VALUE);
 
     const rollUp = isCrossCutting && (filters?.focusIds?.length ?? 0) === 0 && orgUnits.length > 0;
     let visibleEdges = hiddenByCollapse
@@ -4453,11 +4792,46 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         (edge) => focusIds.includes(edge.source) && focusIds.includes(edge.target),
       );
     }
+    const personFlowNodesForEdges = computedNodes.filter((node) => isPersonFlowNodeId(node.id));
+    const nodeById = new Map(personFlowNodesForEdges.map((node) => [node.id, node]));
     const positionByNodeId = new Map(
-      computedNodes
-        .filter((node) => isPersonFlowNodeId(node.id))
-        .map((node) => [node.id, node.position] as const),
+      personFlowNodesForEdges.map((node) => [node.id, node.position] as const),
     );
+    const departmentObstacleRects =
+      lens === "department"
+        ? [...positionByNodeId.entries()].map(([id, position]) => ({
+            id,
+            x: position.x,
+            y: position.y,
+            width: NODE_WIDTH,
+            height: getFlowNodeRoutingHeight(nodeById.get(id)),
+          }))
+        : [];
+    const seniorAreaCardObstacleRects =
+      teamTree?.rootId === EXECUTIVE_ROOT_ID
+        ? computedNodes
+            .filter((node) => isAreaCardNodeId(node.id))
+            .map((node) => ({
+              id: node.id,
+              x: node.position.x,
+              y: node.position.y,
+              width: SENIOR_AREA_CARD_WIDTH,
+              height: SENIOR_AREA_CARD_HEIGHT,
+            }))
+        : [];
+    const formationObstacleRects = isResidentialFormationView
+      ? computedNodes
+          .filter((node) => isPersonFlowNodeId(node.id) || isFormationPodNodeId(node.id))
+          .map((node) => ({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width: isFormationPodNodeId(node.id) ? FORMATION_POD_WIDTH : NODE_WIDTH,
+            height: isFormationPodNodeId(node.id)
+              ? FORMATION_POD_HEIGHT
+              : getFlowNodeRoutingHeight(nodeById.get(node.id)),
+          }))
+      : [];
     const dimension = lensToDimension(lens);
     const contextRectByPersonAndLane = new Map<
       string,
@@ -4597,11 +4971,35 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           : undefined;
       const sourceRect = sourceContextRect ??
         (sourcePosition
-          ? { x: sourcePosition.x, y: sourcePosition.y, width: NODE_WIDTH, height: NODE_HEIGHT }
+          ? {
+              x: sourcePosition.x,
+              y: sourcePosition.y,
+              width: NODE_WIDTH,
+              height: getFlowNodeRoutingHeight(nodeById.get(edge.source)),
+            }
           : undefined);
       const targetRect = targetPosition
-        ? { x: targetPosition.x, y: targetPosition.y, width: NODE_WIDTH, height: NODE_HEIGHT }
+        ? {
+            x: targetPosition.x,
+            y: targetPosition.y,
+            width: NODE_WIDTH,
+            height: getFlowNodeRoutingHeight(nodeById.get(edge.target)),
+          }
         : undefined;
+      const avoidRects =
+        isManager
+          ? [
+              ...(lens === "department"
+                ? departmentObstacleRects.filter(
+                    (rect) => rect.id !== edge.source && rect.id !== edge.target,
+                  )
+                : []),
+              ...seniorAreaCardObstacleRects,
+              ...formationObstacleRects.filter(
+                (rect) => rect.id !== edge.source && rect.id !== edge.target,
+              ),
+            ]
+          : undefined;
       const edgeStroke = isCuratedLeadershipReport ? "#94a3b8" : color;
       const edgeOpacity = isCuratedLeadershipReport
         ? Math.min(opacity, focusedNodeId && !isIncidentToFocus ? 0.12 : 0.5)
@@ -4628,6 +5026,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           routeBusY: sourceContextRect ? undefined : managerRouteBusYByEdgeId.get(edge.id),
           sourceRect,
           targetRect,
+          avoidRects,
           visualTreatment: isCuratedLeadershipReport ? "curated-peer-report" : undefined,
           truthIssue: edgeTruthAuditById.get(edge.id),
           showTruthIssue: truthAuditVisible,
@@ -4671,7 +5070,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     childMap,
     matrixRelationshipMode,
     viewContext?.kind,
+    viewContext?.formation,
     viewContext?.rootId,
+    viewContext?.value,
     hiddenByCollapse,
     isCrossCutting,
     orgUnits,
@@ -4692,7 +5093,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               ? { ...current.positions }
               : { ...(savedTeamLayouts[teamTree.rootId] ?? {}) };
           moved.forEach((item) => {
-            if (teamTree.ids.has(item.id)) {
+            if (teamTree.ids.has(item.id) || isAreaCardNodeId(item.id)) {
               positions[item.id] = item.position;
             }
           });
@@ -5253,66 +5654,30 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               size={lensLayout?.showGrid ? 1 : 0.5}
               color={lensLayout?.showGrid ? "#cbd5f5" : "#e2e8f0"}
             />
-            <MiniMap
-              className="!bottom-6 !right-6 rounded-2xl border border-slate-200 bg-white/90 text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80"
-              nodeStrokeColor={(n) => (n.data?.accentColor as string) ?? "#64748b"}
-              nodeColor={(n) => (n.data?.accentColor as string) ?? "#cbd5f5"}
-              maskColor="rgba(15, 23, 42, 0.08)"
-              pannable
-              zoomable
-            />
+            {!isGridLens(lens) &&
+              lens !== "brand" &&
+              lens !== "channel" &&
+              viewContext?.kind !== "shared-services" &&
+              teamTree?.rootId !== EXECUTIVE_ROOT_ID &&
+              !isResidentialFormationContext(viewContext) && (
+                <MiniMap
+                  className="!bottom-6 !right-6 rounded-2xl border border-slate-200 bg-white/90 text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80"
+                  nodeStrokeColor={(n) => (n.data?.accentColor as string) ?? "#64748b"}
+                  nodeColor={(n) => (n.data?.accentColor as string) ?? "#cbd5f5"}
+                  maskColor="rgba(15, 23, 42, 0.08)"
+                  pannable
+                  zoomable
+                />
+              )}
             {/* Matrix-lens controls: keep reporting lines intentional instead of
                 drawing an ambiguous all-org web across unrelated lanes. */}
             {lens !== "hierarchy" && personNodes.length > 0 && (
-              <div className="motion-stage-in absolute left-6 top-6 z-30 flex flex-wrap items-center gap-2">
-                <div
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200"
-                  aria-label="Relationship display"
-                >
-                  {([
-                    ["reporting", "Reporting", "Selected person, manager chain, and direct org context"],
-                    ["matrix", "Support", "Dedicated, support, shared-service, and dotted-line context"],
-                    ["all", "All", "Every visible relationship line in this lens"],
-                  ] as const).map(([mode, label, title]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setMatrixRelationshipMode(mode)}
-                      aria-pressed={matrixRelationshipMode === mode}
-                      title={title}
-                      className={[
-                        "rounded-full px-3 py-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
-                        matrixRelationshipMode === mode
-                          ? "bg-slate-950 text-white shadow-sm"
-                          : "text-slate-500 hover:bg-slate-100 dark:text-slate-600 dark:hover:bg-slate-100",
-                      ].join(" ")}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleMirrorLanes}
-                  aria-pressed={mirrorLanes}
-                  aria-label={`Show people in all assigned lanes: ${mirrorLanes ? "on" : "off"}`}
-                  className={[
-                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400",
-                    mirrorLanes
-                      ? "border-sky-300 bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100 dark:border-sky-300 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-200"
-                      : "border-slate-200 bg-white/95 text-slate-600 ring-slate-100 hover:bg-white dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200",
-                  ].join(" ")}
-                  title="Show ghost cards for people in every lane they're assigned to, not just their primary lane"
-                >
-                  <span
-                    className={[
-                      "inline-block h-2 w-2 rounded-full",
-                      mirrorLanes ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600",
-                    ].join(" ")}
-                  />
-                  All lanes: {mirrorLanes ? "On" : "Off"}
-                </button>
-              </div>
+              <MatrixRelationshipControls
+                mode={matrixRelationshipMode}
+                onModeChange={setMatrixRelationshipMode}
+                mirrorLanes={mirrorLanes}
+                onToggleMirrorLanes={toggleMirrorLanes}
+              />
             )}
             {/* Hierarchy view: global fold control so the whole org can collapse to
                 its top tiers or expand back out in one click */}
@@ -5343,80 +5708,21 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             {/* Unified top-right tools dock: one labeled home for the canvas
                 actions instead of buttons scattered around every corner */}
             {personNodes.length > 0 && (
-              <div className="motion-stage-in absolute right-6 top-6 z-30 flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/95 p-1 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/90 dark:text-slate-700 dark:ring-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setHelpOpen(true)}
-                  title="Shortcuts & guide (?)"
-                  aria-label="Open keyboard shortcuts and guide"
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-slate-100 dark:hover:bg-slate-100"
-                >
-                  <QuestionMarkCircledIcon className="h-3.5 w-3.5" aria-hidden />
-                  Help
-                </button>
-                <span className="h-4 w-px bg-slate-200 dark:bg-slate-300" />
-                <button
-                  type="button"
-                  onClick={() => setHealthOpen((v) => !v)}
-                  title="Span outliers, matrix overload, coverage gaps"
-                  aria-label="Toggle Org Health panel"
-                  aria-pressed={healthOpen}
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
-                    healthOpen
-                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-100",
-                  ].join(" ")}
-                >
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-                  Health
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTruthAuditVisible((value) => !value)}
-                  title="Check for reporting lines that could visually imply the wrong manager"
-                  aria-label="Toggle reporting line truth audit"
-                  aria-pressed={truthAuditVisible}
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition",
-                    truthAuditVisible
-                      ? "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-100"
-                      : truthAuditIssues.length > 0
-                        ? "text-amber-700 hover:bg-amber-50 dark:text-amber-700 dark:hover:bg-amber-50"
-                        : "hover:bg-slate-100 dark:hover:bg-slate-100",
-                  ].join(" ")}
-                >
-                  <span
-                    className={[
-                      "inline-block h-2 w-2 rounded-full",
-                      truthAuditIssues.length > 0 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600",
-                    ].join(" ")}
-                    aria-hidden
-                  />
-                  Audit
-                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200 dark:bg-white dark:text-slate-600 dark:ring-slate-200">
-                    {truthAuditIssues.length}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={openSharedServicesDefault}
-                  title="See shared services grouped by support role"
-                  aria-label="Open shared services view"
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-violet-700 transition hover:bg-violet-50 dark:text-violet-700 dark:hover:bg-violet-50"
-                >
-                  <span aria-hidden>🔗</span> Services
-                </button>
-                <span className="h-4 w-px bg-slate-200 dark:bg-slate-300" />
-                <CleanupButton
-                  onCleanup={(mode) => {
-                    cleanupCanvas(lens, mode);
-                    setTimeout(() => {
-                      fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.5, reason: "fit" });
-                    }, 100);
-                  }}
-                />
-              </div>
+              <CanvasToolsMenu
+                healthOpen={healthOpen}
+                truthAuditVisible={truthAuditVisible}
+                truthAuditCount={truthAuditIssues.length}
+                onOpenHelp={() => setHelpOpen(true)}
+                onToggleHealth={() => setHealthOpen((value) => !value)}
+                onToggleTruthAudit={() => setTruthAuditVisible((value) => !value)}
+                onOpenSharedServices={openSharedServicesDefault}
+                onCleanup={(mode) => {
+                  cleanupCanvas(lens, mode);
+                  setTimeout(() => {
+                    fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.5, reason: "fit" });
+                  }, 100);
+                }}
+              />
             )}
             {truthAuditVisible && truthAuditIssues.length > 0 && (
               <div className="motion-stage-in absolute right-6 top-[78px] z-30 w-[min(360px,calc(100%-3rem))] rounded-lg border border-amber-200 bg-white/95 p-3 text-xs text-slate-700 shadow-lg ring-1 ring-amber-100 backdrop-blur dark:border-amber-300/30 dark:bg-slate-950/90 dark:text-slate-200 dark:ring-amber-300/10">
@@ -5879,67 +6185,228 @@ const MenuSeparator = () => (
   <ContextMenu.Separator className="my-1 h-px w-full bg-slate-200 dark:bg-white/10" />
 );
 
-const CleanupButton = ({
-  onCleanup,
-}: {
-  onCleanup: (mode: "compact" | "spacious") => void;
-}) => {
-  const [menuOpen, setMenuOpen] = useState(false);
+const MATRIX_RELATIONSHIP_OPTIONS: Array<{
+  mode: MatrixRelationshipMode;
+  label: string;
+  detail: string;
+}> = [
+  {
+    mode: "reporting",
+    label: "Reporting",
+    detail: "Manager chain and selected-person context",
+  },
+  {
+    mode: "matrix",
+    label: "Support",
+    detail: "Dedicated, shared-service, and dotted-line context",
+  },
+  {
+    mode: "all",
+    label: "All",
+    detail: "Every visible relationship in this view",
+  },
+];
 
+const MatrixRelationshipControls = ({
+  mode,
+  onModeChange,
+  mirrorLanes,
+  onToggleMirrorLanes,
+}: {
+  mode: MatrixRelationshipMode;
+  onModeChange: (mode: MatrixRelationshipMode) => void;
+  mirrorLanes: boolean;
+  onToggleMirrorLanes: () => void;
+}) => {
   return (
-    <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
+    <Popover.Root>
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:text-slate-700 dark:hover:bg-slate-100"
-          title="Clean up canvas layout"
-          aria-label="Clean up canvas layout"
+          className="motion-stage-in absolute left-6 top-6 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow-sm ring-1 ring-slate-100 backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-200 dark:ring-white/10"
+          title="Relationship lines and lane display"
+          aria-label="Relationship lines and lane display"
         >
           <MixerHorizontalIcon className="h-3.5 w-3.5" aria-hidden />
-          Clean
+          {mirrorLanes && (
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-sky-500 ring-2 ring-white dark:ring-slate-900" />
+          )}
+        </button>
+      </Popover.Trigger>
+
+      <Popover.Portal>
+        <Popover.Content
+          className="z-50 w-72 rounded-2xl border border-slate-200 bg-white/95 p-2 text-xs text-slate-700 shadow-2xl ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/95 dark:text-slate-200 dark:ring-white/10"
+          sideOffset={10}
+          side="bottom"
+          align="start"
+        >
+          <div className="grid gap-1">
+            {MATRIX_RELATIONSHIP_OPTIONS.map((option) => (
+              <button
+                key={option.mode}
+                type="button"
+                onClick={() => onModeChange(option.mode)}
+                aria-pressed={mode === option.mode}
+                className={[
+                  "rounded-xl px-3 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
+                  mode === option.mode
+                    ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                    : "hover:bg-slate-100 dark:hover:bg-white/10",
+                ].join(" ")}
+              >
+                <span className="block font-semibold">{option.label}</span>
+                <span
+                  className={[
+                    "mt-0.5 block text-[11px]",
+                    mode === option.mode ? "text-white/70 dark:text-slate-600" : "text-slate-500 dark:text-slate-400",
+                  ].join(" ")}
+                >
+                  {option.detail}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="my-2 h-px bg-slate-200 dark:bg-white/10" />
+          <button
+            type="button"
+            onClick={onToggleMirrorLanes}
+            aria-pressed={mirrorLanes}
+            className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 font-semibold transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:hover:bg-white/10"
+          >
+            <span>All assigned lanes</span>
+            <span
+              className={[
+                "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                mirrorLanes
+                  ? "bg-sky-50 text-sky-800 ring-1 ring-sky-100"
+                  : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-300 dark:ring-white/10",
+              ].join(" ")}
+            >
+              {mirrorLanes ? "On" : "Off"}
+            </span>
+          </button>
+          <Popover.Arrow className="fill-white dark:fill-slate-900" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+};
+
+const CanvasToolsMenu = ({
+  healthOpen,
+  truthAuditVisible,
+  truthAuditCount,
+  onOpenHelp,
+  onToggleHealth,
+  onToggleTruthAudit,
+  onOpenSharedServices,
+  onCleanup,
+}: {
+  healthOpen: boolean;
+  truthAuditVisible: boolean;
+  truthAuditCount: number;
+  onOpenHelp: () => void;
+  onToggleHealth: () => void;
+  onToggleTruthAudit: () => void;
+  onOpenSharedServices: () => void;
+  onCleanup: (mode: "compact" | "spacious") => void;
+}) => {
+  const [open, setOpen] = useState(false);
+
+  const runAndClose = (action: () => void) => {
+    action();
+    setOpen(false);
+  };
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="motion-stage-in absolute right-6 top-6 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow-sm ring-1 ring-slate-100 backdrop-blur transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-200 dark:ring-white/10"
+          title="Canvas tools"
+          aria-label="Canvas tools"
+        >
+          <MixerHorizontalIcon className="h-3.5 w-3.5" aria-hidden />
+          {(healthOpen || truthAuditVisible || truthAuditCount > 0) && (
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />
+          )}
         </button>
       </Popover.Trigger>
       
       <Popover.Portal>
         <Popover.Content
-          className="z-50 w-64 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
-          sideOffset={12}
+          className="z-50 w-72 rounded-2xl border border-slate-200 bg-white/95 p-2 text-xs text-slate-700 shadow-2xl ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/95 dark:text-slate-200 dark:ring-white/10"
+          sideOffset={10}
           side="bottom"
           align="end"
         >
-          <div className="space-y-1">
+          <div className="grid gap-1">
             <button
               type="button"
-              onClick={() => {
-                onCleanup("compact");
-                setMenuOpen(false);
-              }}
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
+              onClick={() => runAndClose(onOpenHelp)}
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:hover:bg-white/10"
             >
-              <div aria-hidden className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-400 to-purple-600 text-lg">
-                📦
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Compact Layout</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Fit as much as possible on screen</p>
-              </div>
+              <QuestionMarkCircledIcon className="h-3.5 w-3.5" aria-hidden />
+              Help
             </button>
-            
             <button
               type="button"
-              onClick={() => {
-                onCleanup("spacious");
-                setMenuOpen(false);
-              }}
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/10"
+              onClick={() => runAndClose(onToggleHealth)}
+              aria-pressed={healthOpen}
+              className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-left font-semibold transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:hover:bg-white/10"
             >
-              <div aria-hidden className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-lg">
-                📐
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Spacious Layout</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">No overlap, requires more space</p>
-              </div>
+              <span className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                Health
+              </span>
+              {healthOpen && <span className="text-[10px] font-bold uppercase text-emerald-600">Open</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => runAndClose(onToggleTruthAudit)}
+              aria-pressed={truthAuditVisible}
+              className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-left font-semibold transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:hover:bg-white/10"
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className={[
+                    "h-2 w-2 rounded-full",
+                    truthAuditCount > 0 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600",
+                  ].join(" ")}
+                  aria-hidden
+                />
+                Audit
+              </span>
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-300 dark:ring-white/10">
+                {truthAuditCount}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => runAndClose(onOpenSharedServices)}
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-violet-700 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:text-violet-300 dark:hover:bg-violet-500/10"
+            >
+              <span className="h-2 w-2 rounded-full bg-violet-500" aria-hidden />
+              Services
+            </button>
+          </div>
+          <div className="my-2 h-px bg-slate-200 dark:bg-white/10" />
+          <div className="grid gap-1">
+            <button
+              type="button"
+              onClick={() => runAndClose(() => onCleanup("compact"))}
+              className="rounded-xl px-3 py-2 text-left font-semibold transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:hover:bg-white/10"
+            >
+              Compact layout
+            </button>
+            <button
+              type="button"
+              onClick={() => runAndClose(() => onCleanup("spacious"))}
+              className="rounded-xl px-3 py-2 text-left font-semibold transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:hover:bg-white/10"
+            >
+              Spacious layout
             </button>
           </div>
           

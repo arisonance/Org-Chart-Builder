@@ -175,18 +175,6 @@ export function CanvasContextBar({
   const focusIds = filters?.focusIds ?? EMPTY_IDS;
   const activeTokens = filters?.activeTokens ?? EMPTY_TOKENS;
   const hiddenIds = filters?.hiddenIds ?? EMPTY_IDS;
-  const contextTitle =
-    viewContext?.kind === "support-pod"
-      ? "Support pod"
-      : viewContext?.kind === "shared-services"
-        ? "Shared services"
-        : viewContext?.kind === "unit"
-          ? "Unit view"
-          : viewContext?.kind === "operating-view"
-            ? "Official view"
-            : viewContext?.kind === "lens-group"
-            ? "Focused group"
-            : LENS_BY_ID[lens].label;
 
   const operatingViewSummary = useMemo(() => {
     if (viewContext?.kind !== "operating-view" || viewContext.dimension !== "channel" || !viewContext.value) {
@@ -259,57 +247,31 @@ export function CanvasContextBar({
     );
   };
 
-  return (
-    <div className="pointer-events-none absolute left-1/2 top-16 z-30 flex w-[calc(100vw-2rem)] max-w-7xl -translate-x-1/2 flex-col items-center gap-2">
-      {focusedId && !teamTreeRoot && (
-        <nav
-          aria-label="Reporting chain"
-          className="motion-context-bar pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 dark:border-sky-400/20 dark:bg-slate-900 dark:ring-sky-400/10"
-        >
-          <span className="inline-flex h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-sky-500" />
-          {chain.map((id, index) => {
-            const isLast = index === chain.length - 1;
-            return (
-              <span key={id} className="flex flex-shrink-0 items-center gap-1">
-                {index > 0 && <span className="text-slate-300 dark:text-slate-600">›</span>}
-                <button
-                  type="button"
-                  onClick={() => openPerson(id)}
-                  className={
-                    isLast
-                      ? "whitespace-nowrap font-semibold text-slate-900 dark:text-white"
-                      : "whitespace-nowrap text-slate-500 transition hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-300"
-                  }
-                >
-                  {nameById.get(id) ?? "Unknown"}
-                </button>
-              </span>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => clearSelection()}
-            className="ml-1 flex-shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 transition hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
-          >
-            Exit
-          </button>
-        </nav>
-      )}
+  const officialDraftVisible =
+    viewContext?.kind === "operating-view" &&
+    officialLayoutControls?.canManage &&
+    officialLayoutControls.dirty;
+  const officialSecondaryVisible =
+    viewContext?.kind === "operating-view" &&
+    officialLayoutControls?.canManage &&
+    (officialLayoutControls.dirty || officialLayoutControls.saved);
+  const reportingChainLabel = chain.map((id) => nameById.get(id) ?? "Unknown").join(" > ");
+  const filterLabel = activeTokens.join(", ");
+  const showFilterChip = activeTokens.length > 0 && filterLabel !== viewContext?.label;
 
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-4 z-30 flex w-[calc(100vw-2rem)] max-w-5xl -translate-x-1/2 flex-col items-center gap-1.5">
       {focusedId && !teamTreeRoot && (
         <div
-          aria-label={`${focusedName}'s relationship truth`}
-          className="motion-context-bar pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-full border border-sky-200 bg-white/95 px-3 py-1.5 text-xs shadow-lg ring-1 ring-sky-100 backdrop-blur dark:border-sky-400/20 dark:bg-slate-900/95 dark:ring-sky-400/10"
+          aria-label={`${focusedName} selection`}
+          className="motion-context-bar pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-full border border-slate-200 bg-white/95 px-2.5 py-1.5 text-xs shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-900/95 dark:ring-white/10"
         >
-          <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-200">
-            Selected
-          </span>
           {directReportIds.length > 0 ? (
             <button
               type="button"
               onClick={() => openPerson(focusedId)}
               title={`Open ${focusedName}'s organization`}
-              className="max-w-[12rem] truncate rounded-full px-2 py-0.5 font-semibold text-slate-950 transition hover:bg-sky-50 hover:text-sky-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:text-white dark:hover:bg-sky-500/15 dark:hover:text-sky-100"
+              className="max-w-[13rem] truncate rounded-full px-2 py-0.5 font-semibold text-slate-950 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:text-white dark:hover:bg-white/10"
             >
               {focusedName}
             </button>
@@ -318,16 +280,47 @@ export function CanvasContextBar({
               {focusedName}
             </span>
           )}
-          <span className="h-4 w-px flex-shrink-0 bg-sky-100 dark:bg-sky-400/20" />
-          <TruthPill label="Downstream" value={directReportSummary} tone="emerald" />
-          {orgSizeSummary && (
-            <TruthPill label="Org" value={orgSizeSummary} tone="emerald" />
+          {chain.length > 1 && (
+            <span
+              title={reportingChainLabel}
+              className="hidden max-w-[18rem] truncate text-slate-500 dark:text-slate-400 sm:inline"
+            >
+              {chain.slice(-3).map((id) => nameById.get(id) ?? "Unknown").join(" > ")}
+            </span>
+          )}
+          {directReportIds.length > 0 && (
+            <>
+              <span className="h-4 w-px flex-shrink-0 bg-slate-200 dark:bg-white/10" />
+              <span className="whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-100 dark:ring-emerald-400/20">
+                {directReportSummary}
+              </span>
+              {orgSizeSummary && (
+                <span className="hidden whitespace-nowrap text-slate-500 dark:text-slate-400 md:inline">
+                  {orgSizeSummary}
+                </span>
+              )}
+            </>
+          )}
+          {officialDraftVisible && (
+            <>
+              <span className="h-4 w-px flex-shrink-0 bg-slate-200 dark:bg-white/10" />
+              <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-400/20">
+                Draft
+              </span>
+              <button
+                type="button"
+                onClick={officialLayoutControls.onPublish}
+                className="whitespace-nowrap rounded-full bg-slate-950 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              >
+                {officialLayoutControls.saveLabel ?? "Save"}
+              </button>
+            </>
           )}
           {directReportIds.length > 0 && (
             <button
               type="button"
               onClick={() => onOpenTeamTree(focusedId)}
-              className="whitespace-nowrap rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              className="whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
             >
               {teamTreeRootId === focusedId ? "Refit org" : "Open org"}
             </button>
@@ -335,9 +328,42 @@ export function CanvasContextBar({
           <button
             type="button"
             onClick={() => openEditor(focusedId)}
-            className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
+            className="whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
           >
             Details
+          </button>
+          {officialSecondaryVisible && (
+            <details className="group relative">
+              <summary className="cursor-pointer list-none whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-200 dark:ring-white/10 dark:hover:bg-slate-800">
+                More
+              </summary>
+              <div className="absolute right-0 top-8 z-10 grid min-w-44 gap-1 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-700 shadow-xl ring-1 ring-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10">
+                {officialLayoutControls.dirty && (
+                  <button
+                    type="button"
+                    onClick={officialLayoutControls.onDiscard}
+                    className="rounded-lg px-3 py-2 text-left font-semibold transition hover:bg-slate-100 dark:hover:bg-white/10"
+                  >
+                    Discard draft
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={officialLayoutControls.onReset}
+                  className="rounded-lg px-3 py-2 text-left font-semibold transition hover:bg-slate-100 dark:hover:bg-white/10"
+                >
+                  Reset arrangement
+                </button>
+              </div>
+            </details>
+          )}
+          <button
+            type="button"
+            onClick={() => clearSelection()}
+            aria-label="Clear selection"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-200"
+          >
+            ×
           </button>
         </div>
       )}
@@ -440,96 +466,92 @@ export function CanvasContextBar({
         </div>
       )}
 
-      {subsetActive && (
-        <div className="motion-context-bar pointer-events-auto flex w-fit max-w-full flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/95 dark:text-slate-700 dark:ring-slate-200">
-          <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
-            <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-500">
-              {contextTitle}
+      {subsetActive && !focusedId && (
+        <div className="motion-context-bar pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-full border border-slate-200 bg-white/95 px-2.5 py-1.5 text-xs text-slate-700 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-white/95 dark:text-slate-700 dark:ring-slate-200">
+          <span className="max-w-[16rem] truncate font-semibold text-slate-950 dark:text-slate-950">
+            {viewContext?.label ?? LENS_BY_ID[lens].label}
+          </span>
+          {focusIds.length > 0 && (
+            <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-600 dark:ring-slate-200">
+              {focusIds.length} {focusIds.length === 1 ? "person" : "people"}
             </span>
-            <span className="max-w-[16rem] truncate font-semibold text-slate-950 dark:text-slate-950">
-              {viewContext?.label ?? LENS_BY_ID[lens].label}
+          )}
+          {showFilterChip && (
+            <span className="max-w-[12rem] truncate rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-800 ring-1 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100">
+              {filterLabel}
             </span>
-            {focusIds.length > 0 && !focusedId && (
-              <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-100 dark:text-slate-600 dark:ring-slate-200">
-                {focusIds.length} {focusIds.length === 1 ? "person" : "people"}
-              </span>
-            )}
-            {activeTokens.length > 0 && (
-              <span className="max-w-[14rem] truncate rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-800 ring-1 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100">
-                Filtered: {activeTokens.join(", ")}
-              </span>
-            )}
-            <span className="hidden h-5 w-px bg-slate-200 dark:bg-slate-200 sm:block" />
-            {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
-              <span className="whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-50 dark:text-amber-800 dark:ring-amber-200">
-                {officialLayoutControls.dirtyLabel ?? "Arrangement draft"}
-              </span>
-            )}
-            {viewContext?.kind === "operating-view" &&
-              officialLayoutControls?.canManage &&
-              officialLayoutControls.approvalStatus === "pending_approval" && (
-                <span
-                  title={officialLayoutControls.pendingReason}
-                  className="whitespace-nowrap rounded-full bg-sky-50 px-2.5 py-1 font-bold text-sky-800 ring-1 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100"
-                >
-                  Pending admin approval
-                </span>
-              )}
-            {viewContext?.kind === "operating-view" &&
-              officialLayoutControls?.canManage &&
-              officialLayoutControls.approvalStatus === "rejected" && (
-                <span
-                  title={officialLayoutControls.pendingReason}
-                  className="whitespace-nowrap rounded-full bg-rose-50 px-2.5 py-1 font-bold text-rose-700 ring-1 ring-rose-100 dark:bg-rose-50 dark:text-rose-700 dark:ring-rose-100"
-                >
-                  Needs revision
-                </span>
-              )}
-            {viewContext?.kind === "operating-view" && !officialLayoutControls?.dirty && officialLayoutControls?.saved && (
-              <span className="whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-50 dark:text-emerald-800 dark:ring-emerald-100">
-                {officialLayoutControls.savedLabel ?? "Saved arrangement"}
-              </span>
-            )}
-            {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
-              <>
-                <button
-                  type="button"
-                  onClick={officialLayoutControls.onPublish}
-                  className="whitespace-nowrap rounded-full bg-slate-950 px-3 py-1 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-slate-950 dark:text-white dark:hover:bg-slate-700"
-                >
-                  {officialLayoutControls.saveLabel ?? "Save arrangement"}
-                </button>
-                <button
-                  type="button"
-                  onClick={officialLayoutControls.onDiscard}
-                  className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-50 dark:bg-white dark:text-amber-700 dark:ring-amber-100 dark:hover:bg-amber-50"
-                >
-                  Discard draft
-                </button>
-              </>
-            )}
-            {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && (officialLayoutControls.dirty || officialLayoutControls.saved) && (
-              <button
-                type="button"
-                onClick={officialLayoutControls.onReset}
-                className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-50 dark:bg-white dark:text-amber-700 dark:ring-amber-100 dark:hover:bg-amber-50"
+          )}
+          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
+            <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-100 dark:bg-amber-50 dark:text-amber-800 dark:ring-amber-100">
+              Draft
+            </span>
+          )}
+          {viewContext?.kind === "operating-view" &&
+            officialLayoutControls?.canManage &&
+            officialLayoutControls.approvalStatus === "pending_approval" && (
+              <span
+                title={officialLayoutControls.pendingReason}
+                className="whitespace-nowrap rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-800 ring-1 ring-sky-100 dark:bg-sky-50 dark:text-sky-800 dark:ring-sky-100"
               >
-                Reset arrangement
-              </button>
+                Pending
+              </span>
             )}
+          {viewContext?.kind === "operating-view" &&
+            officialLayoutControls?.canManage &&
+            officialLayoutControls.approvalStatus === "rejected" && (
+              <span
+                title={officialLayoutControls.pendingReason}
+                className="whitespace-nowrap rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-700 ring-1 ring-rose-100 dark:bg-rose-50 dark:text-rose-700 dark:ring-rose-100"
+              >
+                Needs revision
+              </span>
+            )}
+          {viewContext?.kind === "operating-view" && officialLayoutControls?.canManage && officialLayoutControls.dirty && (
             <button
               type="button"
-              onClick={onResetView}
-              className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200 dark:hover:bg-slate-200"
+              onClick={officialLayoutControls.onPublish}
+              className="whitespace-nowrap rounded-full bg-slate-950 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-slate-950 dark:text-white dark:hover:bg-slate-700"
             >
-              Reset view
+              {officialLayoutControls.saveLabel ?? "Save"}
             </button>
-            {(viewContext?.owner || viewContext?.publishedAt || hiddenIds.length > 0 || operatingViewSummary || viewContext?.kind === "operating-view") && (
-              <details className="group relative">
-                <summary className="cursor-pointer list-none whitespace-nowrap rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50">
-                  View details
-                </summary>
-                <div className="absolute right-0 top-9 z-10 flex w-[min(22rem,80vw)] flex-wrap justify-end gap-1.5 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-100 dark:border-slate-200 dark:bg-white dark:ring-slate-100">
+          )}
+          <button
+            type="button"
+            onClick={onResetView}
+            className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200 dark:hover:bg-slate-200"
+          >
+            Reset
+          </button>
+          {(viewContext?.owner ||
+            viewContext?.publishedAt ||
+            hiddenIds.length > 0 ||
+            operatingViewSummary ||
+            officialSecondaryVisible ||
+            viewContext?.kind === "operating-view") && (
+            <details className="group relative">
+              <summary className="cursor-pointer list-none whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-white dark:text-slate-600 dark:ring-slate-200 dark:hover:bg-slate-50">
+                More
+              </summary>
+              <div className="absolute right-0 top-8 z-10 grid w-[min(20rem,80vw)] gap-1.5 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-100 dark:border-slate-200 dark:bg-white dark:ring-slate-100">
+                {officialLayoutControls?.dirty && (
+                  <button
+                    type="button"
+                    onClick={officialLayoutControls.onDiscard}
+                    className="rounded-lg px-3 py-2 text-left font-semibold text-amber-700 transition hover:bg-amber-50"
+                  >
+                    Discard draft
+                  </button>
+                )}
+                {officialSecondaryVisible && (
+                  <button
+                    type="button"
+                    onClick={officialLayoutControls.onReset}
+                    className="rounded-lg px-3 py-2 text-left font-semibold text-amber-700 transition hover:bg-amber-50"
+                  >
+                    Reset arrangement
+                  </button>
+                )}
+                <div className="flex flex-wrap justify-end gap-1.5">
                   {viewContext?.owner && (
                     <TruthPill label="Owner" value={viewContext.owner} tone="emerald" />
                   )}
@@ -554,9 +576,9 @@ export function CanvasContextBar({
                     </span>
                   )}
                 </div>
-              </details>
-            )}
-          </div>
+              </div>
+            </details>
+          )}
         </div>
       )}
     </div>

@@ -14,6 +14,8 @@ type EnhancedEdgeData = GraphEdge & {
   routeBusY?: number;
   sourceRect?: CardRect;
   targetRect?: CardRect;
+  avoidRect?: CardRect;
+  avoidRects?: CardRect[];
   visualTreatment?: "curated-peer-report";
   truthIssue?: {
     level: "warning" | "danger";
@@ -79,6 +81,8 @@ function ManagerEdgeComponent({
           routeBusY: edgeData?.routeBusY,
           sourceRect: edgeData?.sourceRect,
           targetRect: edgeData?.targetRect,
+          avoidRect: edgeData?.avoidRect,
+          avoidRects: edgeData?.avoidRects,
         });
         return [route.path, route.labelX, route.labelY] as const;
       }
@@ -91,7 +95,7 @@ function ManagerEdgeComponent({
         targetPosition,
       });
     },
-    [edgeData?.routeBusY, edgeData?.routeLane, edgeData?.source, edgeData?.sourceRect, edgeData?.targetRect, id, isCuratedPeerReport, shouldUseManagerRoute, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
+    [edgeData?.avoidRect, edgeData?.avoidRects, edgeData?.routeBusY, edgeData?.routeLane, edgeData?.source, edgeData?.sourceRect, edgeData?.targetRect, id, isCuratedPeerReport, shouldUseManagerRoute, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]
   );
 
   const edgeStyle = useMemo(

@@ -16,10 +16,60 @@ type ManagerRouteInput = {
   routeBusY?: number;
   sourceRect?: EdgeRouteRect;
   targetRect?: EdgeRouteRect;
+  avoidRect?: EdgeRouteRect;
+  avoidRects?: EdgeRouteRect[];
 };
 
 const hashString = (value: string) =>
   value.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+const expandRect = (rect: EdgeRouteRect, margin: number): EdgeRouteRect => ({
+  x: rect.x - margin,
+  y: rect.y - margin,
+  width: rect.width + margin * 2,
+  height: rect.height + margin * 2,
+});
+
+const segmentHitsRect = (
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  rect: EdgeRouteRect,
+) => {
+  const left = rect.x;
+  const right = rect.x + rect.width;
+  const top = rect.y;
+  const bottom = rect.y + rect.height;
+
+  if (Math.abs(a.x - b.x) < 0.1) {
+    const x = a.x;
+    const minY = Math.min(a.y, b.y);
+    const maxY = Math.max(a.y, b.y);
+    return x >= left && x <= right && Math.max(minY, top) <= Math.min(maxY, bottom);
+  }
+
+  if (Math.abs(a.y - b.y) < 0.1) {
+    const y = a.y;
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    return y >= top && y <= bottom && Math.max(minX, left) <= Math.min(maxX, right);
+  }
+
+  return false;
+};
+
+const firstHitRect = (
+  points: Array<{ x: number; y: number }>,
+  avoidRects: EdgeRouteRect[],
+) => {
+  for (const rect of avoidRects) {
+    for (let index = 0; index < points.length - 1; index += 1) {
+      if (segmentHitsRect(points[index], points[index + 1], rect)) {
+        return rect;
+      }
+    }
+  }
+  return null;
+};
 
 export const buildManagerRoute = ({
   id,
@@ -32,6 +82,8 @@ export const buildManagerRoute = ({
   routeBusY,
   sourceRect,
   targetRect,
+  avoidRect,
+  avoidRects,
 }: ManagerRouteInput) => {
   const branchKey = sourceId ?? id;
   const branchLane = routeLane ?? hashString(branchKey) % 4;
@@ -64,6 +116,35 @@ export const buildManagerRoute = ({
         { x: targetEntryX, y: busY },
         { x: targetEntryX, y: targetEntryY },
       ];
+      const obstacles = [
+        ...(avoidRect ? [avoidRect] : []),
+        ...(avoidRects ?? []),
+      ].map((rect) => expandRect(rect, 24));
+      const hit = firstHitRect(points, obstacles);
+      if (hit) {
+        const obstacleBottom = hit.y + hit.height;
+        const routeLeft = targetEntryX < startX;
+        const sideX = routeLeft ? hit.x : hit.x + hit.width;
+        const upperY = Math.max(startY + 18, Math.min(hit.y - 12, startY + 34));
+        const lowerY = Math.min(
+          targetEntryY - 30,
+          Math.max(obstacleBottom + 18, upperY + 34),
+        );
+        const detourPoints = [
+          { x: startX, y: startY },
+          { x: startX, y: upperY },
+          { x: sideX, y: upperY },
+          { x: sideX, y: lowerY },
+          { x: targetEntryX, y: lowerY },
+          { x: targetEntryX, y: targetEntryY },
+        ];
+        return {
+          path: `M ${startX},${startY} L ${startX},${upperY} L ${sideX},${upperY} L ${sideX},${lowerY} L ${targetEntryX},${lowerY} L ${targetEntryX},${targetEntryY}`,
+          labelX: (sideX + targetEntryX) / 2,
+          labelY: lowerY,
+          points: detourPoints,
+        };
+      }
       return {
         path: `M ${startX},${startY} L ${startX},${busY} L ${targetEntryX},${busY} L ${targetEntryX},${targetEntryY}`,
         labelX: (startX + targetEntryX) / 2,

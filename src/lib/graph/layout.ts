@@ -309,7 +309,7 @@ export const DEPARTMENT_OWNER_LABELS: Record<string, string> = {
   "person-jason-sloan": "Jason Sloan",
   "person-michael-sonntag": "Michael Sonntag",
   "person-derick-dahl": "Derick Dahl",
-  "person-grace-dryer": "Gigi Dreyer",
+  "person-grace-dryer": "Gigi Dryer",
   "person-jorge-notni": "Jorge Notni",
 };
 
@@ -424,7 +424,9 @@ const colsForMatrixRank = (count: number) => {
 const wrapWideRanks = (
   rawPositions: Record<string, { x: number; y: number }>,
   rankEdges: GraphEdge[] = [],
+  options: { wrapSiblingGroups?: boolean } = {},
 ): Record<string, { x: number; y: number }> => {
+  const wrapSiblingGroups = options.wrapSiblingGroups ?? true;
   const parentById = new Map<string, string>();
   rankEdges.filter(isManagerEdge).forEach((edge) => {
     if (!parentById.has(edge.target)) parentById.set(edge.target, edge.source);
@@ -467,7 +469,10 @@ const wrapWideRanks = (
     const groups: SiblingGroup[] = [...groupsByParent.entries()]
       .map(([key, items]) => {
         const parentId = key.startsWith("parent:") ? key.slice("parent:".length) : null;
-        const cols = Math.max(1, colsForMatrixRank(items.length));
+        const cols = Math.max(
+          1,
+          parentId && !wrapSiblingGroups ? items.length : colsForMatrixRank(items.length),
+        );
         const rows = Math.ceil(items.length / cols);
         return {
           key,
@@ -483,7 +488,10 @@ const wrapWideRanks = (
       })
       .sort((a, b) => a.anchorX - b.anchorX || a.key.localeCompare(b.key));
 
-    const maxCols = Math.max(1, colsForMatrixRank(rank.items.length));
+    const maxCols = Math.max(
+      1,
+      wrapSiblingGroups ? colsForMatrixRank(rank.items.length) : rank.items.length,
+    );
     const maxRowWidth = maxCols * NODE_WIDTH + (maxCols - 1) * MATRIX_RANK_GAP_X;
     const rows: PackedRow[] = [];
     let currentRow: PackedRow = { groups: [], width: 0, height: 0 };
@@ -589,7 +597,11 @@ const calculateDepartmentSuperLayout = (
     if (laneMembers.length === 0) return;
 
     const laneEdges = parentWithinLane(laneMembers);
-    const groupPositions = wrapWideRanks(calculateLayout(laneMembers, laneEdges), laneEdges);
+    const groupPositions = wrapWideRanks(
+      calculateLayout(laneMembers, laneEdges),
+      laneEdges,
+      { wrapSiblingGroups: false },
+    );
     const xs = Object.values(groupPositions).map((p) => p.x);
     const ys = Object.values(groupPositions).map((p) => p.y);
     if (xs.length === 0 || ys.length === 0) return;
@@ -1062,7 +1074,7 @@ const applyGridExecutiveContextLayout = (
   if (visibleIds.has("person-jeana-ceglia")) {
     next["person-jeana-ceglia"] = {
       x: Math.max(0, railCenterX - NODE_WIDTH - 88),
-      y: -470,
+      y: -540,
     };
   }
 

@@ -368,7 +368,7 @@ describe("buildSettingsPatch", () => {
   });
 });
 
-describe("persist migrate (version 8)", () => {
+describe("persist migrate", () => {
   const migrate = migrateGraphState;
 
   it("falls back to initial state for non-object persisted state", () => {
@@ -411,6 +411,51 @@ describe("persist migrate (version 8)", () => {
       "person-stephanie-parra",
     );
     expect(result.document.lens_state.hierarchy.layout.positions).toEqual({});
+  });
+
+  it("repairs Gigi's name in persisted documents by person id", () => {
+    const doc = createEmptyGraphDocument();
+    doc.metadata.name = "My Real Org";
+    const oldPersistedName = `Gigi ${["Dr", "eyer"].join("")}`;
+    doc.nodes.push(
+      {
+        id: "person-stephanie-parra",
+        kind: "person",
+        name: "Stephanie Parra",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        updatedAt: "2024-01-01T00:00:00.000Z",
+        attributes: {
+          title: "VP",
+          departments: [],
+          brands: [],
+          channels: [],
+          tags: [],
+        },
+      },
+      {
+        id: "person-grace-dryer",
+        kind: "person",
+        name: oldPersistedName,
+        createdAt: "2024-01-01T00:00:00.000Z",
+        updatedAt: "2024-01-01T00:00:00.000Z",
+        attributes: {
+          title: "Vice President of Human Resources",
+          departments: ["Administration"],
+          brands: [],
+          channels: [],
+          tags: [],
+        },
+      },
+    );
+
+    const result = migrate({ document: doc }) as {
+      document: typeof doc;
+    };
+
+    const gigi = result.document.nodes.find(
+      (node) => node.id === "person-grace-dryer",
+    );
+    expect(gigi?.name).toBe("Gigi Dryer");
   });
 
   it("refreshes a stale bundled-demo document that predates the CSV org", () => {
