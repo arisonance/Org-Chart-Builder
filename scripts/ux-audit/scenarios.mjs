@@ -163,7 +163,9 @@ export const SCENARIOS = [
     steps: [
       { goto: "/" },
       settle(2200),
-      { click: { text: "Edit" } },
+      { click: { selector: 'button[aria-label="Choose workspace mode"]' } },
+      settle(400),
+      { click: { role: "menuitem", name: "Edit" } },
       settle(800),
       { shot: "edit-mode-on" },
       { click: { selector: ".react-flow__node-hierarchyNode" } },
@@ -178,7 +180,9 @@ export const SCENARIOS = [
     steps: [
       { goto: "/" },
       settle(2200),
-      { click: { text: "Edit" } },
+      { click: { selector: 'button[aria-label="Choose workspace mode"]' } },
+      settle(400),
+      { click: { role: "menuitem", name: "Edit" } },
       settle(800),
       { hover: { selector: ".react-flow__node-hierarchyNode" } },
       settle(600),
@@ -196,7 +200,9 @@ export const SCENARIOS = [
     steps: [
       { goto: "/" },
       settle(2200),
-      { click: { text: "Edit" } },
+      { click: { selector: 'button[aria-label="Choose workspace mode"]' } },
+      settle(400),
+      { click: { role: "menuitem", name: "Edit" } },
       settle(800),
       { click: { selector: ".react-flow__node-hierarchyNode" } },
       settle(900),

@@ -2839,14 +2839,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (id: string, additive?: boolean) => {
       const hasReports = (childMap[id]?.length ?? 0) > 0;
       const isFocusedPerson = selection.nodeIds.length === 1 && selection.nodeIds[0] === id;
-      if (!additive && lens === "hierarchy" && hasReports && isFocusedPerson && teamTree?.rootId !== id) {
+      // Auto-drill on click is an explore gesture. In edit mode a click must
+      // SELECT (the context bar then offers "Edit <name>…"); a section owner
+      // trying to edit someone should never be teleported into their org.
+      const autoDrill = !additive && lens === "hierarchy" && !canEdit;
+      if (autoDrill && hasReports && isFocusedPerson && teamTree?.rootId !== id) {
         openTeamTree(id);
         return;
       }
       const hasHiddenReportsInCurrentTree =
         Boolean(teamTree && teamTree.rootId !== id && hasReports) &&
         Array.from(collectDescendants(childMap, [id])).some((descendantId) => !teamTree?.ids.has(descendantId));
-      if (!additive && lens === "hierarchy" && hasHiddenReportsInCurrentTree) {
+      if (autoDrill && hasHiddenReportsInCurrentTree) {
         openTeamTree(id);
         return;
       }
@@ -2859,7 +2863,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }
       selectNode(id, additive);
     },
-    [childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, selection.nodeIds, teamTree],
+    [canEdit, childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, selection.nodeIds, teamTree],
   );
 
   const showOrientationOverview = useCallback((

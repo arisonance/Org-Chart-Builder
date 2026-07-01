@@ -13,35 +13,26 @@ type LegendItem = {
   dashed?: boolean;
 };
 
+// Two concepts only (agreed vocabulary): a reporting line, and everything
+// else is "supports". Diamond and dashed strokes are visual flavors of the
+// same idea — the legend teaches the distinction that matters, not taxonomy.
 const LEGEND_ITEMS: LegendItem[] = [
   {
     type: 'manager',
     label: 'Reports to',
-    description: 'Formal manager truth',
+    description: 'The management line — the only line that shapes the chart',
     marker: 'arrow',
-  },
-  {
-    type: 'dedicated',
-    label: 'Dedicated to',
-    description: 'Dedicated support, not manager truth',
-    marker: 'diamond',
   },
   {
     type: 'support',
     label: 'Supports',
-    description: 'Operating support, not manager truth',
-    marker: 'diamond',
-  },
-  {
-    type: 'shared-service',
-    label: 'Shared service',
-    description: 'Platform pod support',
+    description: 'Works with an area or team without reporting to it',
     marker: 'diamond',
   },
   {
     type: 'dotted',
-    label: 'Dotted line',
-    description: 'Matrix or advisory relationship',
+    label: 'Supports (advisory)',
+    description: 'Same idea, drawn dashed — advisory or part-time support',
     marker: 'arrow',
     dashed: true,
   },

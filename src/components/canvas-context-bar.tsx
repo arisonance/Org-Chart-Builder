@@ -74,6 +74,7 @@ export function CanvasContextBar({
   const selectNode = useGraphStore((s) => s.selectNode);
   const clearSelection = useGraphStore((s) => s.clearSelection);
   const openEditor = useGraphStore((s) => s.openEditor);
+  const canEdit = useGraphStore((s) => s.workspaceMode !== "explore");
 
   const nodeById = useMemo(() => {
     const map = new Map<string, PersonNode>();
@@ -328,9 +329,14 @@ export function CanvasContextBar({
           <button
             type="button"
             onClick={() => openEditor(focusedId)}
-            className="whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
+            className={
+              canEdit
+                ? "whitespace-nowrap rounded-full bg-slate-900 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                : "whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-800"
+            }
           >
-            Details
+            {/* Section owners edit twice a year — the edit path must say "edit" */}
+            {canEdit ? `Edit ${focusedFirstName ?? "person"}…` : "Details"}
           </button>
           {officialSecondaryVisible && (
             <details className="group relative">
@@ -407,6 +413,15 @@ export function CanvasContextBar({
                 </span>
               </span>
               <TruthPill label="Downstream" value={directReportSummary} tone="emerald" />
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => openEditor(focusedId)}
+                  className="rounded-full bg-slate-900 px-2.5 py-0.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                >
+                  Edit {focusedFirstName}…
+                </button>
+              )}
               {directReportIds.length > 0 && (
                 <button
                   type="button"

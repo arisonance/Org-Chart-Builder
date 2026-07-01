@@ -430,7 +430,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
             <MenuSeparator />
             <MenuItem onSelect={() => actions.addDirectReport(node.id)}>Add direct report</MenuItem>
             <MenuItem onSelect={() => actions.addManager(node.id)}>Add manager</MenuItem>
-            <MenuItem onSelect={() => actions.addDotted(node.id)}>Add dotted-line</MenuItem>
+            <MenuItem onSelect={() => actions.addDotted(node.id)}>Add support line</MenuItem>
             <MenuSeparator />
             <MenuItem onSelect={() => actions.copySettings(node.id)} icon={<CopyIcon className="h-3.5 w-3.5" />}>
               Copy settings
