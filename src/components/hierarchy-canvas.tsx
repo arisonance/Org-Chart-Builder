@@ -148,6 +148,7 @@ type OrientationLoopReason =
   | "lens"
   | "overview"
   | "person"
+  | "saved-frame"
   | "shared"
   | "team"
   | "team-lens"
@@ -4707,14 +4708,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           },
           addDotted: (targetId) => {
             const newId = addPerson({
-              name: "New dotted-line",
-              title: "Advisor",
+              name: "New supporter",
+              title: "Support role",
               brands: [],
               channels: [],
               departments: [],
               position: offsetPosition(position, { x: -180, y: 140 }),
             });
-            addRelationship(newId, targetId, "dotted");
+            addRelationship(newId, targetId, "support");
             setSelection({ nodeIds: [newId], edgeIds: [] });
           },
           duplicate: (nodeId) => duplicateNodes([nodeId]),
@@ -6734,12 +6735,10 @@ const EdgeContextMenu = ({
   onAction: (action: RelationshipType | "delete") => void;
 }) => {
   if (!edgeMenu?.edge) return null;
+  // Two-type model: a line either reports or supports — nothing else to pick
   const relationshipOptions: Array<{ type: RelationshipType; label: string }> = [
     { type: "manager", label: "Convert to Reports to" },
-    { type: "dedicated", label: "Convert to Dedicated to" },
     { type: "support", label: "Convert to Supports" },
-    { type: "shared-service", label: "Convert to Shared service" },
-    { type: "dotted", label: "Convert to Dotted line" },
   ];
   
   // Render as portal directly without ContextMenu.Root
@@ -7626,8 +7625,10 @@ const isTokenMatchForLens = (node: PersonNode, token: string, lens: LensId) => {
 
 const deduceRelationshipType = (connection: Connection): GraphEdge["metadata"]["type"] | null => {
   const handle = connection.sourceHandle ?? connection.targetHandle ?? "";
-  if (handle.includes("support") || handle.includes("sponsor")) return "support";
-  if (handle.includes("dotted")) return "dotted";
+  // Two-type model: side handles create support lines, top/bottom reporting
+  if (handle.includes("support") || handle.includes("sponsor") || handle.includes("dotted")) {
+    return "support";
+  }
   return "manager";
 };
 

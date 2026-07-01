@@ -50,13 +50,15 @@ export const DEPARTMENT_COLORS: Record<string, string> = {
 
 export const UNASSIGNED_LANE_COLOR = "#94a3b8";
 
+// Two-type model: reporting is blue, supports is teal. Legacy type keys map
+// to the support color so un-migrated edges can't invent a third meaning.
 export const RELATIONSHIP_COLORS: Record<string, string> = {
   manager: "#0284c7",
-  dedicated: "#059669",
   support: "#0d9488",
-  "shared-service": "#7c3aed",
-  sponsor: "#f59e0b",
-  dotted: "#a855f7",
+  dedicated: "#0d9488",
+  "shared-service": "#0d9488",
+  sponsor: "#0d9488",
+  dotted: "#0d9488",
   group: "#64748b",
 };
 

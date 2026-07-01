@@ -29,6 +29,7 @@ import type {
   XY,
 } from "@/lib/schema/types";
 import { createEmptyGraphDocument } from "@/lib/schema/defaults";
+import { normalizeRelationshipType } from "@/lib/schema/types";
 import type { LensId } from "@/lib/schema/lenses";
 import { parseGraphDocument } from "@/lib/schema/validation";
 import type { Scenario } from "@/lib/scenario/types";
@@ -236,8 +237,16 @@ export const normalizeKnownPersonNames = (
   return changed ? { ...document, nodes } : document;
 };
 
+// Two-type relationship model: legacy edge types collapse to "support"
+const normalizeEdgeTypes = (document: GraphDocument): GraphDocument => {
+  document.edges.forEach((edge) => {
+    edge.metadata.type = normalizeRelationshipType(edge.metadata.type);
+  });
+  return document;
+};
+
 const cloneNormalizedDocument = (document: GraphDocument): GraphDocument =>
-  normalizeKnownPersonNames(cloneDocument(document));
+  normalizeEdgeTypes(normalizeKnownPersonNames(cloneDocument(document)));
 
 const isGraphDocumentLike = (value: unknown): value is GraphDocument =>
   Boolean(
@@ -767,7 +776,9 @@ export const useGraphStore = create<GraphStore>()(
         });
       },
       clearPersonSettings: () => set({ settingsClipboard: null }),
-      addRelationship: (sourceId, targetId, type, meta) => {
+      addRelationship: (sourceId, targetId, rawType, meta) => {
+        // Two-type model: any legacy support flavor is written as "support"
+        const type = normalizeRelationshipType(rawType);
         if (sourceId === targetId) return null;
         const current = get();
         const nodeIds = new Set(current.document.nodes.map((node) => node.id));
@@ -845,6 +856,7 @@ export const useGraphStore = create<GraphStore>()(
           edge.metadata = {
             ...edge.metadata,
             ...updates,
+            ...(updates.type ? { type: normalizeRelationshipType(updates.type) } : {}),
           };
           edge.updatedAt = now();
         });

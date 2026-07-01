@@ -329,10 +329,14 @@ function DottedEdgeComponent({
 
 export const DottedEdge = memo(DottedEdgeComponent);
 
-// Export edge types object for React Flow
+// Export edge types object for React Flow.
+// Two-type model: every support flavor renders as the dashed support line.
+// Legacy keys stay registered so un-migrated edges still draw correctly.
 export const customEdgeTypes = {
   manager: ManagerEdge,
-  support: SponsorEdge,
-  sponsor: SponsorEdge,
+  support: DottedEdge,
+  sponsor: DottedEdge,
   dotted: DottedEdge,
+  dedicated: DottedEdge,
+  "shared-service": DottedEdge,
 };

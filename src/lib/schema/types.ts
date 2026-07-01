@@ -11,6 +11,19 @@ export type RelationshipType =
   | "sponsor"
   | "group";
 
+/**
+ * The app's working model has exactly two people-relationship types —
+ * reporting ("manager") and "support" — plus "group" for containers.
+ * The wider union above is accepted on input (old saved documents, AI
+ * imports) and normalized to canonical on load and on write.
+ */
+export type CanonicalRelationshipType = "manager" | "support" | "group";
+
+export const normalizeRelationshipType = (
+  type: RelationshipType,
+): CanonicalRelationshipType =>
+  type === "manager" ? "manager" : type === "group" ? "group" : "support";
+
 export type NodeKind = "person" | "group";
 
 export type NodeRoleTier = "ic" | "manager" | "director" | "vp" | "c-suite";

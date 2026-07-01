@@ -67,12 +67,16 @@ function LineSample({ color, dashed, diamond }: { color: string; dashed?: boolea
   );
 }
 
-const LEGEND = [
-  { color: RELATIONSHIP_COLORS.manager, label: "Reports to", desc: "Formal manager relationship" },
-  { color: RELATIONSHIP_COLORS.dedicated, label: "Dedicated to", desc: "Dedicated support, not a manager line", diamond: true },
-  { color: RELATIONSHIP_COLORS.support, label: "Supports", desc: "Operating support, not a manager line", diamond: true },
-  { color: RELATIONSHIP_COLORS["shared-service"], label: "Shared service", desc: "Platform pod support", diamond: true },
-  { color: RELATIONSHIP_COLORS.dotted, label: "Dotted line", desc: "Matrix or advisory relationship", dashed: true },
+// Two-type model: a line either reports or supports
+const LEGEND: Array<{
+  color: string;
+  label: string;
+  desc: string;
+  dashed?: boolean;
+  diamond?: boolean;
+}> = [
+  { color: RELATIONSHIP_COLORS.manager, label: "Reports to", desc: "The management line — the only line that shapes the chart" },
+  { color: RELATIONSHIP_COLORS.support, label: "Supports", desc: "Works with an area or team without reporting to it", dashed: true, diamond: true },
 ];
 
 export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

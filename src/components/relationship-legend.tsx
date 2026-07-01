@@ -13,9 +13,7 @@ type LegendItem = {
   dashed?: boolean;
 };
 
-// Two concepts only (agreed vocabulary): a reporting line, and everything
-// else is "supports". Diamond and dashed strokes are visual flavors of the
-// same idea — the legend teaches the distinction that matters, not taxonomy.
+// Two concepts only (agreed vocabulary): a line either reports or supports.
 const LEGEND_ITEMS: LegendItem[] = [
   {
     type: 'manager',
@@ -28,12 +26,6 @@ const LEGEND_ITEMS: LegendItem[] = [
     label: 'Supports',
     description: 'Works with an area or team without reporting to it',
     marker: 'diamond',
-  },
-  {
-    type: 'dotted',
-    label: 'Supports (advisory)',
-    description: 'Same idea, drawn dashed — advisory or part-time support',
-    marker: 'arrow',
     dashed: true,
   },
 ];

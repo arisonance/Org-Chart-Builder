@@ -17,7 +17,7 @@ import type {
   XY,
 } from "./types";
 import { LENSES, type LensId } from "./lenses";
-import { SCHEMA_VERSION } from "./types";
+import { SCHEMA_VERSION, normalizeRelationshipType } from "./types";
 
 const now = () => new Date().toISOString();
 
@@ -247,6 +247,9 @@ const sanitizeGraphDocument = (doc: ParsedGraphDocument): GraphDocument => {
 
   sanitized.edges.forEach((edge) => {
     edge.updatedAt = edge.updatedAt || now();
+    // Collapse the legacy taxonomy (dedicated/shared-service/dotted/sponsor)
+    // into the two-type model: reporting and supports.
+    edge.metadata.type = normalizeRelationshipType(edge.metadata.type);
     const lenses = edge.metadata.lenses;
     if (lenses) {
       edge.metadata.lenses = lenses.filter((lens) => lensIdValues.includes(lens));

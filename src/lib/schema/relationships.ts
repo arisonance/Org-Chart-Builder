@@ -11,6 +11,20 @@ export type RelationshipDefinition = {
   defaultLabel: (sourceName: string, targetName: string) => string;
 };
 
+// Two people-relationship concepts only: reporting, and supports. Legacy
+// type values (dedicated / shared-service / dotted / sponsor) all read as
+// "Supports" — they're normalized to "support" on load, but any stragglers
+// still render with the same language and style.
+const SUPPORT_DEFINITION: RelationshipDefinition = {
+  label: "Supports",
+  shortLabel: "Supports",
+  description:
+    "Works with an area or team without reporting to it. Add a label for specifics.",
+  layer: "support",
+  edgeStyle: "support",
+  defaultLabel: (sourceName, targetName) => `${sourceName} supports ${targetName}`,
+};
+
 export const RELATIONSHIP_DEFINITIONS: Record<RelationshipType, RelationshipDefinition> = {
   manager: {
     label: "Reports to",
@@ -20,46 +34,11 @@ export const RELATIONSHIP_DEFINITIONS: Record<RelationshipType, RelationshipDefi
     edgeStyle: "manager",
     defaultLabel: (sourceName, targetName) => `${targetName} reports to ${sourceName}`,
   },
-  dedicated: {
-    label: "Dedicated to",
-    shortLabel: "Dedicated",
-    description: "Support truth: this person or team is dedicated to an area, without changing their manager.",
-    layer: "support",
-    edgeStyle: "support",
-    defaultLabel: (sourceName, targetName) => `${targetName} is dedicated to ${sourceName}`,
-  },
-  support: {
-    label: "Supports",
-    shortLabel: "Supports",
-    description: "Support truth: this person or team supports an area, without changing their manager.",
-    layer: "support",
-    edgeStyle: "support",
-    defaultLabel: (sourceName, targetName) => `${sourceName} supports ${targetName}`,
-  },
-  "shared-service": {
-    label: "Shared service",
-    shortLabel: "Shared svc",
-    description: "Support truth: a shared-service pod supports this area, without implying reporting.",
-    layer: "support",
-    edgeStyle: "support",
-    defaultLabel: (sourceName, targetName) => `${sourceName} is a shared service for ${targetName}`,
-  },
-  dotted: {
-    label: "Dotted line",
-    shortLabel: "Dotted",
-    description: "Matrix relationship or advisory line. It is not a formal manager line.",
-    layer: "support",
-    edgeStyle: "dotted",
-    defaultLabel: (sourceName, targetName) => `${sourceName} has a dotted-line relationship with ${targetName}`,
-  },
-  sponsor: {
-    label: "Supports",
-    shortLabel: "Supports",
-    description: "Legacy support relationship. Treat this as support truth, not reporting truth.",
-    layer: "support",
-    edgeStyle: "support",
-    defaultLabel: (sourceName, targetName) => `${sourceName} supports ${targetName}`,
-  },
+  support: SUPPORT_DEFINITION,
+  dedicated: SUPPORT_DEFINITION,
+  "shared-service": SUPPORT_DEFINITION,
+  dotted: SUPPORT_DEFINITION,
+  sponsor: SUPPORT_DEFINITION,
   group: {
     label: "Group membership",
     shortLabel: "Group",
