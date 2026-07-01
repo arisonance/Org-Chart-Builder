@@ -1720,6 +1720,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [helpOpen, setHelpOpen] = useState(false);
   const [viewportRescueVisible, setViewportRescueVisible] = useState(false);
   const [viewportRescueReason, setViewportRescueReason] = useState<"blank" | "far">("blank");
+  // Set while an official-view/shared-services open sequence owns the camera,
+  // so the generic lens-entry framing doesn't race it (the race made Luxury
+  // Residential land at 30% or 50% depending on which animation won).
+  const pendingViewFramingRef = useRef(false);
+  const claimViewFraming = useCallback(() => {
+    pendingViewFramingRef.current = true;
+    window.setTimeout(() => {
+      pendingViewFramingRef.current = false;
+    }, 1600);
+  }, []);
   const focusRequest = useGraphStore((state) => state.focusRequest);
   const groupFocusRequest = useGraphStore((state) => state.groupFocusRequest);
   const operatingViewRequest = useGraphStore((state) => state.operatingViewRequest);
@@ -2022,6 +2032,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       .filter((u) => u.def.type === "shared-service")
       .flatMap((u) => u.members.map((m) => m.id));
     if (ids.length === 0) return;
+    claimViewFraming();
     setLensStore("hierarchy");
     setTimeout(() => {
       setViewContext({
@@ -2035,16 +2046,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       });
       setLensFilters("hierarchy", { focusIds: ids });
       window.setTimeout(() => {
-        if (rfInstance) {
-          void rfInstance.fitView({
-            padding: 0.24,
-            duration: 500,
-            minZoom: 0.45,
-            maxZoom: 1.1,
-          });
-          setViewportRescueVisible(false);
-          return;
-        }
+        // fitVisiblePeople frames from the node store (all people, rendered
+        // or not) and verifies via the orientation loop. A bare fitView here
+        // fit only whatever was already on screen — the view opened at 120%.
         fitVisiblePeopleRef.current({
           padding: 0.2,
           duration: 500,
@@ -2054,7 +2058,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
       }, 240);
     }, 160);
-  }, [orgUnits, rfInstance, setLensStore, setLensFilters]);
+  }, [claimViewFraming, orgUnits, setLensStore, setLensFilters]);
   const openSharedServicesDefault = useCallback(() => {
     openSharedServices();
   }, [openSharedServices]);
@@ -3063,6 +3067,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       // opened blank: its team sits under a default-collapsed branch). The
       // focus filter below already narrows rendering to the view.
       expandAll();
+      claimViewFraming();
       setLensStore(targetLens);
       window.setTimeout(() => {
         setLensFilters(targetLens, {
@@ -3108,6 +3113,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [
       applySavedViewport,
+      claimViewFraming,
       clearSelection,
       expandAll,
       operatingViewLayouts,
@@ -3140,6 +3146,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setTeamReturnLens(null);
       setOperatingViewFrameDraft(null);
       clearSelection();
+      claimViewFraming();
       setLensStore("hierarchy");
       window.setTimeout(() => {
         setLensFilters("hierarchy", {
@@ -3202,6 +3209,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [
       applySavedViewport,
+      claimViewFraming,
       clearSelection,
       framePositionMap,
       operatingViewLayouts,
@@ -4272,6 +4280,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!currentLensLayout || visiblePositionCount === 0) return;
     if (positionedLensRef.current === lens) return;
     positionedLensRef.current = lens;
+    // An official-view open is about to frame this lens itself — stand down.
+    if (pendingViewFramingRef.current) return;
     let didPosition = false;
 
     // Presets have their own saved framing. If none exists, fall back to a
