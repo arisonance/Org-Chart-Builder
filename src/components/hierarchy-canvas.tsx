@@ -6994,8 +6994,11 @@ const LANE_MIN_WIDTH: Record<LensDimension, number> = {
 };
 const CONTEXT_CARD_HEIGHT = 122;
 const CONTEXT_CARD_GAP = 32;
-const CONTEXT_ROW_TOP = 72;
-const MIRROR_HEIGHT = 150;
+// Clears the lane header (counter-scaled title up to ~76px + count chips)
+const CONTEXT_ROW_TOP = 180;
+// Must equal SharedServiceGroupNode's fixed card height (h-[164px]) — the
+// grid stride assumes it, and any drift re-creates card-on-card overlap.
+const MIRROR_HEIGHT = 164;
 const MIRROR_GAP = 40;
 const MIRROR_SECTION_GAP = 90;
 
@@ -7166,12 +7169,19 @@ const buildLaneNodes = (
     if (points.length === 0) return;
     let minX = Math.min(...points.map((p) => p.x)) - LANE_PAD_X;
     let maxX = Math.max(...points.map((p) => p.x)) + NODE_WIDTH + LANE_PAD_X;
-    const lanePadTop = dimension === "department" ? DEPARTMENT_LANE_PAD_TOP : LANE_PAD_TOP;
-    const minY = Math.min(...points.map((p) => p.y)) - lanePadTop;
-    let maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
     const contextPeople = resolveContextPeople(key);
     const contextCols = Math.max(1, Math.min(contextPeople.length, 4));
     const contextRows = Math.ceil(contextPeople.length / Math.max(contextCols, 1));
+    // Lane top padding must clear the counter-scaled lane header AND the
+    // owner-context rows, or cards render on top of the lane title.
+    const basePadTop = dimension === "department" ? DEPARTMENT_LANE_PAD_TOP : LANE_PAD_TOP;
+    const contextBlockBottom =
+      contextPeople.length > 0
+        ? CONTEXT_ROW_TOP + contextRows * (CONTEXT_CARD_HEIGHT + CONTEXT_CARD_GAP)
+        : 0;
+    const lanePadTop = Math.max(basePadTop, contextBlockBottom + 60);
+    const minY = Math.min(...points.map((p) => p.y)) - lanePadTop;
+    let maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT + LANE_PAD_BOTTOM;
     const contextWidth =
       contextPeople.length > 0
         ? contextCols * NODE_WIDTH + (contextCols - 1) * CONTEXT_CARD_GAP + 2 * LANE_PAD_X

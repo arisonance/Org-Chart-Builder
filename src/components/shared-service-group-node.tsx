@@ -50,15 +50,15 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
         event.stopPropagation();
         openPod();
       }}
-      className={`${draggableSurface ? "cursor-grab active:cursor-grabbing" : "nodrag nopan"} lane-fade-in flex w-[16rem] flex-col gap-2 rounded-lg border bg-white/90 px-4 py-3 text-left shadow-sm ring-1 ring-slate-200/70 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-slate-950/80 dark:ring-white/10 dark:hover:bg-slate-900`}
+      className={`${draggableSurface ? "cursor-grab active:cursor-grabbing" : "nodrag nopan"} lane-fade-in flex h-[164px] w-[16rem] flex-col gap-2 overflow-hidden rounded-lg border bg-white/90 px-4 py-3 text-left shadow-sm ring-1 ring-slate-200/70 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-slate-950/80 dark:ring-white/10 dark:hover:bg-slate-900`}
       style={{ borderColor: `${accentColor}88` }}
-      title={`${displayLabel} - ${badgeLabel ?? "shared-service pod"}, not a reporting line. ${members.length} ${members.length === 1 ? "person" : "people"} supporting ${targetLane}`}
+      title={`${displayLabel} - ${badgeLabel ?? "shared services"}, not a reporting line. ${members.length} ${members.length === 1 ? "person" : "people"} supporting ${targetLane}`}
     >
       <div className="flex items-start justify-between gap-3">
         <span className="min-w-0">
           <span className="mb-1 inline-flex max-w-full items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/20">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-500" aria-hidden />
-            {badgeLabel ?? "Shared-service pod"}
+            {badgeLabel ?? "Shared services"}
           </span>
           <span className="block truncate text-[15px] font-bold text-slate-900 dark:text-slate-50">
             {showServiceLine ? service : label}
@@ -85,19 +85,18 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-white/10 dark:text-slate-300">
+      {/* Single row, clipped: the card's height must not depend on data */}
+      <div className="mt-auto flex flex-nowrap gap-1.5 overflow-hidden">
+        <span className="inline-flex w-fit shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-white/10 dark:text-slate-300">
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: accentColor }} />
           Serves {targetLane}
         </span>
-        <span className="inline-flex w-fit items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-white/10">
+        <span className="inline-flex w-fit shrink-0 items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20">
+          {truthLabel ?? "Not reporting"}
+        </span>
+        <span className="inline-flex w-fit items-center truncate rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-white/10">
           Home {dimensionLabel}: {homeLane}
         </span>
-        {truthLabel !== null && (
-          <span className="inline-flex w-fit items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20">
-            {truthLabel ?? "Not reporting"}
-          </span>
-        )}
       </div>
     </button>
   );
