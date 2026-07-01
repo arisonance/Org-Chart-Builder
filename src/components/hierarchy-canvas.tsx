@@ -5870,6 +5870,25 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return;
       }
 
+      // Escape steps back one level: clear the selection first, then exit a
+      // team/area view the same way the "Back to broader view" button does.
+      // Open dialogs own Escape (Radix closes them), so stay out of their way.
+      if (event.key === "Escape") {
+        if (document.querySelector('[role="dialog"], [data-radix-popper-content-wrapper]')) {
+          return;
+        }
+        if (selection.nodeIds.length > 0 || selection.edgeIds.length > 0) {
+          event.preventDefault();
+          clearSelection();
+          return;
+        }
+        if (teamRootId) {
+          event.preventDefault();
+          closeTeamTree();
+        }
+        return;
+      }
+
       // Cmd/Ctrl + Z undo, Cmd/Ctrl + Shift + Z (or Cmd/Ctrl + Y) redo
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -5980,6 +5999,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [
       selection.nodeIds,
+      selection.edgeIds,
       canEdit,
       duplicateNodes,
       rfInstance,
@@ -5992,6 +6012,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       redo,
       fitToView,
       showToast,
+      clearSelection,
+      closeTeamTree,
+      teamRootId,
     ],
   );
 

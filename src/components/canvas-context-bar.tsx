@@ -457,7 +457,7 @@ export function CanvasContextBar({
             <button
               type="button"
               onClick={onExitTeamTree}
-              title="Return to the broader map"
+              title="Return to the broader map (Esc)"
               className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-emerald-100 dark:hover:bg-slate-800"
             >
               Back to broader view

@@ -96,13 +96,20 @@ export const SCENARIOS = [
       { goto: "/" },
       settle(2200),
       { shot: "before-drill" },
-      // Click the first drillable area/portfolio card if present
-      { click: { selector: '[data-area-card], .react-flow__node-areaCardNode' } },
+      // Drill into a portfolio area via its card chip ("Open <area>")
+      { click: { selector: 'button[title^="Open "]' } },
       settle(1800),
       { shot: "after-drill" },
       { press: "Escape" },
       settle(1200),
       { shot: "after-escape" },
+      // Second drill style: collapse-chip / team view from a person card
+      { click: { selector: '[data-testid^="collapse-chip-"]' } },
+      settle(1600),
+      { shot: "after-team-chip" },
+      { press: "Escape" },
+      settle(1200),
+      { shot: "after-team-escape" },
     ],
   },
   {
