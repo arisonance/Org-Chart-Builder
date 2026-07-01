@@ -1718,6 +1718,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const [truthAuditVisible, setTruthAuditVisible] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [viewportRescueVisible, setViewportRescueVisible] = useState(false);
+  const [viewportRescueReason, setViewportRescueReason] = useState<"blank" | "far">("blank");
   const focusRequest = useGraphStore((state) => state.focusRequest);
   const groupFocusRequest = useGraphStore((state) => state.groupFocusRequest);
   const operatingViewRequest = useGraphStore((state) => state.operatingViewRequest);
@@ -1849,6 +1850,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return;
       }
 
+      setViewportRescueReason("blank");
       setViewportRescueVisible(!viewportShowsRenderedPersonRef.current());
     };
 
@@ -4024,10 +4026,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const mathShowsPerson = latest.viewportShowsAnyPerson(viewport, positions);
       const renderedShowsPerson = viewportShowsRenderedPerson();
       const isBlank = !mathShowsPerson && !renderedShowsPerson;
-      setViewportRescueVisible(isBlank);
-      return isBlank;
+      // Far below the lens's readable fit zoom the org is an illegible speck —
+      // that's "lost" too, even though people technically intersect the viewport.
+      const farOut =
+        viewport.zoom < getLensFitMinZoom(lens, wrapperRef.current?.clientWidth) * 0.55;
+      const isLost = isBlank || farOut;
+      setViewportRescueReason(isBlank ? "blank" : "far");
+      setViewportRescueVisible(isLost);
+      return isLost;
     },
-    [visiblePositionCount, viewportShowsRenderedPerson],
+    [visiblePositionCount, viewportShowsRenderedPerson, lens],
   );
 
   const lensMotionCue = useMemo(() => {
@@ -6354,7 +6362,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             <div className="pointer-events-none absolute bottom-24 left-1/2 z-40 -translate-x-1/2">
               <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg ring-1 ring-amber-100 backdrop-blur dark:border-amber-400/30 dark:bg-slate-950/90 dark:text-slate-100 dark:ring-amber-400/20">
                 <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden />
-                <span>No people in view</span>
+                <span>{viewportRescueReason === "far" ? "Zoomed far out" : "No people in view"}</span>
                 <button
                   type="button"
                   onClick={() => showOrientationOverview()}
