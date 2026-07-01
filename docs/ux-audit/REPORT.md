@@ -137,3 +137,46 @@ Each entry: what was confusing, the evidence, what changed, before/after.
    disabled More-menu items lack explanation, hide unfinished features
    (spreadsheet CSV, scenario comparison, inline card editor) in explore.
 5. Full Tier 1–3 re-sweep for the exit criteria.
+
+## Iteration 4 — queue work + re-sweep (2026-07-01)
+
+### 9. Edge taxonomy collapsed to reporting + supports — DONE (`e81ce71`)
+- Six relationship types → two working concepts. Legacy values
+  (dedicated / shared-service / dotted / sponsor) normalize to "support"
+  at every boundary: document parse (imports + persisted state), store
+  writes, and demo cloning. All support flavors render as one dashed
+  teal line; edge menu offers two conversions; legend/help teach two
+  concepts; "Add support line" creates a "New supporter" (was "New
+  dotted-line"). Covered by 4 new unit tests (99 total pass).
+- Note: support lines stay hidden inside team views by existing design
+  (reporting-only); they render in lane/matrix lenses.
+
+### 10. Official-view framing races — FIXED (`7e7baec`)
+- Lens-entry framing raced the view's own framing (Luxury Residential
+  landed at 30% or 50% by luck). View opens now claim the camera and the
+  lens-entry fit stands down. Shared services stopped using a bare
+  fitView (opened at 120% with clipped cards) → 100%, stable, verified
+  two rounds.
+
+### 11. Search results were invisible — FIXED (`0626214`)
+- Typing in "Find person, team, view…" showed nothing: the header's
+  overflow-hidden clipped the dropdown, and the header's stacking
+  context painted it under the canvas. Results now render fully.
+  Before/after: `shots/09-search-invisible-before.png` / `-after.png`
+- Same commit: help dialog uses real tab names + documents Esc;
+  official-views trigger aria-label plain-speech; disabled More-menu
+  items explain "Switch to Edit mode (top right) to use this".
+
+### 12. Re-sweep corrections (`b4980e7`)
+- Empty-frame guard threshold 50% → 20% (department lens had regressed
+  to 5% fit-all specks; Enterprise's blank-frame case still triggers).
+- Card LOD "medium" floor 0.45 → 0.40 so the senior view's natural fit
+  (~0.40–0.42) never flickers the Owns/drill chips away.
+
+### Full re-sweep result (run-015/016/017)
+- Overlaps: 0 across all lenses. Camera rescue pill fires in both lost
+  states. Drill round trip reversible via Esc. All 8 official views
+  stable across rounds (Enterprise honest-fit at ~12% pending the
+  compact-relayout bigger idea). Search, help, edit-path verified.
+- **No new confusing-class findings in Tiers 1–3 → exit criteria met
+  for this run.**
