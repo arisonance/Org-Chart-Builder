@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { DownloadIcon, EnterFullScreenIcon, ExitFullScreenIcon, MixerHorizontalIcon, ReloadIcon, UploadIcon, DotsHorizontalIcon, Cross2Icon } from '@radix-ui/react-icons';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as Dialog from '@radix-ui/react-dialog';
 import { ZodError } from 'zod';
 import { HierarchyCanvas } from '@/components/hierarchy-canvas';
 import { EditorPanel } from '@/components/editor-panel';
@@ -52,6 +53,7 @@ export default function Home() {
   const [showAIImport, setShowAIImport] = useState(false);
   const [showSpreadsheet, setShowSpreadsheet] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const lensChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scenarioList = useMemo(() => Object.values(scenarios), [scenarios]);
@@ -290,11 +292,11 @@ export default function Home() {
                   )}
                   <DropdownMenu.Separator className="my-2 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
-                    onSelect={resetToDemo}
+                    onSelect={() => setConfirmResetOpen(true)}
                     disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 outline-none hover:bg-rose-50 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20 dark:data-[highlighted]:bg-rose-900/20"
                   >
-                    <ReloadIcon className="h-4 w-4" /> Reset Demo
+                    <ReloadIcon className="h-4 w-4" /> Replace with demo data…
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
@@ -307,6 +309,43 @@ export default function Home() {
             onChange={handleImport}
             className="hidden"
           />
+          {/* Destructive action gate: replacing the org with demo data wipes
+              every person, relationship, and layout in this browser. */}
+          <Dialog.Root open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
+              <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-950">
+                <Dialog.Title className="text-base font-bold text-slate-900 dark:text-slate-50">
+                  Replace everything with demo data?
+                </Dialog.Title>
+                <Dialog.Description className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  This discards the current org — people, relationships, and saved
+                  layouts — and reloads the built-in demo dataset. If you might need
+                  today&apos;s data again, use Export JSON first.
+                </Dialog.Description>
+                <div className="mt-5 flex justify-end gap-2">
+                  <Dialog.Close asChild>
+                    <button
+                      type="button"
+                      className="rounded-full px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+                    >
+                      Cancel
+                    </button>
+                  </Dialog.Close>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetToDemo();
+                      setConfirmResetOpen(false);
+                    }}
+                    className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-500"
+                  >
+                    Replace with demo data
+                  </button>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
         </header>
 
         {workspaceMode === 'publish' && (
