@@ -218,7 +218,7 @@ export const SCENARIOS = [
     steps: [
       { goto: "/" },
       settle(2200),
-      { click: { selector: 'input[type="search"], [data-person-search] input, input[placeholder*="earch"]' } },
+      { click: { selector: 'input[placeholder*="Find person"], input[placeholder*="earch"]' } },
       { type: "Rob" },
       settle(700),
       { shot: "search-results" },

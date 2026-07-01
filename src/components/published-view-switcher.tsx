@@ -18,7 +18,7 @@ export function PublishedViewSwitcher() {
           type="button"
           className="inline-flex h-10 min-w-[12rem] max-w-[18rem] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           title={activeView ? `${activeView.description} ${statusText}` : statusText}
-          aria-label="Choose published operating view"
+          aria-label="Choose official view"
         >
           <ReaderIcon className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
           <span className="flex min-w-0 flex-1 flex-col">

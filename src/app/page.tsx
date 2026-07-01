@@ -187,7 +187,10 @@ export default function Home() {
       ) : null}
       <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 sm:px-8">
         {/* Compact Toolbar */}
-        <header className="flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80 xl:flex-nowrap">
+        {/* No overflow-hidden (it clipped the search dropdown to a sliver),
+            and z-40 so the dropdown paints above the canvas card that follows
+            (backdrop-blur makes the header its own stacking context). */}
+        <header className="relative z-40 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/80 xl:flex-nowrap">
           <div className="flex min-w-0 flex-1 items-center gap-3 xl:min-w-[14rem] xl:flex-none">
             <h1 className="text-lg font-semibold leading-tight text-slate-900 dark:text-white">
               {documentMeta.name}
@@ -244,6 +247,7 @@ export default function Home() {
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={() => setShowAIImport(true)}
+                    title={canEdit ? undefined : "Switch to Edit mode (top right) to use this"}
                     disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                   >
@@ -257,6 +261,7 @@ export default function Home() {
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={() => fileInputRef.current?.click()}
+                    title={canEdit ? undefined : "Switch to Edit mode (top right) to use this"}
                     disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                   >
@@ -265,6 +270,7 @@ export default function Home() {
                   <DropdownMenu.Separator className="my-2 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={() => autoLayout(lens)}
+                    title={canEdit ? undefined : "Switch to Edit mode (top right) to use this"}
                     disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 dark:data-[highlighted]:bg-slate-800"
                   >
@@ -293,6 +299,7 @@ export default function Home() {
                   <DropdownMenu.Separator className="my-2 h-px bg-slate-200 dark:bg-slate-700" />
                   <DropdownMenu.Item
                     onSelect={() => setConfirmResetOpen(true)}
+                    title={canEdit ? undefined : "Switch to Edit mode (top right) to use this"}
                     disabled={!canEdit}
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 outline-none hover:bg-rose-50 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[highlighted]:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20 dark:data-[highlighted]:bg-rose-900/20"
                   >
