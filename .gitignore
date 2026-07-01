@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# UX-audit run artifacts (screenshots + facts per run)
+/.ux-audit/
