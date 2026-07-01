@@ -91,11 +91,11 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: accentColor }} />
           Serves {targetLane}
         </span>
-        <span className="inline-flex w-fit shrink-0 items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20">
-          {truthLabel ?? "Not reporting"}
+        <span className="inline-flex w-fit min-w-0 items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20">
+          <span className="truncate">{truthLabel ?? "Not reporting"}</span>
         </span>
-        <span className="inline-flex w-fit items-center truncate rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-white/10">
-          Home {dimensionLabel}: {homeLane}
+        <span className="inline-flex w-fit min-w-0 items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-white/10">
+          <span className="truncate">Home {dimensionLabel}: {homeLane}</span>
         </span>
       </div>
     </button>

@@ -2662,7 +2662,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
 
   const applySavedViewport = useCallback(
-    (viewport: ViewportState | null | undefined, options: { duration?: number } = {}) => {
+    (
+      viewport: ViewportState | null | undefined,
+      options: { duration?: number; expectedIds?: string[]; fallback?: () => void } = {},
+    ) => {
       if (!rfInstance || !hasSavedViewport(viewport)) return false;
       cameraBusyRef.current = true;
       isRestoringViewport.current = true;
@@ -2674,10 +2677,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       window.setTimeout(() => {
         cameraBusyRef.current = false;
         isRestoringViewport.current = false;
+        // Saved frames are absolute coordinates; layouts drift whenever data
+        // or layout code changes, silently framing empty canvas. Verify the
+        // frame still shows the people it was saved for, else re-fit them.
+        if (options.expectedIds?.length && options.fallback) {
+          scheduleOrientationLoop({
+            reason: "saved-frame",
+            expectedIds: options.expectedIds,
+            fallback: options.fallback,
+          });
+        }
       }, (options.duration ?? 480) + 140);
       return true;
     },
-    [rfInstance],
+    [rfInstance, scheduleOrientationLoop],
   );
 
   const saveCurrentViewportDefault = useCallback(() => {
@@ -3041,6 +3054,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setTeamReturnLens(null);
       setOperatingViewFrameDraft(null);
       clearSelection();
+      // Collapsed subtrees would hide this view's own members (Enterprise
+      // opened blank: its team sits under a default-collapsed branch). The
+      // focus filter below already narrows rendering to the view.
+      expandAll();
       setLensStore(targetLens);
       window.setTimeout(() => {
         setLensFilters(targetLens, {
@@ -3062,21 +3079,32 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
         showToast(`Showing ${label}`);
         window.setTimeout(() => {
-          if (applySavedViewport(savedViewFrame, { duration: 520 })) return;
-          fitVisiblePeopleRef.current({
-            padding: 0.14,
-            duration: 520,
-            minZoom: dimension === "channel" ? 0.5 : 0.34,
-            maxZoom: dimension === "channel" ? 0.74 : 1.02,
-            reason: "focus",
-            expectedIds: memberIds,
-          });
+          const refit = () =>
+            fitVisiblePeopleRef.current({
+              padding: 0.14,
+              duration: 520,
+              minZoom: dimension === "channel" ? 0.5 : 0.34,
+              maxZoom: dimension === "channel" ? 0.74 : 1.02,
+              reason: "focus",
+              expectedIds: memberIds,
+            });
+          if (
+            applySavedViewport(savedViewFrame, {
+              duration: 520,
+              expectedIds: memberIds,
+              fallback: refit,
+            })
+          ) {
+            return;
+          }
+          refit();
         }, 220);
       }, 170);
     },
     [
       applySavedViewport,
       clearSelection,
+      expandAll,
       operatingViewLayouts,
       parentMap,
       personNameById,
@@ -3126,7 +3154,24 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           formation: view.formation,
         });
         const frameFormation = () => {
-          if (applySavedViewport(savedViewFrame, { duration: 560 })) return;
+          if (
+            applySavedViewport(savedViewFrame, {
+              duration: 560,
+              expectedIds: focusIds,
+              fallback: () =>
+                fitVisiblePeopleRef.current({
+                  padding: 0.2,
+                  duration: 520,
+                  minZoom: 0.26,
+                  maxZoom: 0.88,
+                  reason: "focus",
+                  expectedIds: focusIds,
+                  primaryId: RESIDENTIAL_ROOT_ID,
+                }),
+            })
+          ) {
+            return;
+          }
           const didFrame = framePositionMap(residentialFormationSpec.frameIds, framePositions, {
             padding: 0.12,
             duration: 560,
@@ -3994,12 +4039,65 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         }, (options.duration ?? 350) + 180);
       };
 
-      if (nodesToFit.length > 0) {
-        void rfInstance.fitView({
-          nodes: nodesToFit,
-          includeHiddenNodes: false,
-          ...fitOptions,
-        });
+      // Frame from React Flow's live node store, not rendered DOM: with
+      // onlyRenderVisibleElements, off-screen people aren't measured, and
+      // fitView({nodes}) silently fits only the few already on screen —
+      // official views then open on the ancestors with the team off-canvas.
+      // (The store always carries current-lens positions, unlike the
+      // lensLayout closure, which is stale during a lens switch.)
+      const targetRects = nodesToFit
+        .map(({ id }) => {
+          const internal = rfInstance.getInternalNode(id);
+          if (!internal) return null;
+          const pos = internal.internals?.positionAbsolute ?? internal.position;
+          if (!pos) return null;
+          return {
+            x: pos.x,
+            y: pos.y,
+            w: internal.measured?.width ?? NODE_WIDTH,
+            h: internal.measured?.height ?? NODE_HEIGHT,
+          };
+        })
+        .filter((rect): rect is { x: number; y: number; w: number; h: number } => Boolean(rect));
+      const wrapperEl = wrapperRef.current;
+      if (targetRects.length > 0 && wrapperEl) {
+        const minX = Math.min(...targetRects.map((r) => r.x));
+        const maxX = Math.max(...targetRects.map((r) => r.x + r.w));
+        const minY = Math.min(...targetRects.map((r) => r.y));
+        const maxY = Math.max(...targetRects.map((r) => r.y + r.h));
+        const usableW = wrapperEl.clientWidth * (1 - 2 * fitOptions.padding);
+        const usableH = wrapperEl.clientHeight * (1 - 2 * fitOptions.padding);
+        const rawZoom = Math.min(usableW / (maxX - minX), usableH / (maxY - minY));
+        let zoom = Math.min(Math.max(rawZoom, fitOptions.minZoom), fitOptions.maxZoom);
+        // The readability floor (minZoom) crops wide content. Fine when the
+        // people cluster near the center — useless when they're scattered and
+        // the clamped frame would show mostly empty canvas (Enterprise view
+        // opened blank this way). If most targets fall outside the clamped
+        // frame, prefer the honest fit-all zoom.
+        if (zoom > rawZoom) {
+          const cx = (minX + maxX) / 2;
+          const cy = (minY + maxY) / 2;
+          const halfW = wrapperEl.clientWidth / 2 / zoom;
+          const halfH = wrapperEl.clientHeight / 2 / zoom;
+          const inFrame = targetRects.filter(
+            (r) =>
+              r.x + r.w > cx - halfW &&
+              r.x < cx + halfW &&
+              r.y + r.h > cy - halfH &&
+              r.y < cy + halfH,
+          ).length;
+          if (inFrame < Math.max(2, Math.ceil(targetRects.length / 2))) {
+            zoom = Math.min(Math.max(rawZoom, 0.05), fitOptions.maxZoom);
+          }
+        }
+        void rfInstance.setViewport(
+          {
+            x: wrapperEl.clientWidth / 2 - ((minX + maxX) / 2) * zoom,
+            y: wrapperEl.clientHeight / 2 - ((minY + maxY) / 2) * zoom,
+            zoom,
+          },
+          { duration: fitOptions.duration },
+        );
         scheduleFitCheck();
         return;
       }
