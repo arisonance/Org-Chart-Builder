@@ -4099,7 +4099,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               r.y + r.h > cy - halfH &&
               r.y < cy + halfH,
           ).length;
-          if (inFrame < Math.max(2, Math.ceil(targetRects.length / 2))) {
+          // Bypass the readability clamp only when the clamped frame would be
+          // essentially empty (Enterprise showed 2 of 14). A frame holding a
+          // meaningful minority is better cropped-but-readable than fit-all
+          // specks (the department lens has 26 lanes; fit-all is 5% zoom).
+          if (inFrame < Math.max(2, Math.ceil(targetRects.length * 0.2))) {
             zoom = Math.min(Math.max(rawZoom, 0.05), fitOptions.maxZoom);
           }
         }

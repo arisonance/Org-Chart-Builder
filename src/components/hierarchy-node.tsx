@@ -527,7 +527,10 @@ const emphsizedLabelOrFirst = (values: Array<string | undefined | null>) => {
 // oversized name-only chips when zoomed way out
 const getLodLevel = (zoom: number): 'full' | 'medium' | 'compact' => {
   if (zoom > 0.6) return 'full';
-  if (zoom >= 0.45) return 'medium';
+  // The senior view's natural fit lands at ~0.40–0.42; keep the portfolio
+  // shelf (the drill affordance) visible there rather than flickering it
+  // away whenever the fit lands a hair below the old 0.45 cutoff.
+  if (zoom >= 0.4) return 'medium';
   return 'compact';
 };
 

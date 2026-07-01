@@ -134,7 +134,7 @@ export const SCENARIOS = [
     steps: [
       { goto: "/" },
       settle(2200),
-      { click: { role: "button", name: /official views/i } },
+      { click: { selector: 'button[aria-label="Choose official view"]' } },
       settle(600),
       { shot: "switcher-open" },
       // The loop expands this scenario per-view once it confirms menu item names.
