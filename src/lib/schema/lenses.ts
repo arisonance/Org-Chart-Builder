@@ -18,8 +18,8 @@ export const LENSES: LensDefinition[] = [
   },
   {
     id: "brand",
-    label: "Brand Ownership",
-    description: "Who owns and supports each brand.",
+    label: "Brand Coverage",
+    description: "Dedicated brand teams, shared support, and all-brand foundation services.",
     shortcut: "2",
     accent: "#1d4ed8",
   },

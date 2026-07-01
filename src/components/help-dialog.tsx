@@ -12,7 +12,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     items: [
       { keys: ["⌘", "K"], label: "Command palette — jump to anyone" },
       { keys: ["1"], label: "Executive Map" },
-      { keys: ["2"], label: "Brand Ownership" },
+      { keys: ["2"], label: "Brand Coverage" },
       { keys: ["3"], label: "Channel Support" },
       { keys: ["4"], label: "Department Map" },
       { keys: ["5"], label: "Business Grid" },

@@ -200,7 +200,7 @@ export function PersonSearch() {
         "brand",
         brand,
         people.filter((person) => person.attributes.brands.includes(brand)).map((person) => person.id),
-        `Show ${brand} brand ownership`,
+        `Show ${brand} brand coverage`,
       );
     });
     uniqueValues(people.flatMap((person) => person.attributes.channels)).forEach((channel) => {

@@ -150,6 +150,7 @@ type OrientationLoopReason =
   | "person"
   | "shared"
   | "team"
+  | "team-lens"
   | "unit";
 
 type OrientationLoopTarget = {
@@ -222,6 +223,11 @@ type ResidentialFormationSpec = {
   frameIds: string[];
 };
 
+type BrandCoverageSpec = {
+  pods: FormationPodSpec[];
+  layers: FormationLayerSpec[];
+};
+
 type AreaCardAction =
   | { type: "team"; rootId: string }
   | { type: "formation"; viewId: "all-residential" }
@@ -292,6 +298,7 @@ const RESIDENTIAL_BRANCH_ROOT_IDS = [
 const AREA_CARD_PREFIX = "area-card:";
 const FORMATION_LAYER_PREFIX = "formation-layer:";
 const FORMATION_POD_PREFIX = "formation-pod:";
+const BRAND_COVERAGE_NODE_PREFIX = "brand-coverage:";
 const FINANCE_AREA_ID = "area-finance";
 const PAT_ID = "person-pat-mcgaughan";
 const ROB_ID = "person-rob-roland";
@@ -1103,6 +1110,291 @@ const buildResidentialFormationSpec = (
   };
 };
 
+const buildBrandCoverageSpec = (
+  people: PersonNode[],
+  personById: Map<string, PersonNode>,
+  childMap: Record<string, string[]>,
+  orgUnits: ComputedUnit[],
+): BrandCoverageSpec => {
+  const assigned = new Set<string>();
+  const rank: Record<string, number> = {
+    "c-suite": 5,
+    vp: 4,
+    director: 3,
+    manager: 2,
+    ic: 1,
+  };
+  const departments = (values: string[]) =>
+    uniqueExistingIds(
+      people
+        .filter((person) => values.includes(person.attributes.primaryDepartment ?? ""))
+        .map((person) => person.id),
+      personById,
+    );
+  const unitIds = (unitId: string) =>
+    orgUnits.find((unit) => unit.def.id === unitId)?.members.map((member) => member.id) ?? [];
+  const foundationUnitIds = new Set([
+    ...unitIds("unit-finance"),
+    ...unitIds("unit-administration"),
+    ...unitIds("unit-it"),
+    ...unitIds("unit-fontana-warehouse"),
+    ...unitIds("unit-minden-operations"),
+  ]);
+  const withoutFoundationUnits = (ids: string[]) => ids.filter((id) => !foundationUnitIds.has(id));
+  const subtreeIds = (rootId: string) =>
+    uniqueExistingIds([rootId, ...collectDescendants(childMap, [rootId])], personById);
+  const take = (ids: string[]) => {
+    const uniqueIds = uniqueExistingIds(ids, personById).filter((id) => !assigned.has(id));
+    uniqueIds.forEach((id) => assigned.add(id));
+    return uniqueIds;
+  };
+  const bestLead = (ids: string[], fallbackId?: string) => {
+    if (fallbackId && personById.has(fallbackId)) return fallbackId;
+    return [...ids].sort((a, b) => {
+      const left = personById.get(a);
+      const right = personById.get(b);
+      return (rank[right?.attributes.tier ?? "ic"] ?? 0) - (rank[left?.attributes.tier ?? "ic"] ?? 0);
+    })[0];
+  };
+  const addPod = (pod: Omit<FormationPodSpec, "memberIds" | "leadId"> & {
+    memberIds: string[];
+    leadId?: string;
+  }): FormationPodSpec | null => {
+    const memberIds = take(pod.memberIds);
+    if (memberIds.length === 0) return null;
+    return {
+      ...pod,
+      memberIds,
+      leadId: bestLead(memberIds, pod.leadId),
+    };
+  };
+
+  const pods = [
+    addPod({
+      id: "brand-iport-enterprise",
+      label: "iPort Enterprise Sales",
+      service: "iPort Dedicated",
+      tier: "direct",
+      memberIds: [...departments(["iPort Enterprise Sales"]), "person-chris-lawson"],
+      leadId: "person-chris-lawson",
+      position: { x: 48, y: 78 },
+      accentColor: BRAND_COLORS.iPort,
+      homeLane: "iPort",
+      targetLane: "iPort",
+    }),
+    addPod({
+      id: "brand-iport-product",
+      label: "iPort Product Development",
+      service: "iPort Dedicated",
+      tier: "direct",
+      memberIds: departments(["R&D iPort Engineering"]),
+      leadId: "person-alex-birch",
+      position: { x: 336, y: 78 },
+      accentColor: BRAND_COLORS.iPort,
+      homeLane: "iPort",
+      targetLane: "iPort",
+    }),
+    addPod({
+      id: "brand-iport-marketing",
+      label: "iPort Enterprise Marketing",
+      service: "iPort Dedicated",
+      tier: "direct",
+      memberIds: departments(["iPort Enterprise Marketing"]),
+      leadId: "person-debbie-michelle",
+      position: { x: 624, y: 78 },
+      accentColor: BRAND_COLORS.iPort,
+      homeLane: "iPort",
+      targetLane: "iPort",
+    }),
+    addPod({
+      id: "brand-james-manufacturing",
+      label: "Minden Manufacturing",
+      service: "James Dedicated",
+      tier: "facility",
+      memberIds: unitIds("unit-minden-production"),
+      leadId: "person-alberto-gomez",
+      position: { x: 1010, y: 78 },
+      accentColor: BRAND_COLORS.James,
+      homeLane: "James",
+      targetLane: "James",
+    }),
+    addPod({
+      id: "brand-residential-coverage",
+      label: "Residential Sales Coverage",
+      service: "Sonance / All Brands Support",
+      tier: "shared",
+      memberIds: uniqueExistingIds(
+        withoutFoundationUnits(
+          people
+            .filter((person) =>
+              person.attributes.channels.some((channel) => channelTopGroup(channel) === "Residential"),
+            )
+            .map((person) => person.id),
+        ),
+        personById,
+      ),
+      leadId: "person-jason-sloan",
+      position: { x: 48, y: 438 },
+      accentColor: "#7c3aed",
+      homeLane: "Sales",
+      targetLane: "Sonance / all brands",
+    }),
+    addPod({
+      id: "brand-professional-coverage",
+      label: "Professional Sales Coverage",
+      service: "Sonance / All Brands Support",
+      tier: "shared",
+      memberIds: departments(["Global Commercial Sales", "National Accounts"]),
+      leadId: "person-michael-bridwell",
+      position: { x: 336, y: 438 },
+      accentColor: "#0d9488",
+      homeLane: "Sales",
+      targetLane: "Sonance / all brands",
+    }),
+    addPod({
+      id: "brand-shared-product",
+      label: "Shared Product & Engineering",
+      service: "Sonance / All Brands Support",
+      tier: "shared",
+      memberIds: departments([
+        "Technology and Innovation",
+        "R&D Engineering",
+        "R&D Electronics Engineering",
+        "R&D Speaker Engineering",
+      ]),
+      leadId: "person-mike-paganini",
+      position: { x: 624, y: 438 },
+      accentColor: "#2563eb",
+      homeLane: "Product & engineering",
+      targetLane: "Sonance / all brands",
+    }),
+    addPod({
+      id: "brand-marketing",
+      label: "Brand Marketing",
+      service: "Sonance / All Brands Support",
+      tier: "shared",
+      memberIds: uniqueExistingIds(
+        [...subtreeIds("person-christian-serge-nelson"), ...departments(["Global Commercial Marketing", "Global Luxury Resi"])],
+        personById,
+      ),
+      leadId: "person-christian-serge-nelson",
+      position: { x: 912, y: 438 },
+      accentColor: "#8b5cf6",
+      homeLane: "Marketing",
+      targetLane: "Sonance / all brands",
+    }),
+    addPod({
+      id: "brand-dealer-services",
+      label: "Dealer Services",
+      service: "Sonance / All Brands Support",
+      tier: "shared",
+      memberIds: unitIds("unit-dealer-services"),
+      leadId: "person-brad-thiess",
+      position: { x: 1200, y: 438 },
+      accentColor: "#14b8a6",
+      homeLane: "Dealer Services",
+      targetLane: "Sonance / all brands",
+    }),
+    addPod({
+      id: "brand-finance",
+      label: "Finance",
+      service: "Shared Services Foundation",
+      tier: "enterprise",
+      memberIds: unitIds("unit-finance"),
+      leadId: "person-mike-neves",
+      position: { x: 48, y: 816 },
+      accentColor: "#475569",
+      homeLane: "Finance",
+      targetLane: "all brands",
+    }),
+    addPod({
+      id: "brand-admin-hr",
+      label: "Administration & HR",
+      service: "Shared Services Foundation",
+      tier: "enterprise",
+      memberIds: unitIds("unit-administration"),
+      leadId: "person-grace-dryer",
+      position: { x: 336, y: 816 },
+      accentColor: "#db2777",
+      homeLane: "Administration",
+      targetLane: "all brands",
+    }),
+    addPod({
+      id: "brand-it",
+      label: "Information Technology",
+      service: "Shared Services Foundation",
+      tier: "enterprise",
+      memberIds: unitIds("unit-it"),
+      leadId: "person-mark-litz",
+      position: { x: 624, y: 816 },
+      accentColor: "#0369a1",
+      homeLane: "IT",
+      targetLane: "all brands",
+    }),
+    addPod({
+      id: "brand-fontana",
+      label: "Fontana Warehouse",
+      service: "Shared Services Foundation",
+      tier: "facility",
+      memberIds: unitIds("unit-fontana-warehouse"),
+      leadId: "person-fred-salehi",
+      position: { x: 912, y: 816 },
+      accentColor: "#10b981",
+      homeLane: "Ops FNT",
+      targetLane: "all brands",
+    }),
+    addPod({
+      id: "brand-minden-operations",
+      label: "Minden Operations",
+      service: "Shared Services Foundation",
+      tier: "facility",
+      memberIds: unitIds("unit-minden-operations"),
+      leadId: "person-joe-timpone",
+      position: { x: 1200, y: 816 },
+      accentColor: "#0f766e",
+      homeLane: "Ops MND",
+      targetLane: "all brands",
+    }),
+  ].filter((pod): pod is FormationPodSpec => Boolean(pod));
+
+  const layers: FormationLayerSpec[] = [
+    {
+      id: "brand-iport-dedicated",
+      label: "iPort Dedicated",
+      color: BRAND_COLORS.iPort,
+      position: { x: 0, y: 20 },
+      size: { width: 928, height: 270 },
+      count: pods.filter((pod) => pod.id.startsWith("brand-iport")).length,
+    },
+    {
+      id: "brand-james-dedicated",
+      label: "James Dedicated",
+      color: BRAND_COLORS.James,
+      position: { x: 962, y: 20 },
+      size: { width: 342, height: 270 },
+      count: pods.filter((pod) => pod.id.startsWith("brand-james")).length,
+    },
+    {
+      id: "brand-all-support",
+      label: "Sonance / All Brands Support",
+      color: BRAND_COLORS["All Brands"],
+      position: { x: 0, y: 382 },
+      size: { width: 1504, height: 280 },
+      count: pods.filter((pod) => pod.service === "Sonance / All Brands Support").length,
+    },
+    {
+      id: "brand-shared-foundation",
+      label: "Shared Services Foundation",
+      color: "#64748b",
+      position: { x: 0, y: 760 },
+      size: { width: 1504, height: 280 },
+      count: pods.filter((pod) => pod.service === "Shared Services Foundation").length,
+    },
+  ];
+
+  return { pods, layers };
+};
+
 const formationPodBadge = (tier: FormationPodTier) => {
   if (tier === "direct") return "Direct support";
   if (tier === "shared") return "Shared support";
@@ -1654,7 +1946,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const paletteActions = useMemo<PaletteAction[]>(
     () => [
       { id: "lens-1", label: "Switch to Executive Map", hint: "1", run: () => setLensStore("hierarchy") },
-      { id: "lens-2", label: "Switch to Brand Ownership", hint: "2", run: () => setLensStore("brand") },
+      { id: "lens-2", label: "Switch to Brand Coverage", hint: "2", run: () => setLensStore("brand") },
       { id: "lens-3", label: "Switch to Channel Support", hint: "3", run: () => setLensStore("channel") },
       { id: "lens-4", label: "Switch to Department Map", hint: "4", run: () => setLensStore("department") },
       { id: "lens-5", label: "Switch to Business Grid", hint: "5", run: () => setLensStore("matrix") },
@@ -1777,6 +2069,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     () => buildAreaCardSpecs(personNodes, personById, childMap, orgUnits),
     [childMap, orgUnits, personById, personNodes],
   );
+  const brandCoverageSpec = useMemo(
+    () => buildBrandCoverageSpec(personNodes, personById, childMap, orgUnits),
+    [childMap, orgUnits, personById, personNodes],
+  );
   const areaCardById = useMemo(
     () => new Map(areaCardSpecs.map((area) => [area.id, area])),
     [areaCardSpecs],
@@ -1875,9 +2171,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       positions:
         teamRootId === EXECUTIVE_ROOT_ID
           ? compressSeniorLeadershipTeamLayout(positions, directReportIds)
-          : positions,
+      : positions,
     };
   }, [teamRootId, childMap, nodesData, edgesData]);
+
+  const showBrandCoverageFormation =
+    lens === "brand" &&
+    noFocus &&
+    !teamTree &&
+    viewContext?.kind !== "operating-view" &&
+    viewContext?.kind !== "shared-services";
 
   const activeTeamPositions = useMemo(() => {
     if (!teamTree) return null;
@@ -3148,6 +3451,37 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       };
     }
 
+    if (lens === "brand" && showBrandCoverageFormation) {
+      const dedicatedCount = brandCoverageSpec.pods.filter(
+        (pod) => pod.service === "iPort Dedicated" || pod.service === "James Dedicated",
+      ).length;
+      const sharedCount = brandCoverageSpec.pods.filter(
+        (pod) => pod.service === "Sonance / All Brands Support",
+      ).length;
+      const foundationCount = brandCoverageSpec.pods.filter(
+        (pod) => pod.service === "Shared Services Foundation",
+      ).length;
+      return {
+        hidden,
+        title: "Brand Coverage",
+        detail: "Dedicated brand teams, shared all-brand support, and foundation services.",
+        stats: [
+          `${dedicatedCount} dedicated groups`,
+          `${sharedCount} shared support groups`,
+          `${foundationCount} foundation groups`,
+        ],
+        chips: brandCoverageSpec.pods.slice(0, 7).map((pod) => ({
+          id: pod.id,
+          label: pod.label,
+          count: pod.memberIds.length,
+          color: pod.accentColor,
+          detail: pod.service,
+          onClick: () => openSharedServiceGroup(pod.memberIds, `${pod.service}: ${pod.label}`),
+        })),
+        actions,
+      };
+    }
+
     if (lens === "brand" || lens === "channel" || lens === "department") {
       const dimension = lensToDimension(lens)!;
       const groups = groupNodesByDimension(personNodes, dimension);
@@ -3187,6 +3521,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     };
   }, [
     childMap,
+    brandCoverageSpec,
     filters?.activeTokens,
     filters?.focusIds,
     fitToView,
@@ -3203,6 +3538,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     saveCurrentViewportDefault,
     selection.nodeIds.length,
     showOrientationOverview,
+    showBrandCoverageFormation,
     teamTree,
     topOverviewRootId,
   ]);
@@ -3470,6 +3806,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   }, [personNodes.length]);
 
   const visibleViewportPersonIds = useMemo(() => {
+    if (showBrandCoverageFormation) return [];
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = new Set(filters?.hiddenIds ?? []);
     return personNodes
@@ -3481,7 +3818,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return true;
       })
       .map((node) => node.id);
-  }, [filters?.focusIds, filters?.hiddenIds, hiddenByCollapse, personNodes, teamTree]);
+  }, [filters?.focusIds, filters?.hiddenIds, hiddenByCollapse, personNodes, showBrandCoverageFormation, teamTree]);
 
   const visiblePositionCount = useMemo(() => {
     const positions = lensLayout?.positions ?? {};
@@ -3639,6 +3976,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
       setViewportRescueVisible(false);
       const scheduleFitCheck = () => {
+        if (visibleViewportPersonIds.length === 0) return;
         if (options.skipOrientationLoop) return;
         window.setTimeout(() => {
           scheduleOrientationLoop({
@@ -3700,8 +4038,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         color: "#334155",
       },
       brand: {
-        title: "Brand Ownership",
-        detail: "Ownership and support by brand",
+        title: "Brand Coverage",
+        detail: "Dedicated brand teams and shared all-brand support",
         color: "#0284c7",
       },
       channel: {
@@ -3731,6 +4069,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   useEffect(() => {
     if (!personNodes.length) return;
     if (teamTree) return;
+    if (showBrandCoverageFormation) return;
     if ((filters?.focusIds?.length ?? 0) > 0) return;
     if (!lensLayout) {
       cleanupCanvas(lens, 'spacious');
@@ -3744,16 +4083,79 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (missing) {
       cleanupCanvas(lens, 'spacious');
     }
-  }, [personNodes, lensLayout, cleanupCanvas, lens, hiddenByCollapse, teamTree, filters?.focusIds]);
+  }, [personNodes, lensLayout, cleanupCanvas, lens, hiddenByCollapse, teamTree, filters?.focusIds, showBrandCoverageFormation]);
 
   // Position the viewport once per lens visit (initial load or lens switch).
   // Deliberately NOT keyed on the whole lensLayout: that object changes every
   // time the viewport is persisted, which previously re-fired fitView ~once a
   // second and yanked the canvas back while the user was panning ("snapping").
   const positionedLensRef = useRef<string | null>(null);
+  const positionedBrandCoverageRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!showBrandCoverageFormation) {
+      positionedBrandCoverageRef.current = null;
+      return;
+    }
+    if (!rfInstance) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const key = `${brandCoverageSpec.layers.length}:${brandCoverageSpec.pods.length}`;
+    if (positionedBrandCoverageRef.current === key) return;
+    positionedBrandCoverageRef.current = key;
+
+    const bounds = [
+      ...brandCoverageSpec.layers.map((layer) => ({
+        left: layer.position.x,
+        top: layer.position.y,
+        right: layer.position.x + layer.size.width,
+        bottom: layer.position.y + layer.size.height,
+      })),
+      ...brandCoverageSpec.pods.map((pod) => ({
+        left: pod.position.x,
+        top: pod.position.y,
+        right: pod.position.x + FORMATION_POD_WIDTH,
+        bottom: pod.position.y + FORMATION_POD_HEIGHT,
+      })),
+    ];
+    if (bounds.length === 0) return;
+
+    const minX = Math.min(...bounds.map((item) => item.left));
+    const minY = Math.min(...bounds.map((item) => item.top));
+    const maxX = Math.max(...bounds.map((item) => item.right));
+    const maxY = Math.max(...bounds.map((item) => item.bottom));
+    const boundsWidth = Math.max(1, maxX - minX);
+    const boundsHeight = Math.max(1, maxY - minY);
+    const chromeTop = wrapper.clientWidth < 900 ? 112 : 150;
+    const sidePadding = wrapper.clientWidth < 900 ? 32 : 96;
+    const bottomPadding = wrapper.clientWidth < 900 ? 96 : 150;
+    const zoom = Math.max(
+      0.36,
+      Math.min(
+        (wrapper.clientWidth - sidePadding * 2) / boundsWidth,
+        (wrapper.clientHeight - chromeTop - bottomPadding) / boundsHeight,
+        0.96,
+      ),
+    );
+    const viewport = {
+      x: (wrapper.clientWidth - boundsWidth * zoom) / 2 - minX * zoom,
+      y: chromeTop - minY * zoom,
+      zoom,
+    };
+
+    const timers = [120, 520].map((delay, index) =>
+      window.setTimeout(() => {
+        setViewportRescueVisible(false);
+        rfInstance.setViewport(viewport, { duration: index === 0 ? 280 : 180 });
+      }, delay),
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [brandCoverageSpec, rfInstance, showBrandCoverageFormation]);
+
   useEffect(() => {
     if (!rfInstance || personNodes.length === 0) return;
     if (teamTree) return;
+    if (showBrandCoverageFormation) return;
     const latest = viewportRestoreRef.current;
     const currentLensLayout = latest.lensLayout;
     if (!currentLensLayout || visiblePositionCount === 0) return;
@@ -3819,7 +4221,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       isRestoringViewport.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rfInstance, lens, viewportRestoreReadyKey, teamTree, savedViewportDefaults]);
+  }, [rfInstance, lens, viewportRestoreReadyKey, teamTree, savedViewportDefaults, showBrandCoverageFormation]);
 
   useEffect(() => {
     const dimension = lensToDimension(lens);
@@ -4022,6 +4424,67 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       });
     }
 
+    if (showBrandCoverageFormation) {
+      const layerNodes: Node[] = brandCoverageSpec.layers.map((layer) => {
+        const data: FormationBandNodeData = {
+          label: layer.label,
+          color: layer.color,
+          count: layer.count,
+        };
+        return {
+          id: `${BRAND_COVERAGE_NODE_PREFIX}layer:${layer.id}`,
+          type: "formationBandNode",
+          position: layer.position,
+          data,
+          style: {
+            width: layer.size.width,
+            height: layer.size.height,
+          },
+          zIndex: -3,
+          draggable: false,
+          selectable: false,
+          focusable: false,
+        };
+      });
+      const podNodes: Node[] = brandCoverageSpec.pods.map((pod) => {
+        const members = pod.memberIds.flatMap((memberId) => {
+          const member = personById.get(memberId);
+          return member ? [member] : [];
+        });
+        const isDedicated = pod.service === "iPort Dedicated" || pod.service === "James Dedicated";
+        const isFoundation = pod.service === "Shared Services Foundation";
+        const data: SharedServiceGroupNodeData = {
+          service: pod.service,
+          label: pod.label,
+          members,
+          lead: (pod.leadId ? personById.get(pod.leadId) : undefined) ?? members[0],
+          accentColor: pod.accentColor,
+          homeLane: pod.homeLane,
+          targetLane: pod.targetLane,
+          dimensionLabel: isFoundation ? "service" : "brand",
+          badgeLabel: isDedicated
+            ? "Dedicated brand team"
+            : isFoundation
+              ? "Shared foundation"
+              : "Shared brand support",
+          truthLabel: "Coverage group",
+          onOpen: openSharedServiceGroup,
+        };
+        return {
+          id: `${BRAND_COVERAGE_NODE_PREFIX}pod:${pod.id}`,
+          type: "sharedServiceGroupNode",
+          position: pod.position,
+          data,
+          draggable: false,
+          selectable: false,
+          focusable: false,
+          zIndex: 4,
+          ariaLabel: `${pod.label} ${data.badgeLabel}`,
+        };
+      });
+      return [...layerNodes, ...podNodes];
+    }
+
     // Roll up facilities / shared services into single cards in cross-cutting views,
     // removing their members from the brand/channel lanes. Skipped while focusing.
     const rollUp = isCrossCutting && focusIds.length === 0 && orgUnits.length > 0;
@@ -4032,6 +4495,24 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           SENIOR_LEADERSHIP_CONTEXT_IDS.includes(node.id),
       );
     }
+    const channelContextOnlyPersonIds = (() => {
+      if (dimension !== "channel" || focusIds.length === 0) return new Set<string>();
+      const ids = new Set<string>();
+      if (viewContext?.rootId) ids.add(viewContext.rootId);
+      const uniqueLabels = (values: Array<string | null | undefined>) =>
+        Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+      const contextKeys = uniqueLabels([
+        viewContext?.value,
+        viewContext?.label,
+        ...(filters?.activeTokens ?? []),
+      ]);
+      contextKeys.forEach((key) => {
+        uniqueLabels([key, channelSubGroup(key), channelTopGroup(key)]).forEach((contextKey) => {
+          (CHANNEL_CONTEXT_BY_KEY[contextKey] ?? []).forEach((id) => ids.add(id));
+        });
+      });
+      return ids;
+    })();
 
     const seniorPortfolioAreasByOwner = new Map<string, PortfolioArea[]>();
     if (lens === "hierarchy" && teamTree?.rootId === EXECUTIVE_ROOT_ID) {
@@ -4054,7 +4535,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       });
     }
 
-    const personFlowNodes: Node[] = filteredNodes.map((node) => {
+    const personFlowNodes: Node[] = filteredNodes
+      .filter((node) => !channelContextOnlyPersonIds.has(node.id))
+      .map((node) => {
       const position =
         displayPositions[node.id] ?? lastRenderedPositions.current[node.id] ?? { x: 0, y: 0 };
       lastRenderedPositions.current[node.id] = position;
@@ -4486,6 +4969,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       focusPersonFromCard,
       focusSet,
       lodZoom,
+      channelContextOnlyPersonIds,
     );
     return [...laneNodes, ...areaFrameNodes, ...personFlowNodes, ...areaFlowNodes];
   }, [
@@ -4494,10 +4978,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusedNodeId,
     focusSet,
     relationshipRoleById,
+    brandCoverageSpec,
     residentialFormationSpec,
     personById,
     personNodes,
     teamTree,
+    showBrandCoverageFormation,
     selection.nodeIds,
     lensLayout?.positions,
     lens,
@@ -4529,6 +5015,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     nodesData,
     activeTeamPositions,
     operatingViewPositions,
+    filters?.activeTokens,
     filters?.focusIds,
     filters?.hiddenIds,
     viewContext,
@@ -4762,6 +5249,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
     const focusIds = filters?.focusIds ?? [];
+    if (showBrandCoverageFormation) return [];
     if (viewContext?.kind === "shared-services") return [];
     const isResidentialFormationView =
       viewContext?.kind === "operating-view" &&
@@ -5079,6 +5567,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     unitMemberIds,
     filters?.focusIds,
     truthAuditVisible,
+    showBrandCoverageFormation,
   ]);
 
   // Handle node drag stop - persist positions (the whole dragged selection),
@@ -6610,15 +7099,16 @@ const buildLaneNodes = (
   onSelectPerson: (id: string) => void,
   focusSet: Set<string> | null,
   zoom: number,
+  contextOnlyPersonIds: Set<string> = new Set(),
 ): Node[] => {
+  const personById = new Map(people.map((person) => [person.id, person]));
   const lanePeople =
     dimension === "department"
       ? people.filter((person) => !isDepartmentExecutiveContextId(person.id))
-      : people;
+      : people.filter((person) => !contextOnlyPersonIds.has(person.id));
   const groups = groupNodesByDimension(lanePeople, dimension);
   const departmentOwnerByKey =
     dimension === "department" ? buildDepartmentOwnerByKey(people, edges) : new Map<string, string>();
-  const personById = new Map(people.map((person) => [person.id, person]));
   const laneNodes: Node[] = [];
   const mirrorNodes: Node[] = [];
   const laneRects: Array<{ key: string; minX: number; maxX: number; minY: number; count: number }> = [];

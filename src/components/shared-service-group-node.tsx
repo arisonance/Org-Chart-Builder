@@ -13,6 +13,7 @@ export type SharedServiceGroupNodeData = {
   targetLane: string;
   dimensionLabel: string;
   badgeLabel?: string;
+  truthLabel?: string;
   draggableSurface?: boolean;
   onOpen: (memberIds: string[], label: string) => void;
 };
@@ -28,6 +29,7 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
     targetLane,
     dimensionLabel,
     badgeLabel,
+    truthLabel,
     draggableSurface,
     onOpen,
   } = data;
@@ -91,9 +93,11 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
         <span className="inline-flex w-fit items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-white/10">
           Home {dimensionLabel}: {homeLane}
         </span>
-        <span className="inline-flex w-fit items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20">
-          Not reporting
-        </span>
+        {truthLabel !== null && (
+          <span className="inline-flex w-fit items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20">
+            {truthLabel ?? "Not reporting"}
+          </span>
+        )}
       </div>
     </button>
   );

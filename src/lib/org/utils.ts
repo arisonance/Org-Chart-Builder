@@ -19,7 +19,7 @@ export const perspectiveLabels: Record<Perspective, string> = {
 
 export const perspectiveDescriptions: Record<Perspective, string> = {
   brand:
-    "View brand ownership and how leaders align across Sonance, iPort, James Cloud Speaker, and Blaze Audio.",
+    "View brand coverage and how dedicated teams, shared support, and foundation services align across Sonance, iPort, James Cloud Speaker, and Blaze Audio.",
   channel:
     "Explore how channel leaders support residential and professional programs and where responsibilities overlap.",
   department:
