@@ -17,7 +17,7 @@ describe("two-type relationship model", () => {
   });
 
   it("migrates legacy edge types when parsing a document", () => {
-    const doc = createEmptyGraphDocument("Legacy");
+    const doc = createEmptyGraphDocument();
     doc.nodes.push(
       {
         id: "a",
