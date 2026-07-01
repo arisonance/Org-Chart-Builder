@@ -100,3 +100,40 @@ Each entry: what was confusing, the evidence, what changed, before/after.
 - **Luxury Residential zoom flaps between runs (30% vs 50%)** — two
   framing paths still race; the late orientation-loop verification wins
   inconsistently. Candidate: single authoritative re-fit after settle.
+
+## Iteration 3 — Tier 3: section-owner editing (2026-07-01)
+
+### 7. Editing was unreachable by normal clicking — FIXED
+- **Evidence**: in Edit mode, single-clicking a person auto-drilled into
+  their org view ("Opened Jeana Ceglia's org view"); the only edit path
+  was right-click → "Edit person…". A twice-a-year section owner would
+  never find it.
+- **Fix** (`55d1042`): auto-drill on click is now explore-only. In edit
+  mode click selects, and the context bar shows a prominent
+  **"Edit \<name\>…"** button (the old "Details" label also reads
+  "Edit \<name\>…" when editing). Verified: click → select → Edit →
+  editor opens with the person's fields; explore-mode drill unchanged.
+  Screenshot: `shots/07-edit-path-after.png`
+
+### 8. Relationship language now teaches two concepts — PARTIAL
+- Legend collapsed from five near-identical entries to the agreed model:
+  **Reports to** (the only line that shapes the chart) and **Supports**
+  (solid-diamond, plus a dashed "advisory" flavor). Card menu "Add
+  dotted-line" → "Add support line".
+- **Remaining (next iteration)**: the schema still has 6 edge types
+  (dedicated / support / shared-service / dotted / sponsor / manager).
+  Collapsing them into reporting+supports with a data migration touches
+  store/validation/edges and deserves its own pass. The editor panel's
+  relationships tab and edge context menu still expose the old taxonomy.
+
+## Queue for the next loop run
+1. Schema collapse: 6 edge types → reporting + supports (with label),
+   migrating existing edges; simplify editor-panel relationships tab and
+   edge context menu to match.
+2. Shared services official view opens at 120% zoom (over-zoomed).
+3. Luxury Residential zoom flaps between runs (framing race).
+4. Tier 4 sweep: search, help, first-load empty states, jargon pass
+   (e.g. aria-label "Choose published operating view" → "official views"),
+   disabled More-menu items lack explanation, hide unfinished features
+   (spreadsheet CSV, scenario comparison, inline card editor) in explore.
+5. Full Tier 1–3 re-sweep for the exit criteria.
