@@ -14,3 +14,8 @@ green-light from Ari before anyone builds it.
 - **Finish the publish workflow** — Supabase tables/API for section
   ownership, draft → locked → approved → published exist but aren't wired;
   needed before SLT members edit their own sections for real.
+- **Compact layout for dimension official views** — Enterprise and
+  International Residential members sit scattered at their home-lane
+  positions, so the honest first frame is 9% specks. These views should
+  re-layout their people into a compact team-style arrangement (the way
+  team views already do), or open the channel-root team view directly.

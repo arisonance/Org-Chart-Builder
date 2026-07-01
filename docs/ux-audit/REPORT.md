@@ -61,3 +61,42 @@ Each entry: what was confusing, the evidence, what changed, before/after.
   zoom — check an SLT viewer understands what the cards are. (Tier 2 review)
 - Disabled More-menu items (AI Import, Import JSON, Auto Layout in explore
   mode) give no hint *why* they're disabled. (Tier 4)
+
+## Iteration 2 — Tier 2: walkthrough surfaces (2026-07-01)
+
+### 5. Official views opened blank or framed the wrong spot — FIXED (core)
+- **Evidence**: probe of all 8 official views at projector size (1920×1080):
+  **Enterprise opened with 0 people visible** (blank canvas at 50% zoom,
+  toast saying "Showing Enterprise"), and framing was flaky across runs
+  (blank one run, whole-lens 18% the next). International Residential
+  showed 1 card; Shared services opened at 120% with cards clipped.
+- **Root causes** (three, compounding — `db09328`):
+  1. `fitView({nodes})` only fits *measured* nodes; with
+     `onlyRenderVisibleElements` the off-screen team was unmeasured, so
+     "fit" framed the 2 already-visible ancestors. Now: bounds computed
+     from React Flow's live store (positions exist for unrendered nodes).
+  2. Default-collapsed branches hid the view's own members — dimension
+     views now `expandAll()` first (the focus filter still narrows render).
+  3. The channel readability floor (minZoom 0.5) cropped scatter-wide
+     views to empty center-canvas. If the clamped frame would show <half
+     the view's people, framing uses the honest fit-all zoom instead.
+  Plus: saved view frames (absolute viewports) are verified after apply
+  and re-fit if they no longer show their people.
+- **Verified**: two full circuits of all 8 views — Enterprise 0 → 12
+  visible, all views stable across rounds, 95/95 tests pass.
+- Before/after: `shots/05-enterprise-blank-before.png` / `-after.png`
+
+### 6. Pod chip clipped mid-word ("COVERAGE GROU") — FIXED
+- Regression from iteration 1's fixed-height chips; chips now truncate
+  with ellipsis instead of hard-clipping (same commit as #5 batch).
+
+### Noted, not fixed this pass
+- **Enterprise & International Residential views are structurally weak**:
+  their people are scattered across the whole channel canvas at their
+  home-lane positions, so an honest fit shows tiny cards (9%). Real fix =
+  re-layout dimension views compactly (like team views). → BIGGER-IDEAS.
+- **Shared services opens at 120% zoom** — over-zoomed; needs its own
+  framing pass.
+- **Luxury Residential zoom flaps between runs (30% vs 50%)** — two
+  framing paths still race; the late orientation-loop verification wins
+  inconsistently. Candidate: single authoritative re-fit after settle.
