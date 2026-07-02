@@ -2984,19 +2984,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const focusPersonFromCard = useCallback(
     (id: string, additive?: boolean) => {
       const hasReports = (childMap[id]?.length ?? 0) > 0;
-      const isFocusedPerson = selection.nodeIds.length === 1 && selection.nodeIds[0] === id;
-      // Auto-drill on click is an explore gesture. In edit mode a click must
-      // SELECT (the context bar then offers "Edit <name>…"); a section owner
-      // trying to edit someone should never be teleported into their org.
-      const autoDrill = !additive && lens === "hierarchy" && !canEdit;
-      if (autoDrill && hasReports && isFocusedPerson && teamTree?.rootId !== id) {
-        openTeamTree(id);
-        return;
-      }
-      const hasHiddenReportsInCurrentTree =
-        Boolean(teamTree && teamTree.rootId !== id && hasReports) &&
-        Array.from(collectDescendants(childMap, [id])).some((descendantId) => !teamTree?.ids.has(descendantId));
-      if (autoDrill && hasHiddenReportsInCurrentTree) {
+      // Explore mode: ONE click on anyone with reports makes them the hero —
+      // their org opens rooted at them, from any lens or view. (It used to
+      // take a second click, which read as the first click doing nothing.)
+      // In edit mode a click must SELECT (the context bar then offers
+      // "Edit <name>…"); a section owner trying to edit someone should never
+      // be teleported into their org. Shift/Cmd-click still multi-selects.
+      const autoDrill = !additive && !canEdit;
+      if (autoDrill && hasReports && teamTree?.rootId !== id) {
         openTeamTree(id);
         return;
       }
@@ -3009,7 +3004,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }
       selectNode(id, additive);
     },
-    [canEdit, childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, selection.nodeIds, teamTree],
+    [canEdit, childMap, expandSubtree, framePersonContext, lens, openTeamTree, selectNode, teamTree],
   );
 
   const showOrientationOverview = useCallback((

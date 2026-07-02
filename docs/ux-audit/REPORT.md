@@ -288,3 +288,15 @@ the Finance lane, fully readable).
 Verified in-browser: explore tabs = Brand/Channel/Department; shared services
 opens clean with distinct titles and no alarm; Enterprise cards single-chip;
 brand view 55% with readable pod names.
+
+## Iteration 6e — one click makes anyone the hero (2026-07-02)
+
+Ari: clicking Debbie inside Rob's org "doesn't seem to do anything useful."
+The first click only selected; drilling took a second click. In explore mode
+a single click on anyone with reports now opens their org rooted at them —
+from any lens, any view, any depth. Edit mode still selects (owners must be
+able to click without being teleported); Shift/Cmd-click still multi-selects;
+people with no reports still select for preview.
+
+Verified: home → click Rob → Rob hero; click Debbie → Debbie hero; channel
+lens → click Tyler Kungl → Tyler hero.
