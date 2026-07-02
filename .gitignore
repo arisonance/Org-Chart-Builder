@@ -43,3 +43,6 @@ next-env.d.ts
 
 # UX-audit run artifacts (screenshots + facts per run)
 /.ux-audit/
+
+# Throwaway browser probe scripts written during UX-audit runs
+scripts/ux-audit/.*.tmp.mjs
