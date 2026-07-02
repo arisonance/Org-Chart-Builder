@@ -4188,24 +4188,44 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     };
   }, [lens]);
 
-  // Auto-layout on first load with spacious preset
+  // Auto-layout on first load with spacious preset.
+  // cleanupCanvas records history (bumps document.updatedAt), which re-renders
+  // and re-runs this effect. If a visible person can NEVER get a position — a
+  // data shape where the component's visible set and the store's layout set
+  // disagree — "missing" stays true forever and every relayout re-triggers the
+  // next: an infinite loop that crashes the app (surfaced as "Maximum update
+  // depth exceeded"). Guard by the exact missing-set signature so a given
+  // unresolved set is laid out at most once; a genuinely new set (nodes added)
+  // has a new signature and still relayouts.
+  const lastLayoutFixRef = useRef<string | null>(null);
   useEffect(() => {
     if (!personNodes.length) return;
     if (teamTree) return;
     if (showBrandCoverageFormation) return;
-    if ((filters?.focusIds?.length ?? 0) > 0) return;
+    if ((filters?.focusIds?.length ?? 0) > 0) {
+      lastLayoutFixRef.current = null;
+      return;
+    }
     if (!lensLayout) {
+      const sig = `${lens}:NO_LAYOUT`;
+      if (lastLayoutFixRef.current === sig) return;
+      lastLayoutFixRef.current = sig;
       cleanupCanvas(lens, 'spacious');
       return;
     }
     // People folded under a collapsed manager never get positions; only
-    // visible people count as "missing" or this would relayout forever
-    const missing = personNodes.some(
-      (node) => !hiddenByCollapse?.has(node.id) && !lensLayout.positions[node.id],
-    );
-    if (missing) {
-      cleanupCanvas(lens, 'spacious');
+    // visible people count as "missing" or this would relayout forever.
+    const missingIds = personNodes
+      .filter((node) => !hiddenByCollapse?.has(node.id) && !lensLayout.positions[node.id])
+      .map((node) => node.id);
+    if (missingIds.length === 0) {
+      lastLayoutFixRef.current = null;
+      return;
     }
+    const sig = `${lens}:${missingIds.sort().join(',')}`;
+    if (lastLayoutFixRef.current === sig) return; // already tried this exact set
+    lastLayoutFixRef.current = sig;
+    cleanupCanvas(lens, 'spacious');
   }, [personNodes, lensLayout, cleanupCanvas, lens, hiddenByCollapse, teamTree, filters?.focusIds, showBrandCoverageFormation]);
 
   // Position the viewport once per lens visit (initial load or lens switch).
