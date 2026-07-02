@@ -5,6 +5,9 @@ import { LENSES, type LensId } from '@/lib/schema/lenses';
 type LensSwitcherProps = {
   activeLens: LensId;
   onChange: (lens: LensId) => void;
+  // The Business Grid is parked: keep it reachable for admins in edit mode,
+  // but don't offer the roughest screen in the app to explore-mode viewers.
+  hideGrid?: boolean;
 };
 
 const PRESET_LABELS: Partial<Record<LensId, string>> = {
@@ -16,13 +19,14 @@ const PRESET_LABELS: Partial<Record<LensId, string>> = {
 
 const PRESET_LENSES = LENSES.filter((lens) => lens.id !== "hierarchy");
 
-export function LensSwitcher({ activeLens, onChange }: LensSwitcherProps) {
+export function LensSwitcher({ activeLens, onChange, hideGrid = false }: LensSwitcherProps) {
+  const lenses = hideGrid ? PRESET_LENSES.filter((lens) => lens.id !== "matrix") : PRESET_LENSES;
   return (
     <div
       className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 text-sm font-semibold shadow-sm dark:border-white/10 dark:bg-slate-800"
       aria-label="View presets"
     >
-      {PRESET_LENSES.map((lens) => {
+      {lenses.map((lens) => {
         const isActive = lens.id === activeLens;
         const label = PRESET_LABELS[lens.id] ?? lens.label;
         return (

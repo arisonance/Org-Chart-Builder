@@ -285,8 +285,11 @@ function Component({ data }: { data: HierarchyNodeData }) {
                       {primaryContextBadge}
                     </span>
                   ) : null}
-                  {/* Show highlight tokens only at full zoom */}
-                  {lodLevel === 'full' && highlightTokens.map((token) => (
+                  {/* Highlight tokens, minus any that repeat the context badge
+                      (cards read "ENTERPRISE ENTERPRISE" in channel views) */}
+                  {lodLevel === 'full' && highlightTokens
+                    .filter((token) => token.toLowerCase() !== (primaryContextBadge ?? "").toLowerCase())
+                    .map((token) => (
                     <span key={token} className={`${BADGE_BASE_CLASS} border-transparent bg-sky-100 text-sky-700`}>
                       {token}
                     </span>

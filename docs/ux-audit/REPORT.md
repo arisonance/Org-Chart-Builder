@@ -266,3 +266,25 @@ continue off-frame, and Groups chips + minimap cover the rest.
 Verified: channel first frame 18% → 44% (Residential channel with Jason
 Sloan + Tyler Kungl org readable), department 28% → 77% (Pat McGaughan over
 the Finance lane, fully readable).
+
+## Iteration 6d — F4 + F7 + F8 polish batch (2026-07-02)
+
+- **F7 truncation:** group/pod cards lead with their distinguishing name
+  ("Design Services" bold, "Dealer Services" as the kicker — was five
+  identical "Dealer Services" titles); the squeezed "N…"/"HO…" chip fragments
+  are gone (one "Serves X" chip that fits; truth note + home lane moved to
+  the hover title). Person cards no longer stack "ENTERPRISE ENTERPRISE"
+  (highlight tokens dedupe against the context badge).
+- **F8 false alarm:** "No people in view" no longer fires next to a screen of
+  group cards — the rendered-content check counts shared-service and area
+  cards, and the rescue is suppressed in the shared-services context.
+- **F4:** the parked Business Grid tab (and its "5" shortcut) is hidden in
+  explore mode; edit/publish modes keep it. Explore users stranded on the
+  grid lens are moved to the senior view.
+- **Bonus pre-existing bug:** opening Shared services from the home view
+  stacked both contexts (two bars, stray org card) — openSharedServices now
+  clears org-view state like every other view opener.
+
+Verified in-browser: explore tabs = Brand/Channel/Department; shared services
+opens clean with distinct titles and no alarm; Enterprise cards single-chip;
+brand view 55% with readable pod names.

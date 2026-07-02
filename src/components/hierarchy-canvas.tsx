@@ -2137,6 +2137,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       .filter((u) => u.def.type === "shared-service")
       .flatMap((u) => u.members.map((m) => m.id));
     if (ids.length === 0) return;
+    // Leave any org view cleanly — without this, opening Shared services
+    // from the home view stacked both contexts (two bars, stray org cards).
+    setTeamRootId(null);
+    setTeamReturnLens(null);
+    setTeamLayoutDraft(null);
+    clearSelection();
     claimViewFraming();
     setLensStore("hierarchy");
     setTimeout(() => {
@@ -2163,7 +2169,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
       }, 240);
     }, 160);
-  }, [claimViewFraming, orgUnits, setLensStore, setLensFilters]);
+  }, [claimViewFraming, clearSelection, orgUnits, setLensStore, setLensFilters]);
   const openSharedServicesDefault = useCallback(() => {
     openSharedServices();
   }, [openSharedServices]);
@@ -4131,7 +4137,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!wrapper) return true;
     const wrapperRect = wrapper.getBoundingClientRect();
     if (wrapperRect.width <= 0 || wrapperRect.height <= 0) return true;
-    return renderedPersonIdsInView().size > 0;
+    if (renderedPersonIdsInView().size > 0) return true;
+    // Group cards (shared-service pods) are content too — the rescue pill
+    // used to announce "No people in view" beside a screen full of them.
+    const inset = 48;
+    return Array.from(
+      wrapper.querySelectorAll<HTMLElement>(
+        ".react-flow__node-sharedServiceGroupNode, .react-flow__node-areaCardNode",
+      ),
+    ).some((element) => {
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.right >= wrapperRect.left + inset &&
+        rect.left <= wrapperRect.right - inset &&
+        rect.bottom >= wrapperRect.top + inset &&
+        rect.top <= wrapperRect.bottom - inset
+      );
+    });
   }, [renderedPersonIdsInView]);
 
   const verifyOrientationTarget = useCallback(
@@ -4289,6 +4311,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         setViewportRescueVisible(false);
         return false;
       }
+      // Shared services renders group cards, not person cards — the person
+      // check fired a false "No people in view" next to a screen full of them.
+      if (viewContext?.kind === "shared-services") {
+        setViewportRescueVisible(false);
+        return false;
+      }
       if (visiblePositionCount === 0) {
         setViewportRescueVisible(false);
         return false;
@@ -4307,7 +4335,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setViewportRescueVisible(isLost);
       return isLost;
     },
-    [visiblePositionCount, viewportShowsRenderedPerson, lens],
+    [visiblePositionCount, viewportShowsRenderedPerson, lens, viewContext?.kind],
   );
 
   const lensMotionCue = useMemo(() => {

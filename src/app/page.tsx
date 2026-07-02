@@ -81,6 +81,14 @@ export default function Home() {
     }
   }, [activeOperatingViewId, requestOperatingView]);
 
+  // The Grid tab is hidden in explore mode; don't leave viewers stranded on
+  // a lens they can no longer see or re-select.
+  useEffect(() => {
+    if (!canEdit && lens === 'matrix') {
+      setLens('hierarchy');
+    }
+  }, [canEdit, lens, setLens]);
+
   useEffect(() => {
     return () => {
       if (lensChangeTimerRef.current) {
@@ -111,14 +119,15 @@ export default function Home() {
       } else if (e.key === '4' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setLens('department');
-      } else if (e.key === '5' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+      } else if (e.key === '5' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && canEdit) {
+        // Grid is parked and hidden in explore mode; shortcut follows the tab.
         e.preventDefault();
         setLens('matrix');
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [setLens]);
+  }, [setLens, canEdit]);
 
   useEffect(() => {
     if (isCanvasFullScreen) {
@@ -218,7 +227,7 @@ export default function Home() {
             >
               Senior team
             </button>
-            <LensSwitcher activeLens={lens} onChange={handleLensChange} />
+            <LensSwitcher activeLens={lens} onChange={handleLensChange} hideGrid={!canEdit} />
             <PublishedViewSwitcher />
             <WorkspaceModeSwitcher />
           </nav>
