@@ -214,6 +214,7 @@ type FormationLayerSpec = {
   position: { x: number; y: number };
   size: { width: number; height: number };
   count: number;
+  detail?: string;
 };
 
 type ResidentialFormationSpec = {
@@ -224,9 +225,26 @@ type ResidentialFormationSpec = {
   frameIds: string[];
 };
 
+type BrandLeaderSpec = {
+  personId: string;
+  roleLabel: string;
+  badge: string;
+  position: { x: number; y: number };
+};
+
+type BrandConnectionSpec = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  kind: "manager" | "support";
+  label: string;
+};
+
 type BrandCoverageSpec = {
   pods: FormationPodSpec[];
   layers: FormationLayerSpec[];
+  leaders: BrandLeaderSpec[];
+  connections: BrandConnectionSpec[];
 };
 
 type AreaCardAction =
@@ -1178,7 +1196,7 @@ const buildBrandCoverageSpec = (
       tier: "direct",
       memberIds: [...departments(["iPort Enterprise Sales"]), "person-chris-lawson"],
       leadId: "person-chris-lawson",
-      position: { x: 48, y: 78 },
+      position: { x: 48, y: 430 },
       accentColor: BRAND_COLORS.iPort,
       homeLane: "iPort",
       targetLane: "iPort",
@@ -1190,7 +1208,7 @@ const buildBrandCoverageSpec = (
       tier: "direct",
       memberIds: departments(["R&D iPort Engineering"]),
       leadId: "person-alex-birch",
-      position: { x: 336, y: 78 },
+      position: { x: 336, y: 430 },
       accentColor: BRAND_COLORS.iPort,
       homeLane: "iPort",
       targetLane: "iPort",
@@ -1202,7 +1220,7 @@ const buildBrandCoverageSpec = (
       tier: "direct",
       memberIds: departments(["iPort Enterprise Marketing"]),
       leadId: "person-debbie-michelle",
-      position: { x: 624, y: 78 },
+      position: { x: 624, y: 430 },
       accentColor: BRAND_COLORS.iPort,
       homeLane: "iPort",
       targetLane: "iPort",
@@ -1214,7 +1232,7 @@ const buildBrandCoverageSpec = (
       tier: "facility",
       memberIds: unitIds("unit-minden-production"),
       leadId: "person-alberto-gomez",
-      position: { x: 1010, y: 78 },
+      position: { x: 1010, y: 430 },
       accentColor: BRAND_COLORS.James,
       homeLane: "James",
       targetLane: "James",
@@ -1235,7 +1253,7 @@ const buildBrandCoverageSpec = (
         personById,
       ),
       leadId: "person-jason-sloan",
-      position: { x: 48, y: 438 },
+      position: { x: 48, y: 756 },
       accentColor: "#7c3aed",
       homeLane: "Sales",
       targetLane: "Sonance / all brands",
@@ -1247,7 +1265,7 @@ const buildBrandCoverageSpec = (
       tier: "shared",
       memberIds: departments(["Global Commercial Sales", "National Accounts"]),
       leadId: "person-michael-bridwell",
-      position: { x: 336, y: 438 },
+      position: { x: 336, y: 756 },
       accentColor: "#0d9488",
       homeLane: "Sales",
       targetLane: "Sonance / all brands",
@@ -1264,7 +1282,7 @@ const buildBrandCoverageSpec = (
         "R&D Speaker Engineering",
       ]),
       leadId: "person-mike-paganini",
-      position: { x: 624, y: 438 },
+      position: { x: 624, y: 756 },
       accentColor: "#2563eb",
       homeLane: "Product & engineering",
       targetLane: "Sonance / all brands",
@@ -1279,7 +1297,7 @@ const buildBrandCoverageSpec = (
         personById,
       ),
       leadId: "person-christian-serge-nelson",
-      position: { x: 912, y: 438 },
+      position: { x: 912, y: 756 },
       accentColor: "#8b5cf6",
       homeLane: "Marketing",
       targetLane: "Sonance / all brands",
@@ -1291,7 +1309,7 @@ const buildBrandCoverageSpec = (
       tier: "shared",
       memberIds: unitIds("unit-dealer-services"),
       leadId: "person-brad-thiess",
-      position: { x: 1200, y: 438 },
+      position: { x: 1200, y: 756 },
       accentColor: "#14b8a6",
       homeLane: "Dealer Services",
       targetLane: "Sonance / all brands",
@@ -1303,7 +1321,7 @@ const buildBrandCoverageSpec = (
       tier: "enterprise",
       memberIds: unitIds("unit-finance"),
       leadId: "person-mike-neves",
-      position: { x: 48, y: 816 },
+      position: { x: 48, y: 1134 },
       accentColor: "#475569",
       homeLane: "Finance",
       targetLane: "all brands",
@@ -1315,7 +1333,7 @@ const buildBrandCoverageSpec = (
       tier: "enterprise",
       memberIds: unitIds("unit-administration"),
       leadId: "person-grace-dryer",
-      position: { x: 336, y: 816 },
+      position: { x: 336, y: 1134 },
       accentColor: "#db2777",
       homeLane: "Administration",
       targetLane: "all brands",
@@ -1327,7 +1345,7 @@ const buildBrandCoverageSpec = (
       tier: "enterprise",
       memberIds: unitIds("unit-it"),
       leadId: "person-mark-litz",
-      position: { x: 624, y: 816 },
+      position: { x: 624, y: 1134 },
       accentColor: "#0369a1",
       homeLane: "IT",
       targetLane: "all brands",
@@ -1339,7 +1357,7 @@ const buildBrandCoverageSpec = (
       tier: "facility",
       memberIds: unitIds("unit-fontana-warehouse"),
       leadId: "person-fred-salehi",
-      position: { x: 912, y: 816 },
+      position: { x: 912, y: 1134 },
       accentColor: "#10b981",
       homeLane: "Ops FNT",
       targetLane: "all brands",
@@ -1347,53 +1365,98 @@ const buildBrandCoverageSpec = (
     addPod({
       id: "brand-minden-operations",
       label: "Minden Operations",
-      service: "Shared Services Foundation",
+      service: "James Dedicated",
       tier: "facility",
       memberIds: unitIds("unit-minden-operations"),
       leadId: "person-joe-timpone",
-      position: { x: 1200, y: 816 },
-      accentColor: "#0f766e",
-      homeLane: "Ops MND",
-      targetLane: "all brands",
+      position: { x: 1300, y: 430 },
+      accentColor: BRAND_COLORS.James,
+      homeLane: "James",
+      targetLane: "James",
     }),
   ].filter((pod): pod is FormationPodSpec => Boolean(pod));
 
   const layers: FormationLayerSpec[] = [
     {
       id: "brand-iport-dedicated",
-      label: "iPort Dedicated",
+      label: "iPort — Chris Lawson, Acting GM",
       color: BRAND_COLORS.iPort,
       position: { x: 0, y: 20 },
-      size: { width: 928, height: 270 },
+      size: { width: 928, height: 640 },
       count: pods.filter((pod) => pod.id.startsWith("brand-iport")).length,
+      detail: "Run as its own business: Rob Roland and Mike Paganini co-manage, Chris Lawson leads day to day",
     },
     {
       id: "brand-james-dedicated",
-      label: "James Dedicated",
+      label: "James",
       color: BRAND_COLORS.James,
       position: { x: 962, y: 20 },
-      size: { width: 342, height: 270 },
-      count: pods.filter((pod) => pod.id.startsWith("brand-james")).length,
+      size: { width: 660, height: 640 },
+      count: pods.filter((pod) => pod.service === "James Dedicated").length,
+      detail: "No separate GM — run from Sonance leadership; diverges at Minden production and operations",
     },
     {
       id: "brand-all-support",
       label: "Sonance / All Brands Support",
       color: BRAND_COLORS["All Brands"],
-      position: { x: 0, y: 382 },
-      size: { width: 1504, height: 280 },
+      position: { x: 0, y: 700 },
+      size: { width: 1622, height: 280 },
       count: pods.filter((pod) => pod.service === "Sonance / All Brands Support").length,
     },
     {
       id: "brand-shared-foundation",
       label: "Shared Services Foundation",
       color: "#64748b",
-      position: { x: 0, y: 760 },
-      size: { width: 1504, height: 280 },
+      position: { x: 0, y: 1078 },
+      size: { width: 1622, height: 280 },
       count: pods.filter((pod) => pod.service === "Shared Services Foundation").length,
     },
   ];
 
-  return { pods, layers };
+  // The iPort leadership story (agreed with Ari): Chris Lawson runs iPort as
+  // acting GM, reporting on paper to Mike Paganini, with Rob Roland
+  // co-managing the business alongside him.
+  const leaders: BrandLeaderSpec[] = [
+    {
+      personId: "person-mike-paganini",
+      roleLabel: "Co-manages iPort",
+      badge: "iPort leadership",
+      position: { x: 120, y: 90 },
+    },
+    {
+      personId: "person-rob-roland",
+      roleLabel: "Co-manages iPort",
+      badge: "iPort leadership",
+      position: { x: 540, y: 90 },
+    },
+    {
+      personId: "person-chris-lawson",
+      roleLabel: "Acting GM, iPort",
+      badge: "Acting general manager",
+      position: { x: 330, y: 268 },
+    },
+  ].filter((leader) => personById.has(leader.personId));
+
+  const connections: BrandConnectionSpec[] = [
+    {
+      id: "iport-gm-reports-to-mike",
+      sourceId: "person-mike-paganini",
+      targetId: "person-chris-lawson",
+      kind: "manager" as const,
+      label: "Chris Lawson reports to Mike Paganini",
+    },
+    {
+      id: "iport-rob-co-manages",
+      sourceId: "person-rob-roland",
+      targetId: "person-chris-lawson",
+      kind: "support" as const,
+      label: "Rob Roland co-manages the iPort business",
+    },
+  ].filter(
+    (conn) => personById.has(conn.sourceId) && personById.has(conn.targetId),
+  );
+
+  return { pods, layers, leaders, connections };
 };
 
 const formationPodBadge = (tier: FormationPodTier) => {
@@ -4575,6 +4638,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           label: layer.label,
           color: layer.color,
           count: layer.count,
+          detail: layer.detail,
         };
         return {
           id: `${BRAND_COVERAGE_NODE_PREFIX}layer:${layer.id}`,
@@ -4627,7 +4691,34 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           ariaLabel: `${pod.label} ${data.badgeLabel}`,
         };
       });
-      return [...layerNodes, ...podNodes];
+      // Brand leadership: real people, really positioned — the iPort GM story
+      const leaderNodes: Node[] = brandCoverageSpec.leaders.flatMap((leader) => {
+        const person = personById.get(leader.personId);
+        if (!person) return [];
+        const data: MirrorNodeData = {
+          node: person,
+          accentColor: BRAND_COLORS.iPort,
+          homeLane: "iPort",
+          targetLane: "iPort",
+          roleLabel: leader.roleLabel,
+          badge: leader.badge,
+          variant: "context",
+          onSelect: (id) => useGraphStore.getState().selectNode(id, false),
+        };
+        return [
+          {
+            id: `${BRAND_COVERAGE_NODE_PREFIX}leader:${leader.personId}`,
+            type: "mirrorNode",
+            position: leader.position,
+            data,
+            draggable: false,
+            selectable: false,
+            focusable: false,
+            zIndex: 5,
+          },
+        ];
+      });
+      return [...layerNodes, ...leaderNodes, ...podNodes];
     }
 
     // Roll up facilities / shared services into single cards in cross-cutting views,
@@ -5394,7 +5485,34 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const edges = useMemo<Edge[]>(() => {
     const activeTokens = filters?.activeTokens ?? [];
     const focusIds = filters?.focusIds ?? [];
-    if (showBrandCoverageFormation) return [];
+    if (showBrandCoverageFormation) {
+      // Only the leadership lines render here: solid = paper reporting,
+      // dashed = co-management support. Everything else is grouped by cards.
+      return brandCoverageSpec.connections.map((conn) => {
+        const isReporting = conn.kind === "manager";
+        const marker = markerByType[conn.kind] ?? markerByType.manager;
+        return {
+          id: `${BRAND_COVERAGE_NODE_PREFIX}conn:${conn.id}`,
+          source: `${BRAND_COVERAGE_NODE_PREFIX}leader:${conn.sourceId}`,
+          target: `${BRAND_COVERAGE_NODE_PREFIX}leader:${conn.targetId}`,
+          type: isReporting ? "manager" : "support",
+          data: {
+            metadata: { type: conn.kind },
+            relationshipLabel: conn.label,
+            showLabel: false,
+          },
+          markerEnd: isReporting
+            ? {
+                type: MarkerType.ArrowClosed,
+                width: marker.width,
+                height: marker.height,
+                color: marker.color,
+              }
+            : undefined,
+          zIndex: 6,
+        } as Edge;
+      });
+    }
     if (viewContext?.kind === "shared-services") return [];
     const isResidentialFormationView =
       viewContext?.kind === "operating-view" &&
@@ -5727,6 +5845,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     filters?.focusIds,
     truthAuditVisible,
     showBrandCoverageFormation,
+    brandCoverageSpec,
   ]);
 
   // Handle node drag stop - persist positions (the whole dragged selection),

@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from "react";
+import { Handle, Position } from "@xyflow/react";
 import type { PersonNode } from "@/lib/schema/types";
 
 export type MirrorNodeData = {
@@ -11,11 +12,15 @@ export type MirrorNodeData = {
   roleLabel?: string;
   targetLane?: string;
   variant?: "mirror" | "context";
+  /** Chip text above the name (defaults to "Operating context") */
+  badge?: string;
 };
 
 function Component({ data }: { data: MirrorNodeData }) {
-  const { node, accentColor, homeLane, onSelect, roleLabel, targetLane, variant = "mirror" } = data;
+  const { node, accentColor, homeLane, onSelect, roleLabel, targetLane, variant = "mirror", badge } = data;
   const isContext = variant === "context";
+  // Invisible anchors so brand-leadership lines can attach to these cards
+  const hiddenHandle = "!h-1 !w-1 !min-h-0 !min-w-0 !border-0 !bg-transparent pointer-events-none opacity-0";
   return (
     <button
       type="button"
@@ -41,7 +46,7 @@ function Component({ data }: { data: MirrorNodeData }) {
           className="mb-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm"
           style={{ background: accentColor }}
         >
-          Operating context
+          {badge ?? "Operating context"}
         </span>
       )}
       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{node.name}</p>
@@ -52,6 +57,8 @@ function Component({ data }: { data: MirrorNodeData }) {
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: accentColor }} />
         {isContext ? roleLabel ?? "not reporting" : `home: ${homeLane}`}
       </span>
+      <Handle type="target" position={Position.Top} id={`${node.id}-top`} className={hiddenHandle} />
+      <Handle type="source" position={Position.Bottom} id={`${node.id}-bottom`} className={hiddenHandle} />
     </button>
   );
 }

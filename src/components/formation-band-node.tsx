@@ -6,10 +6,12 @@ export type FormationBandNodeData = {
   label: string;
   count: number;
   color: string;
+  /** Small explanatory line under the band title */
+  detail?: string;
 };
 
 function Component({ data }: { data: FormationBandNodeData }) {
-  const { label, count, color } = data;
+  const { label, count, color, detail } = data;
 
   return (
     <div
@@ -25,6 +27,11 @@ function Component({ data }: { data: FormationBandNodeData }) {
           {count}
         </span>
       </div>
+      {detail && (
+        <p className="px-4 pb-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+          {detail}
+        </p>
+      )}
     </div>
   );
 }
