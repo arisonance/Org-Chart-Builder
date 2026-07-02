@@ -210,3 +210,31 @@ Screenshots: `.ux-audit/default-frame/before-1600.png` → `final-1600.png`.
 **Spotted for next changes:** wide-team drill-ins (e.g. Jason Sloan's 36
 people) fit at 22% clamped-and-cropped — needs row wrapping for wide sibling
 sets; drill-in owner frames overlap neighboring groups' cards.
+
+## Iteration 6 — F1 + F2: big orgs readable at every step (2026-07-02)
+
+**F2 (wide-team drill-ins, was 22% cropped):**
+- `calculateTeamTreeLayout` wraps all-leaf child sets (>4) into a grid around
+  a central card-free aisle; per-row edge buses run in the gaps between rows
+  (layout emits `busYByTargetId`, threaded into edge routing).
+- Rows pack by their own height, children sorted short-to-tall so sidecar
+  cards share the bottom row.
+- Full subtree draws only when it stays readable (≤16 descendants). Bigger
+  orgs show root + direct reports with a "+N people ▸" chip that drills one
+  level deeper — every step of a walkthrough stays legible.
+- Verified: Rob Roland 22% → 95%, Jason Sloan 22% → 62%, Rob → Mike → Josh
+  chain lands at 95% each step.
+
+**F9 (fixed early, it was inflating F2's frames):** sidecar space is reserved
+only for areas that actually render as cards — areas with 2+ people in the
+tree render as background frames instead.
+
+**F1 (Enterprise official view opened nearly blank):** the fit framed
+`memberIds` including the ancestor context chain, which sits lanes away in
+the channel layout — the zoom clamp then cropped to empty middle. Channel
+official views now frame the members themselves; ancestors stay visible as
+context. Verified: Enterprise opens on Debbie Michelle's team at 66%, all 10
+in-lane cards on screen (was 4 stray cards at the right edge).
+
+**Noted:** cards in channel views show duplicated "ENTERPRISE ENTERPRISE"
+chips → polish batch.

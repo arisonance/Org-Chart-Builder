@@ -84,6 +84,7 @@ import {
   NODE_WIDTH,
   NODE_HEIGHT,
   type LensDimension,
+  type TeamTreeLayoutMeta,
 } from "@/lib/graph/layout";
 import { buildManagerRoute } from "@/lib/graph/edge-routing";
 import { GridColNode, GridRowNode, GridCellNode, GridGroupNode } from "@/components/grid-frame-node";
@@ -479,6 +480,8 @@ const buildTeamTreeNodeHeights = (
     return heights;
   }
   // Drill-in team views: area cards hang as a sidecar row below their anchor.
+  // Areas with 2+ of their people in the tree render as a background frame
+  // instead — reserving card space for those bloats the tree (F9).
   areaCardSpecs.forEach((area) => {
     const anchorId =
       area.rootId && visibleIds.has(area.rootId)
@@ -487,6 +490,12 @@ const buildTeamTreeNodeHeights = (
           ? area.ownerId
           : null;
     if (!anchorId) return;
+    const peopleInTree = new Set(
+      [area.rootId, area.ownerId, ...area.memberIds].filter(
+        (id): id is string => Boolean(id && visibleIds.has(id)),
+      ),
+    );
+    if (peopleInTree.size >= 2) return;
     counts.set(anchorId, (counts.get(anchorId) ?? 0) + 1);
   });
   counts.forEach((count, id) => {
@@ -573,7 +582,10 @@ const TEAM_VIEW_LAYOUTS_LEGACY_STORAGE_KEYS = [
 const OPERATING_VIEW_LAYOUTS_STORAGE_KEY = "org-chart-operating-view-layouts-v1";
 const VIEWPORT_DEFAULTS_STORAGE_KEY = "org-chart-view-frame-defaults-v1";
 const LENS_PRESET_TRANSITION_EVENT = "org-chart:lens-preset-transition";
-const TEAM_TREE_FULL_DESCENDANT_LIMIT = 80;
+// Show a full subtree only when it stays readable on a laptop (with leaf-grid
+// wrapping, ~16 people fits at >45% zoom). Bigger orgs show the root + direct
+// reports with "+N people" chips — every step of a walkthrough stays legible.
+const TEAM_TREE_FULL_DESCENDANT_LIMIT = 16;
 const CHANNEL_FIT_MIN_ZOOM = 0.18;
 
 const getLensFitMinZoom = (lens: LensId, width = 1400) => {
@@ -2261,11 +2273,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         visibleIds.has(edge.source) &&
         visibleIds.has(edge.target),
     );
+    const layoutMeta: TeamTreeLayoutMeta = { busYByTargetId: {} };
     const positions = calculateTeamTreeLayout(
       scopedNodes,
       scopedEdges,
       teamRootId,
       buildTeamTreeNodeHeights(teamRootId, visibleIds, areaCardSpecs),
+      layoutMeta,
     );
     return {
       rootId: teamRootId,
@@ -2273,6 +2287,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       directReportIds,
       descendantIds,
       positions,
+      busYByTargetId: layoutMeta.busYByTargetId,
+      // Direct-reports-only preview of an org too big to draw readably;
+      // cards get a "+N people" chip that drills one level deeper.
+      truncated: descendantIds.length > TEAM_TREE_FULL_DESCENDANT_LIMIT,
     };
   }, [teamRootId, childMap, nodesData, edgesData, areaCardSpecs]);
 
@@ -3205,6 +3223,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
         showToast(`Showing ${label}`);
         window.setTimeout(() => {
+          // Frame the team itself. memberIds also carries the ancestor
+          // context chain, which can sit lanes away — including it stretches
+          // the fit until the zoom clamp crops to empty canvas (Enterprise
+          // opened on a blank middle with the team off-screen).
+          const frameIds = members.map((member) => member.id);
           const refit = () =>
             fitVisiblePeopleRef.current({
               padding: 0.14,
@@ -3212,12 +3235,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               minZoom: dimension === "channel" ? 0.5 : 0.34,
               maxZoom: dimension === "channel" ? 0.74 : 1.02,
               reason: "focus",
-              expectedIds: memberIds,
+              expectedIds: frameIds,
             });
           if (
             applySavedViewport(savedViewFrame, {
               duration: 520,
-              expectedIds: memberIds,
+              expectedIds: frameIds,
               fallback: refit,
             })
           ) {
@@ -4849,7 +4872,10 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         hiddenCount: descendantCounts[node.id] ?? 0,
         isCollapsed: isNodeCollapsed,
         onToggleCollapse: lens === "hierarchy" ? toggleCollapse : undefined,
-        hideReportToggle: Boolean(teamTree),
+        // Truncated team views (org too big to draw whole) keep the chip on
+        // direct reports as the "go one level deeper" affordance.
+        hideReportToggle: teamTree ? !(teamTree.truncated && node.id !== teamTree.rootId) : false,
+        drillPreview: Boolean(teamTree?.truncated && node.id !== teamTree.rootId),
         interactionKey: [
           lens,
           teamTree?.rootId ?? "full-org",
@@ -5443,8 +5469,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       segments.forEach((segment) => buses.set(segment.edgeId, busY));
     });
 
+    // Wrapped-grid rows (rows past the first) get their bus from the layout:
+    // it sits in the card-free gap above the row, and the trunk runs down the
+    // grid's central aisle instead of through first-row cards.
+    const gridBuses = teamTree?.busYByTargetId;
+    if (gridBuses) {
+      edgesData.forEach((edge) => {
+        if (edge.metadata.type !== "manager") return;
+        const busY = gridBuses[edge.target];
+        if (busY !== undefined && buses.has(edge.id)) buses.set(edge.id, busY);
+      });
+    }
+
     return buses;
-  }, [computedNodes, edgesData]);
+  }, [computedNodes, edgesData, teamTree?.busYByTargetId]);
 
   const edgeTruthAuditById = useMemo(() => {
     const issues = new Map<string, TruthAuditIssue>();

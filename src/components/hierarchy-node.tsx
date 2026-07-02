@@ -59,6 +59,9 @@ export type HierarchyNodeData = {
   isCollapsed?: boolean;
   onToggleCollapse?: (id: string) => void;
   hideReportToggle?: boolean;
+  // Team preview: chip reads "+N people" and opens this person's org view
+  // (their subtree is not drawn in the current frame).
+  drillPreview?: boolean;
   interactionKey?: string;
   // When set, this node anchors a facility / shared service and renders as a container
   unit?: UnitDef;
@@ -75,7 +78,7 @@ function Component({ data }: { data: HierarchyNodeData }) {
   const {
     node, emphasisLabel, isSelected, highlightTokens, actions, onSelect, readOnly = false, zoom = 1,
     relationshipRole, reportCount = 0, hiddenCount = 0, isCollapsed = false, onToggleCollapse, hideReportToggle = false,
-    unit, portfolioAreas = [],
+    drillPreview = false, unit, portfolioAreas = [],
   } = data;
 
   // Facility / shared-service container: stands in for a whole group of people
@@ -373,12 +376,14 @@ function Component({ data }: { data: HierarchyNodeData }) {
 
           {/* Subtree fold chip, People Finder style. Collapsed unit cards open
               their dedicated team view instead of expanding into a noisy canvas. */}
-          {reportCount > 0 && onToggleCollapse && !hideReportToggle && (
+          {reportCount > 0 && (onToggleCollapse || drillPreview) && !hideReportToggle && (
             <button
               type="button"
               data-testid={`collapse-chip-${node.id}`}
               aria-label={
-                isContainer && unit
+                drillPreview
+                  ? `Open ${node.name}'s org view, ${hiddenCount} people`
+                  : isContainer && unit
                   ? `Open ${unit.label} team view, ${containerCount} people`
                   : isCollapsed
                   ? `Show ${hiddenCount} hidden ${hiddenCount === 1 ? "report" : "reports"}`
@@ -386,11 +391,11 @@ function Component({ data }: { data: HierarchyNodeData }) {
               }
               onClick={(event) => {
                 event.stopPropagation();
-                if (isContainer) {
+                if (isContainer || drillPreview) {
                   actions.openOrg(node.id);
                   return;
                 }
-                onToggleCollapse(node.id);
+                onToggleCollapse?.(node.id);
               }}
               onDoubleClick={(event) => {
                 event.stopPropagation();
@@ -400,12 +405,18 @@ function Component({ data }: { data: HierarchyNodeData }) {
                 "absolute -bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
                 isContainer
                   ? "border-violet-200 bg-white text-violet-700 hover:bg-violet-50 dark:border-violet-200 dark:bg-white dark:text-violet-700"
-                  : isCollapsed
+                  : drillPreview || isCollapsed
                   ? "border-sky-300 bg-sky-500 text-white hover:bg-sky-600"
                   : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
               ].join(" ")}
             >
-              {isContainer ? `${containerCount} people ▸` : isCollapsed ? `+${hiddenCount} ▸` : `${reportCount} ⌄`}
+              {drillPreview
+                ? `${hiddenCount} people ▸`
+                : isContainer
+                ? `${containerCount} people ▸`
+                : isCollapsed
+                ? `+${hiddenCount} ▸`
+                : `${reportCount} ⌄`}
             </button>
           )}
         </div>
@@ -559,6 +570,7 @@ function arePropsEqual(prevProps: { data: HierarchyNodeData }, nextProps: { data
     prev.reportCount !== next.reportCount ||
     prev.hiddenCount !== next.hiddenCount ||
     prev.hideReportToggle !== next.hideReportToggle ||
+    prev.drillPreview !== next.drillPreview ||
     prev.interactionKey !== next.interactionKey ||
     prev.readOnly !== next.readOnly ||
     prev.relationshipRole?.label !== next.relationshipRole?.label ||

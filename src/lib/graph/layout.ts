@@ -106,12 +106,34 @@ export const calculateLayout = (
 
 const TEAM_TREE_GAP_X = 44;
 const TEAM_TREE_GAP_Y = 96;
+// Wide all-leaf teams wrap into a grid so big orgs grow taller, not wider.
+// A central aisle under the parent keeps a card-free channel for the edge
+// trunk; per-row buses route along the card-free gaps between rows.
+const TEAM_TREE_GRID_MAX_COLS = 4;
+const TEAM_TREE_GRID_AISLE = 88;
+const TEAM_TREE_GRID_ROW_GAP = 64;
+
+type TeamTreeGrid = {
+  cols: number;
+  leftCols: number;
+  // Children ordered short-to-tall so rows pack tight (tall cards with area
+  // sidecars share the bottom row instead of inflating every row).
+  orderedIds: string[];
+  rowHeights: number[];
+};
 
 type TeamTreeSize = {
   width: number;
   height: number;
   rootCenterOffset: number;
   childRow: { ids: string[]; width: number; height: number } | null;
+  grid?: TeamTreeGrid;
+};
+
+export type TeamTreeLayoutMeta = {
+  // Bus Y per wrapped-grid child (rows past the first): the horizontal edge
+  // segment runs here, inside the card-free gap above the child's row.
+  busYByTargetId: Record<string, number>;
 };
 
 export const calculateTeamTreeLayout = (
@@ -122,6 +144,8 @@ export const calculateTeamTreeLayout = (
   // sit just below each parent's actual bottom instead of a worst-case pitch,
   // so trees frame compactly and fit at a readable zoom.
   nodeHeights?: Record<string, number>,
+  // Collects routing hints (per-row edge buses for wrapped grids).
+  meta?: TeamTreeLayoutMeta,
 ): Record<string, { x: number; y: number }> => {
   const personIds = new Set(
     nodes.filter((node) => node.kind === "person").map((node) => node.id),
@@ -155,6 +179,44 @@ export const calculateTeamTreeLayout = (
         height: heightOf(id),
         rootCenterOffset: NODE_WIDTH / 2,
         childRow: null,
+      };
+      return sizes[id];
+    }
+
+    // Wide all-leaf teams: wrap into a grid (rows of up to 4) around a
+    // central aisle so a 46-person org fits a screen instead of a hallway.
+    const allLeaves = children.every((childId) => (childrenById[childId] ?? []).length === 0);
+    if (allLeaves && children.length > TEAM_TREE_GRID_MAX_COLS) {
+      const rows = Math.ceil(children.length / TEAM_TREE_GRID_MAX_COLS);
+      const cols = Math.ceil(children.length / rows);
+      const leftCols = Math.ceil(cols / 2);
+      const orderedIds = [...children].sort((a, b) => heightOf(a) - heightOf(b));
+      const rowHeights = Array.from({ length: rows }, (_, row) =>
+        Math.max(
+          ...orderedIds
+            .slice(row * cols, (row + 1) * cols)
+            .map((childId) => heightOf(childId)),
+        ),
+      );
+      const leftBlockWidth = leftCols * NODE_WIDTH + (leftCols - 1) * TEAM_TREE_GAP_X;
+      const rightCols = cols - leftCols;
+      const rightBlockWidth =
+        rightCols > 0 ? rightCols * NODE_WIDTH + (rightCols - 1) * TEAM_TREE_GAP_X : 0;
+      const gridWidth =
+        leftBlockWidth + (rightCols > 0 ? TEAM_TREE_GRID_AISLE + rightBlockWidth : 0);
+      const gridHeight =
+        rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0) +
+        (rows - 1) * TEAM_TREE_GRID_ROW_GAP;
+      const width = Math.max(NODE_WIDTH, gridWidth);
+      sizes[id] = {
+        width,
+        height: heightOf(id) + TEAM_TREE_GAP_Y + gridHeight,
+        rootCenterOffset:
+          rightCols > 0
+            ? (width - gridWidth) / 2 + leftBlockWidth + TEAM_TREE_GRID_AISLE / 2
+            : width / 2,
+        childRow: { ids: orderedIds, width: gridWidth, height: gridHeight },
+        grid: { cols, leftCols, orderedIds, rowHeights },
       };
       return sizes[id];
     }
@@ -202,6 +264,35 @@ export const calculateTeamTreeLayout = (
     };
     if (!size.childRow) return;
     const rowTop = top + heightOf(id) + TEAM_TREE_GAP_Y;
+    if (size.grid) {
+      const { cols, leftCols, orderedIds, rowHeights } = size.grid;
+      const gridLeft = left + (size.width - size.childRow.width) / 2;
+      const leftBlockWidth = leftCols * NODE_WIDTH + (leftCols - 1) * TEAM_TREE_GAP_X;
+      orderedIds.forEach((childId, index) => {
+        if (seen.has(childId) || !personIds.has(childId)) return;
+        seen.add(childId);
+        const row = Math.floor(index / cols);
+        const col = index % cols;
+        const x =
+          col < leftCols
+            ? gridLeft + col * (NODE_WIDTH + TEAM_TREE_GAP_X)
+            : gridLeft +
+              leftBlockWidth +
+              TEAM_TREE_GRID_AISLE +
+              (col - leftCols) * (NODE_WIDTH + TEAM_TREE_GAP_X);
+        const y =
+          rowTop +
+          rowHeights.slice(0, row).reduce((sum, rowHeight) => sum + rowHeight, 0) +
+          row * TEAM_TREE_GRID_ROW_GAP;
+        positions[childId] = { x, y };
+        // Rows past the first get a bus in the card-free gap just above
+        // their row; the trunk from the parent runs down the aisle.
+        if (row > 0 && meta) {
+          meta.busYByTargetId[childId] = y - TEAM_TREE_GRID_ROW_GAP / 2;
+        }
+      });
+      return;
+    }
     let childLeft = left + (size.width - size.childRow.width) / 2;
     size.childRow.ids.forEach((childId) => {
       const childSize = sizes[childId] ?? measure(childId);
