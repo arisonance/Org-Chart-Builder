@@ -105,6 +105,7 @@ type GraphStoreActions = {
   }) => void;
   requestOperatingView: (viewId: string) => void;
   clearOperatingView: () => void;
+  markOperatingViewActive: (viewId: string | null) => void;
   addPerson: (payload: AddPersonPayload) => string;
   updatePerson: (nodeId: string, updates: Partial<GraphNode>, options?: UpdatePersonOptions) => void;
   applyToPeople: (nodeIds: string[], patch: (attrs: PersonAttributes) => Partial<PersonAttributes>) => void;
@@ -687,6 +688,12 @@ export const useGraphStore = create<GraphStore>()(
       },
       clearOperatingView: () => {
         set({ activeOperatingViewId: null, operatingViewRequest: null });
+      },
+      // Sync the "which official view am I in" indicator without re-firing a
+      // view request — for navigations that land in (or leave) a view by some
+      // other path (area chips, drill-ins, lens tabs).
+      markOperatingViewActive: (viewId) => {
+        set({ activeOperatingViewId: viewId });
       },
       addPerson: (payload) => {
         const id = `person-${nanoid(10)}`;

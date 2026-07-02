@@ -205,7 +205,15 @@ export default function Home() {
             <button
               type="button"
               onClick={goToSeniorTeam}
-              className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+              aria-current={activeOperatingViewId === DEFAULT_OPERATING_VIEW_ID ? "page" : undefined}
+              className={[
+                "inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300",
+                // Dark only when the home view is actually on screen — this is
+                // a state indicator, not a permanently pressed button.
+                activeOperatingViewId === DEFAULT_OPERATING_VIEW_ID
+                  ? "bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+              ].join(" ")}
               title="Return to the Senior Leadership Team home view"
             >
               Senior team

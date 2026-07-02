@@ -1838,6 +1838,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const groupFocusRequest = useGraphStore((state) => state.groupFocusRequest);
   const operatingViewRequest = useGraphStore((state) => state.operatingViewRequest);
   const activeOperatingViewId = useGraphStore((state) => state.activeOperatingViewId);
+  const markOperatingViewActive = useGraphStore((state) => state.markOperatingViewActive);
   const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
   const [collapsedChannelGroups, setCollapsedChannelGroups] = useState<Set<string>>(new Set());
   const [viewContext, setViewContext] = useState<ViewContext | null>(null);
@@ -2707,10 +2708,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       clearSelection();
       expandAll();
       setTeamRootId(nodeId);
+      // Keep the official-view indicator honest: the executive root IS the
+      // Senior Leadership home view; any other org view means we left it.
+      markOperatingViewActive(
+        nodeId === EXECUTIVE_ROOT_ID ? DEFAULT_OPERATING_VIEW_ID : null,
+      );
       const name = personNameById.get(nodeId) ?? "Selected person";
       showToast(context?.kind === "unit" ? `Opened ${context.label} team view` : `Opened ${name}'s org view`);
     },
-    [lens, setLensStore, setLensFilters, clearSelection, expandAll, personNameById, showToast],
+    [lens, setLensStore, setLensFilters, clearSelection, expandAll, personNameById, showToast, markOperatingViewActive],
   );
 
   const selectPersonFromCard = useCallback(
@@ -3131,6 +3137,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setTeamRootId(null);
       setTeamReturnLens(null);
       clearSelection();
+      markOperatingViewActive(null);
       setViewContext({ kind: "lens-group", label: key, count: members.length });
       setLensFilters(lens, {
         focusIds: members.map((member) => member.id),
@@ -3149,7 +3156,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
       }, 180);
     },
-    [clearSelection, lens, personNodes, setLensFilters, showToast],
+    [clearSelection, lens, personNodes, setLensFilters, showToast, markOperatingViewActive],
   );
 
   const openOperatingView = useCallback(
@@ -3197,6 +3204,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       setTeamReturnLens(null);
       setOperatingViewFrameDraft(null);
       clearSelection();
+      markOperatingViewActive(options.viewId ?? null);
       // Collapsed subtrees would hide this view's own members (Enterprise
       // opened blank: its team sits under a default-collapsed branch). The
       // focus filter below already narrows rendering to the view.
@@ -3255,6 +3263,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       claimViewFraming,
       clearSelection,
       expandAll,
+      markOperatingViewActive,
       operatingViewLayouts,
       parentMap,
       personNameById,
@@ -3270,6 +3279,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (view: Extract<PublishedOperatingView, { kind: "formation" }>) => {
       const focusIds = [...residentialFormationSpec.peopleIds];
       if (focusIds.length === 0) return;
+      markOperatingViewActive(view.id);
       const existingLayout = operatingViewLayouts[view.id];
       const savedViewFrame =
         workspaceMode === "explore"
@@ -3351,6 +3361,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       claimViewFraming,
       clearSelection,
       framePositionMap,
+      markOperatingViewActive,
       operatingViewLayouts,
       residentialFormationSpec,
       setLensFilters,
@@ -3361,6 +3372,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
   const openPublishedOperatingView = useCallback(
     (view: PublishedOperatingView) => {
+      markOperatingViewActive(view.id);
       if (view.kind === "overview") {
         resetView();
         window.setTimeout(() => showOrientationOverview({
@@ -3393,7 +3405,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         publishedAt: view.publishedAt,
       }, { scope: "primary-team", viewId: view.id });
     },
-    [openOperatingView, openResidentialFormation, openSharedServices, resetView, showOrientationOverview],
+    [markOperatingViewActive, openOperatingView, openResidentialFormation, openSharedServices, resetView, showOrientationOverview],
   );
 
   const openAreaCard = useCallback(
@@ -3595,8 +3607,9 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     const actions: OrientationAction[] = [
       {
         id: "overview",
+        // Plain tone: this is a "go there" action, not an active-state chip —
+        // dark styling made it read as the current view next to the lens tabs.
         label: "Senior team",
-        tone: "dark",
         onClick: () => showOrientationOverview(undefined, { forceTop: true }),
       },
     ];
@@ -6816,6 +6829,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           {personNodes.length > 0 && (
             <CanvasContextBar
               onResetView={resetView}
+              onGoHome={openSeniorLeadershipHome}
               onOpenTeamTree={openTeamTree}
               teamTreeRootId={teamRootId}
               onExitTeamTree={closeTeamTree}

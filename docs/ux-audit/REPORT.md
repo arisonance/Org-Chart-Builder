@@ -238,3 +238,20 @@ in-lane cards on screen (was 4 stray cards at the right edge).
 
 **Noted:** cards in channel views show duplicated "ENTERPRISE ENTERPRISE"
 chips → polish batch.
+
+## Iteration 6b — F5 + F6: navigation tells one truth (2026-07-02)
+
+- The "Senior team" header pill is now a state indicator: dark only when the
+  home view is actually on screen (aria-current), neutral otherwise.
+- `activeOperatingViewId` syncs on every navigation path: published views and
+  area chips mark their view id; drill-ins, lens-group focus, and lens tabs
+  clear it (drilling to the executive root re-marks the home view). The
+  official-views dropdown never claims a view you're not in.
+- The in-canvas "Senior team" orientation chip dropped its dark tone — it's a
+  go-there action, not an active-state chip.
+- Official views (All Residential, etc.) exit via "Back to Senior team", the
+  same escape as org views — replacing the cryptic "Reset" that dumped users
+  into the full-lens layout.
+
+Verified in-browser: home → drill → home → area chip → back; pill state,
+dropdown label, and back affordance correct at every step.

@@ -32,6 +32,7 @@ const EMPTY_TOKENS: string[] = [];
  */
 export function CanvasContextBar({
   onResetView,
+  onGoHome,
   onOpenTeamTree,
   teamTreeRootId,
   onExitTeamTree,
@@ -40,6 +41,9 @@ export function CanvasContextBar({
   viewContext,
 }: {
   onResetView: () => void;
+  // Official views exit back to the Senior team home (same escape as org
+  // views) instead of a bare "Reset" that dumps into the full-lens soup.
+  onGoHome?: () => void;
   onOpenTeamTree: (nodeId: string) => void;
   teamTreeRootId: string | null;
   onExitTeamTree: () => void;
@@ -532,10 +536,15 @@ export function CanvasContextBar({
           )}
           <button
             type="button"
-            onClick={onResetView}
+            onClick={viewContext?.kind === "operating-view" && onGoHome ? onGoHome : onResetView}
+            title={
+              viewContext?.kind === "operating-view"
+                ? "Return to the Senior Leadership Team home view (Esc)"
+                : "Clear this focus and show the whole map"
+            }
             className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-200 dark:bg-slate-100 dark:text-slate-700 dark:ring-slate-200 dark:hover:bg-slate-200"
           >
-            Reset
+            {viewContext?.kind === "operating-view" && onGoHome ? "Back to Senior team" : "Reset"}
           </button>
           {(viewContext?.owner ||
             viewContext?.publishedAt ||
