@@ -163,7 +163,11 @@ export default function Home() {
   }, [importDocument]);
 
   return (
-    <main className="min-h-screen bg-slate-100/70 pb-20 pt-14 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    // App shell: the PAGE never scrolls. The toolbar stays pinned and the
+    // canvas flexes into whatever height remains — like a maps/design tool.
+    // (It used to be min-h-screen + a 700px-minimum canvas, so on laptop
+    // windows the page overflowed and interacting scrolled the toolbar away.)
+    <main className="flex h-dvh flex-col overflow-hidden bg-slate-100/70 py-3 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <ScenarioComparison />
       {showAIImport && <AIImportWizard onClose={() => setShowAIImport(false)} />}
       <SpreadsheetView open={showSpreadsheet} onClose={() => setShowSpreadsheet(false)} readOnly={!canEdit} />
@@ -185,7 +189,7 @@ export default function Home() {
           panelVisible={showFullScreenPanel}
         />
       ) : null}
-      <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 sm:px-8">
+      <div className="mx-auto flex min-h-0 w-full max-w-none flex-1 flex-col gap-3 px-6 sm:px-8">
         {/* Compact Toolbar */}
         {/* No overflow-hidden (it clipped the search dropdown to a sliver),
             and z-40 so the dropdown paints above the canvas card that follows
@@ -380,9 +384,10 @@ export default function Home() {
           </div>
         )}
 
-        {/* Full-Width Canvas with Floating Editor Panel */}
-        <div className={`relative ${isCanvasFullScreen ? 'pointer-events-none opacity-40 blur-sm' : ''}`} aria-hidden={isCanvasFullScreen}>
-          <div className="relative h-[calc(100vh-180px)] min-h-[700px] w-full">
+        {/* Full-Width Canvas with Floating Editor Panel — fills the shell's
+            remaining height; never forces the page to scroll */}
+        <div className={`relative min-h-0 flex-1 ${isCanvasFullScreen ? 'pointer-events-none opacity-40 blur-sm' : ''}`} aria-hidden={isCanvasFullScreen}>
+          <div className="relative h-full w-full">
             <HierarchyCanvas className="h-full" />
             
             {/* Floating Editor Panel - Only for single selections; multi-select
