@@ -5530,8 +5530,22 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         targetNode &&
         (getGroupKey(sourceNode, "brand") !== getGroupKey(targetNode, "brand") ||
           getGroupKey(sourceNode, "channel") !== getGroupKey(targetNode, "channel"));
+      // Channel lens: a manager in one lane (e.g. Jason Sloan in All Channels)
+      // with reports in others routes long horizontal lines at card-row height
+      // — read as fake reporting links between unrelated people (Aron McKay
+      // "connected to" Nathan Whitesel). Lane owner context chips already
+      // carry the upline, so suppress cross-lane reporting lines here too,
+      // exactly like the department and grid lenses do.
+      const isChannelCrossReporting =
+        dimension === "channel" &&
+        isMatrixView &&
+        isManager &&
+        !isCuratedLeadershipReport &&
+        sourceNode &&
+        targetNode &&
+        getGroupKey(sourceNode, "channel") !== getGroupKey(targetNode, "channel");
       if (
-        (isDepartmentCrossReporting || isBusinessGridCrossReporting) &&
+        (isDepartmentCrossReporting || isBusinessGridCrossReporting || isChannelCrossReporting) &&
         matrixRelationshipMode !== "all" &&
         !isIncidentToFocus
       ) {
