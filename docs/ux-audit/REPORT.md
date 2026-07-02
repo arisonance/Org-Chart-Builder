@@ -180,3 +180,33 @@ Each entry: what was confusing, the evidence, what changed, before/after.
   compact-relayout bigger idea). Search, help, edit-path verified.
 - **No new confusing-class findings in Tiers 1–3 → exit criteria met
   for this run.**
+
+## Iteration 5 — the default view reads like an org chart (2026-07-02)
+
+**Complaint driving it:** first frame opened at 42% zoom — nine unreadable card
+miniatures floating in dead canvas, with hand-tuned pixel offsets scattering
+Gigi/Jorge at odd positions.
+
+**Root causes found and fixed:**
+1. `calculateTeamTreeLayout` used a worst-case uniform row pitch (380px) and
+   80px sibling gaps → the 9-card tree sprawled to 2,367×1,134px. Now
+   height-aware: each child row starts just below its parent's *real* bottom
+   (card + portfolio shelf), gaps tightened (44/96).
+2. `compressSeniorLeadershipTeamLayout` hand-warped the senior frame with
+   hardcoded x/y offsets. Deleted; the honest layout replaces it.
+3. Three framing paths raced on load (team framer, overview fits, collapse
+   seed) with different padding/minZoom — last writer won nondeterministically
+   (42% or 57%). All aligned: honest card heights in bounds, 10% padding,
+   vertical centering under the official-view pill.
+4. Card typography bumped (15px bold names) and full-detail LOD threshold
+   lowered 0.6 → 0.55 so the landing zoom shows full cards.
+5. Drill-in area-card stacks overlapped (104px pitch for 174px cards) — fixed
+   to full card height per row.
+
+**Verified:** default frame now lands at 62% (1600×1000) / 53% (1440×820),
+centered, 0 card overlaps, full-detail cards, stable across repeated loads.
+Screenshots: `.ux-audit/default-frame/before-1600.png` → `final-1600.png`.
+
+**Spotted for next changes:** wide-team drill-ins (e.g. Jason Sloan's 36
+people) fit at 22% clamped-and-cropped — needs row wrapping for wide sibling
+sets; drill-in owner frames overlap neighboring groups' cards.

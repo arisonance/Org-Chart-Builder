@@ -104,8 +104,8 @@ export const calculateLayout = (
   return positions;
 };
 
-const TEAM_TREE_GAP_X = 80;
-const TEAM_TREE_GAP_Y = 230;
+const TEAM_TREE_GAP_X = 44;
+const TEAM_TREE_GAP_Y = 96;
 
 type TeamTreeSize = {
   width: number;
@@ -118,11 +118,16 @@ export const calculateTeamTreeLayout = (
   nodes: GraphNode[],
   edges: GraphEdge[],
   rootId: string,
+  // Rendered card heights (card + portfolio shelf / area-card sidecar). Rows
+  // sit just below each parent's actual bottom instead of a worst-case pitch,
+  // so trees frame compactly and fit at a readable zoom.
+  nodeHeights?: Record<string, number>,
 ): Record<string, { x: number; y: number }> => {
   const personIds = new Set(
     nodes.filter((node) => node.kind === "person").map((node) => node.id),
   );
   if (!personIds.has(rootId)) return calculateLayout(nodes, edges);
+  const heightOf = (id: string) => nodeHeights?.[id] ?? NODE_HEIGHT;
 
   const childrenById: ChildMap = {};
   edges.filter(isManagerEdge).forEach((edge) => {
@@ -137,7 +142,7 @@ export const calculateTeamTreeLayout = (
     if (seen.has(id)) {
       return {
         width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        height: heightOf(id),
         rootCenterOffset: NODE_WIDTH / 2,
         childRow: null,
       };
@@ -147,7 +152,7 @@ export const calculateTeamTreeLayout = (
     if (children.length === 0) {
       sizes[id] = {
         width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        height: heightOf(id),
         rootCenterOffset: NODE_WIDTH / 2,
         childRow: null,
       };
@@ -174,7 +179,7 @@ export const calculateTeamTreeLayout = (
       childCenters.reduce((sum, center) => sum + center, 0) / childCenters.length;
     sizes[id] = {
       width,
-      height: NODE_HEIGHT + TEAM_TREE_GAP_Y + childRow.height,
+      height: heightOf(id) + TEAM_TREE_GAP_Y + childRow.height,
       rootCenterOffset: Math.min(
         width - NODE_WIDTH / 2,
         Math.max(NODE_WIDTH / 2, averageChildCenter),
@@ -196,7 +201,7 @@ export const calculateTeamTreeLayout = (
       y: top,
     };
     if (!size.childRow) return;
-    const rowTop = top + NODE_HEIGHT + TEAM_TREE_GAP_Y;
+    const rowTop = top + heightOf(id) + TEAM_TREE_GAP_Y;
     let childLeft = left + (size.width - size.childRow.width) / 2;
     size.childRow.ids.forEach((childId) => {
       const childSize = sizes[childId] ?? measure(childId);

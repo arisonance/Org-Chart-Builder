@@ -263,8 +263,8 @@ function Component({ data }: { data: HierarchyNodeData }) {
                   {initials}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{node.name}</p>
-                  <p className="text-xs leading-snug text-slate-500 dark:text-slate-300">
+                  <p className="text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-50">{node.name}</p>
+                  <p className="text-[12px] leading-snug text-slate-500 dark:text-slate-300">
                     {node.attributes.title}
                   </p>
                   {/* Hide job description at medium zoom for performance */}
@@ -526,11 +526,8 @@ const emphsizedLabelOrFirst = (values: Array<string | undefined | null>) => {
 // Level of detail buckets: full cards zoomed in, no badges at medium zoom,
 // oversized name-only chips when zoomed way out
 const getLodLevel = (zoom: number): 'full' | 'medium' | 'compact' => {
-  if (zoom > 0.6) return 'full';
-  // The senior view's natural fit lands at ~0.40–0.42; keep the portfolio
-  // shelf (the drill affordance) visible there rather than flickering it
-  // away whenever the fit lands a hair below the old 0.45 cutoff.
-  if (zoom >= 0.4) return 'medium';
+  if (zoom > 0.55) return 'full';
+  if (zoom >= 0.32) return 'medium';
   return 'compact';
 };
 

@@ -452,28 +452,55 @@ const getSeniorTeamAreaCardPosition = ({
   };
 };
 
-const compressSeniorLeadershipTeamLayout = (
-  positions: Record<string, { x: number; y: number }>,
-  directReportIds: string[],
-) => {
-  const next = { ...positions };
-  directReportIds.forEach((id) => {
-    if (next[id]) next[id] = { ...next[id], y: 310 };
-  });
-  PAT_NON_FINANCE_DIRECT_REPORT_IDS.forEach((id) => {
-    if (next[id]) next[id] = { ...next[id], y: 640 };
-  });
-  if (next[PAT_ID] && next[GIGI_ID]) next[GIGI_ID] = { ...next[GIGI_ID], x: next[PAT_ID].x - 320 };
-  if (next[PAT_ID] && next[JORGE_ID]) next[JORGE_ID] = { ...next[JORGE_ID], x: next[PAT_ID].x + 320 };
-  if (next[PAT_ID] && next[ROB_ID]) next[ROB_ID] = { ...next[ROB_ID], x: next[PAT_ID].x + 660 };
-  if (next[PAT_ID] && next[JASON_ID]) next[JASON_ID] = { ...next[JASON_ID], x: next[PAT_ID].x + 990 };
-  if (next[PAT_ID] && next[MICHAEL_ID]) next[MICHAEL_ID] = { ...next[MICHAEL_ID], x: next[PAT_ID].x + 1260 };
-  if (next[EXECUTIVE_ROOT_ID]) next[EXECUTIVE_ROOT_ID] = { ...next[EXECUTIVE_ROOT_ID], y: 0 };
-  return next;
-};
-
 const getPortfolioNodeHeight = (areaCount: number) =>
-  areaCount > 0 ? NODE_HEIGHT + 44 + areaCount * 44 : NODE_HEIGHT;
+  areaCount > 0 ? NODE_HEIGHT + 50 + areaCount * 58 : NODE_HEIGHT;
+
+// Estimated rendered heights (card + portfolio shelf or area-card sidecar)
+// for everyone in a team-tree scope. Fed to calculateTeamTreeLayout so each
+// child row starts just below its parent's actual bottom — the tree packs
+// tight and the first frame fits at a readable zoom.
+const buildTeamTreeNodeHeights = (
+  rootId: string,
+  visibleIds: Set<string>,
+  areaCardSpecs: AreaCardSpec[],
+): Record<string, number> => {
+  const counts = new Map<string, number>();
+  const heights: Record<string, number> = {};
+  if (rootId === EXECUTIVE_ROOT_ID) {
+    // Senior view: areas render as an in-card shelf under their owner.
+    areaCardSpecs.forEach((area) => {
+      if (!SENIOR_TEAM_AREA_CARD_IDS.has(area.id)) return;
+      if (!visibleIds.has(area.displayUnderId)) return;
+      counts.set(area.displayUnderId, (counts.get(area.displayUnderId) ?? 0) + 1);
+    });
+    counts.forEach((count, id) => {
+      heights[id] = getPortfolioNodeHeight(count);
+    });
+    return heights;
+  }
+  // Drill-in team views: area cards hang as a sidecar row below their anchor.
+  areaCardSpecs.forEach((area) => {
+    const anchorId =
+      area.rootId && visibleIds.has(area.rootId)
+        ? area.rootId
+        : area.ownerId && visibleIds.has(area.ownerId)
+          ? area.ownerId
+          : null;
+    if (!anchorId) return;
+    counts.set(anchorId, (counts.get(anchorId) ?? 0) + 1);
+  });
+  counts.forEach((count, id) => {
+    const columns = Math.min(2, Math.max(1, count));
+    const rows = Math.ceil(count / columns);
+    heights[id] =
+      NODE_HEIGHT +
+      54 +
+      rows * SENIOR_AREA_CARD_HEIGHT +
+      (rows - 1) * SENIOR_AREA_CARD_SIDECAR_GAP_Y +
+      24;
+  });
+  return heights;
+};
 
 const getFlowNodeRoutingHeight = (node: Node | undefined) => {
   const areaCount = ((node?.data as Partial<HierarchyNodeData> | undefined)?.portfolioAreas ?? []).length;
@@ -561,7 +588,9 @@ const getLensFitPadding = (lens: LensId) => {
   if (lens === "channel") return 0.26;
   if (lens === "matrix") return 0.24;
   if (lens === "brand") return 0.22;
-  return 0.18;
+  // Hierarchy trees are compact; a thin margin keeps the frame full of chart
+  // instead of dead canvas, which is most of what "readable zoom" buys.
+  return 0.08;
 };
 
 type SavedViewportDefaults = Record<string, ViewportState>;
@@ -2232,18 +2261,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         visibleIds.has(edge.source) &&
         visibleIds.has(edge.target),
     );
-    const positions = calculateTeamTreeLayout(scopedNodes, scopedEdges, teamRootId);
+    const positions = calculateTeamTreeLayout(
+      scopedNodes,
+      scopedEdges,
+      teamRootId,
+      buildTeamTreeNodeHeights(teamRootId, visibleIds, areaCardSpecs),
+    );
     return {
       rootId: teamRootId,
       ids: visibleIds,
       directReportIds,
       descendantIds,
-      positions:
-        teamRootId === EXECUTIVE_ROOT_ID
-          ? compressSeniorLeadershipTeamLayout(positions, directReportIds)
-      : positions,
+      positions,
     };
-  }, [teamRootId, childMap, nodesData, edgesData]);
+  }, [teamRootId, childMap, nodesData, edgesData, areaCardSpecs]);
 
   const showBrandCoverageFormation =
     lens === "brand" &&
@@ -2346,7 +2377,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     if (!alreadySeeded) {
       addCollapsed(collapseTargets.top);
       window.setTimeout(() => {
-        fitVisiblePeopleRef.current({ padding: 0.2, duration: 400, maxZoom: 1.2, reason: "overview" });
+        fitVisiblePeopleRef.current({ padding: 0.1, duration: 400, maxZoom: 1.2, reason: "overview" });
       }, 450);
     }
   }, [rfInstance, personNodes.length, parentMap, collapseTargets.top, addCollapsed]);
@@ -2362,7 +2393,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     clearSelection();
     expandAll();
     setTimeout(() => {
-      fitVisiblePeopleRef.current({ padding: 0.15, duration: 400, minZoom: 0.42, maxZoom: 1.2, reason: "lens" });
+      fitVisiblePeopleRef.current({ padding: 0.1, duration: 400, minZoom: 0.42, maxZoom: 1.2, reason: "lens" });
     }, 80);
   }, [lens, setLensFilters, clearSelection, expandAll]);
 
@@ -2675,7 +2706,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     (
       ids: string[],
       positions: Record<string, { x: number; y: number }>,
-      options: FitPeopleOptions & { verticalBias?: number } = {},
+      options: FitPeopleOptions & {
+        verticalBias?: number;
+        // Real rendered card heights (card + shelf); without them tall cards
+        // hang below the computed bounds and the frame drifts off-center.
+        nodeHeights?: Record<string, number>;
+      } = {},
     ) => {
       if (!rfInstance || !wrapperRef.current) return false;
       const uniqueIds = [...new Set(ids)];
@@ -2693,7 +2729,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const minX = Math.min(...frames.map((item) => item.position.x));
       const maxX = Math.max(...frames.map((item) => item.position.x + NODE_WIDTH));
       const minY = Math.min(...frames.map((item) => item.position.y));
-      const maxY = Math.max(...frames.map((item) => item.position.y + NODE_HEIGHT));
+      const maxY = Math.max(
+        ...frames.map(
+          (item) => item.position.y + (options.nodeHeights?.[item.id] ?? NODE_HEIGHT),
+        ),
+      );
       const boundsWidth = Math.max(NODE_WIDTH, maxX - minX);
       const boundsHeight = Math.max(NODE_HEIGHT, maxY - minY);
       const padding = options.padding ?? 0.18;
@@ -2848,27 +2888,35 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       const availableWidth = Math.max(360, availableRight - availableLeft);
       const availableHeight = Math.max(280, rect.height - 160);
 
+      // Card + shelf heights; NODE_HEIGHT alone leaves tall cards hanging
+      // below the frame and the whole tree floating in dead space.
+      const frameNodeHeights = teamTree
+        ? buildTeamTreeNodeHeights(teamTree.rootId, teamTree.ids, areaCardSpecs)
+        : undefined;
       const minX = Math.min(...frames.map((item) => item.position.x));
       const maxX = Math.max(...frames.map((item) => item.position.x + NODE_WIDTH));
       const minY = Math.min(...frames.map((item) => item.position.y));
-      const maxY = Math.max(...frames.map((item) => item.position.y + NODE_HEIGHT));
+      const maxY = Math.max(
+        ...frames.map((item) => item.position.y + (frameNodeHeights?.[item.id] ?? NODE_HEIGHT)),
+      );
       const boundsWidth = Math.max(NODE_WIDTH, maxX - minX);
       const boundsHeight = Math.max(NODE_HEIGHT, maxY - minY);
       const zoom = Math.min(
         0.95,
         Math.max(
           0.22,
-          Math.min((availableWidth * 0.82) / boundsWidth, (availableHeight * 0.72) / boundsHeight),
+          Math.min((availableWidth * 0.9) / boundsWidth, (availableHeight * 0.9) / boundsHeight),
         ),
       );
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
       const targetX = availableLeft + availableWidth / 2;
       const isTeamRootFrame = teamTree?.rootId === id;
-      const isExecutiveTeamRootFrame = isTeamRootFrame && id === EXECUTIVE_ROOT_ID;
       const rootPosition = isTeamRootFrame || shouldFrameLocalOrg ? framePositions[id] : null;
+      // Team frames: root at top, tree vertically centered below the official
+      // view pill (72px clears it) so the frame is full of chart, not canvas.
       const targetY = isTeamRootFrame
-        ? rect.top + (isExecutiveTeamRootFrame ? 72 : 135)
+        ? rect.top + Math.max(72, (rect.height - boundsHeight * zoom) / 2)
         : shouldFrameLocalOrg
           ? rect.top + rect.height * 0.36
         : rect.top + rect.height * 0.46;
@@ -2900,7 +2948,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
       }, 520);
     },
-    [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree, activeTeamPositions, scheduleOrientationLoop, framePositionMap],
+    [rfInstance, childMap, parentMap, selection.nodeIds.length, teamTree, activeTeamPositions, scheduleOrientationLoop, framePositionMap, areaCardSpecs],
   );
 
   const focusPersonFromCard = useCallback(
@@ -2947,7 +2995,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       (currentRoot ? parentMap[currentRoot] ?? currentRoot : null) ?? topOverviewRootId;
 
     if (!overviewRootId) {
-      fitVisiblePeopleRef.current({ padding: 0.22, duration: 450, minZoom: 0.42, maxZoom: 1.05, reason: "overview" });
+      fitVisiblePeopleRef.current({ padding: 0.1, duration: 450, minZoom: 0.42, maxZoom: 1.05, reason: "overview" });
       return;
     }
 
@@ -2967,11 +3015,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         visibleIds.has(edge.source) &&
         visibleIds.has(edge.target),
     );
-    const positions = calculateTeamTreeLayout(scopedNodes, scopedEdges, overviewRootId);
-    const framePositions =
-      overviewRootId === EXECUTIVE_ROOT_ID
-        ? compressSeniorLeadershipTeamLayout(positions, directReportIds)
-        : positions;
+    const overviewNodeHeights = buildTeamTreeNodeHeights(overviewRootId, visibleIds, areaCardSpecs);
+    const framePositions = calculateTeamTreeLayout(
+      scopedNodes,
+      scopedEdges,
+      overviewRootId,
+      overviewNodeHeights,
+    );
     const overviewFrameIds =
       overviewRootId === EXECUTIVE_ROOT_ID
         ? [overviewRootId, ...directReportIds, ...SENIOR_LEADERSHIP_CONTEXT_IDS]
@@ -3000,15 +3050,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     const frameOverview = () => {
       const didFrame = framePositionMap(frameIds, framePositions, {
-          padding: 0.18,
+          padding: 0.1,
           duration: 520,
           minZoom: 0.42,
           maxZoom: 1.05,
-          verticalBias: 0.22,
+          verticalBias: 0.5,
+          nodeHeights: overviewNodeHeights,
       });
       if (!didFrame) {
         fitVisiblePeopleRef.current({
-          padding: 0.22,
+          padding: 0.1,
           duration: 450,
           minZoom: 0.42,
           maxZoom: 1.05,
@@ -3023,18 +3074,20 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         primaryId: overviewRootId,
         expectedIds: frameIds,
         fallback: () =>
-          framePositionMap(frameIds, positions, {
-            padding: 0.18,
+          framePositionMap(frameIds, framePositions, {
+            padding: 0.1,
             duration: 360,
             minZoom: 0.42,
             maxZoom: 1.05,
-            verticalBias: 0.22,
+            verticalBias: 0.5,
+            nodeHeights: overviewNodeHeights,
           }),
       });
     };
     window.setTimeout(frameOverview, 220);
     window.setTimeout(frameOverview, 560);
   }, [
+    areaCardSpecs,
     childMap,
     edgesData,
     framePositionMap,
@@ -5045,7 +5098,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                       })
                     : {
                         x: anchor.x + NODE_WIDTH / 2 - rowWidth / 2 + col * (SENIOR_AREA_CARD_WIDTH + SENIOR_AREA_CARD_GAP_X),
-                        y: anchor.y + NODE_HEIGHT + 54 + row * SENIOR_AREA_CARD_GAP_Y,
+                        // Full card height per row — a bare GAP_Y pitch (104px)
+                        // stacked 174px-tall cards on top of each other.
+                        y:
+                          anchor.y +
+                          NODE_HEIGHT +
+                          54 +
+                          row * (SENIOR_AREA_CARD_HEIGHT + SENIOR_AREA_CARD_SIDECAR_GAP_Y),
                       });
                 cardPositions.push(position);
                 const owner = area.ownerId ? personById.get(area.ownerId) : undefined;
