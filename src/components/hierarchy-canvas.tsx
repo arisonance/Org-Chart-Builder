@@ -4052,22 +4052,27 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         if (!brand) return;
         if (tier === "vp" || tier === "director") highLevelIds.add(person.id);
       });
-    } else if (lens === "channel") {
-      Object.values(CHANNEL_CONTEXT_BY_KEY).flat().forEach((id) => highLevelIds.add(id));
-      personNodes.forEach((person) => {
-        const tier = person.attributes.tier;
-        if (tier !== "vp" && tier !== "director") return;
-        if ((person.attributes.primaryChannel ?? "All Channels") === "All Channels") return;
-        highLevelIds.add(person.id);
-      });
-    } else if (lens === "department") {
-      highLevelIds.add(DEPARTMENT_SUPER_ROOT_ID);
-      DEPARTMENT_OWNER_IDS.forEach((id) => highLevelIds.add(id));
+    } else if (lens === "channel" || lens === "department") {
+      // These maps are far too wide to read whole (fit-all lands at 18–28%
+      // specks). Open on the top-left corner — the first lane's opening
+      // ranks — at readable zoom; the lanes visibly continue off-frame and
+      // the Groups chips / minimap cover the rest.
+      const positions = lensLayout?.positions ?? {};
+      const placed = visibleViewportPersonIds.filter((id) => positions[id]);
+      if (placed.length > 0) {
+        const minX = Math.min(...placed.map((id) => positions[id].x));
+        const minY = Math.min(...placed.map((id) => positions[id].y));
+        placed
+          .filter(
+            (id) => positions[id].x <= minX + 1500 && positions[id].y <= minY + 1100,
+          )
+          .forEach((id) => highLevelIds.add(id));
+      }
     }
 
     const fitIds = [...highLevelIds].filter((id) => visibleViewportPersonIds.includes(id));
     defaultFitIdsRef.current = fitIds.length > 0 ? fitIds : null;
-  }, [lens, noFocus, personNodes, teamTree, visibleViewportPersonIds]);
+  }, [lens, noFocus, personNodes, teamTree, visibleViewportPersonIds, lensLayout?.positions]);
 
   const viewportShowsAnyPerson = useCallback(
     (viewport: ViewportState, positions: Record<string, { x: number; y: number }>) => {

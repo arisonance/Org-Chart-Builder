@@ -255,3 +255,14 @@ chips → polish batch.
 
 Verified in-browser: home → drill → home → area chip → back; pill state,
 dropdown label, and back affordance correct at every step.
+
+## Iteration 6c — F3: Channel and Department open readable (2026-07-02)
+
+Fit-all framed 253 people at 18% (channel) / 28% (department, anchored to the
+full-width floating owner row). Both lenses now open on the top-left corner of
+the map — the first lane's opening ranks — at readable zoom; lanes visibly
+continue off-frame, and Groups chips + minimap cover the rest.
+
+Verified: channel first frame 18% → 44% (Residential channel with Jason
+Sloan + Tyler Kungl org readable), department 28% → 77% (Pat McGaughan over
+the Finance lane, fully readable).
