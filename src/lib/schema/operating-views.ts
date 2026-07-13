@@ -31,7 +31,7 @@ export type PublishedOperatingView =
       publishedAt: string;
       kind: "formation";
       lens: LensId;
-      formation: "residential";
+      formation: "residential" | "commercial";
     }
   | {
       id: string;
@@ -69,6 +69,17 @@ export const PUBLISHED_OPERATING_VIEWS: PublishedOperatingView[] = [
     kind: "formation",
     lens: "hierarchy",
     formation: "residential",
+  },
+  {
+    id: "all-commercial",
+    label: "All Commercial",
+    description: "Commercial formation: branch owners, with support composed from the shared bench.",
+    owner: "Commercial SLT",
+    publishedBy: "Commercial SLT",
+    publishedAt: "2026-06-24",
+    kind: "formation",
+    lens: "hierarchy",
+    formation: "commercial",
   },
   {
     id: "luxury-residential",

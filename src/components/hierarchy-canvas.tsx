@@ -123,7 +123,7 @@ type ViewContext = {
   publishedAt?: string;
   dimension?: LensDimension;
   value?: string;
-  formation?: "residential";
+  formation?: "residential" | "commercial";
 };
 
 type ViewportState = {
@@ -394,6 +394,58 @@ const RESIDENTIAL_BRANCH_ROOT_IDS = [
   "person-aron-mckay",
   "person-jay-lazzaro-jr",
 ];
+const COMMERCIAL_FORMATION_VALUE = "Commercial";
+const COMMERCIAL_ROOT_ID = "person-michael-sonntag";
+// Michael's branch owners by reporting truth. Debbie Michelle's Enterprise
+// team reports to Rob Roland, so it joins this board as SUPPORT via the
+// bench, never as a reporting branch.
+const COMMERCIAL_BRANCH_ROOT_IDS = [
+  "person-michael-bridwell",
+  "person-morten-jorgensen",
+  "person-paxson-laird-iii",
+];
+
+// One formation template, several channels: same board geometry and bands,
+// different root/branches/pieces per channel owner.
+type ChannelFormationDef = {
+  viewId: string;
+  formation: string;
+  value: string;
+  rootId: string;
+  branchRootIds: string[];
+  branchesLabel: string;
+  laneLabel: string;
+};
+
+const CHANNEL_FORMATION_DEFS: Record<string, ChannelFormationDef> = {
+  residential: {
+    viewId: "all-residential",
+    formation: "residential",
+    value: RESIDENTIAL_FORMATION_VALUE,
+    rootId: RESIDENTIAL_ROOT_ID,
+    branchRootIds: RESIDENTIAL_BRANCH_ROOT_IDS,
+    branchesLabel: "Residential branches",
+    laneLabel: "Residential",
+  },
+  commercial: {
+    viewId: "all-commercial",
+    formation: "commercial",
+    value: COMMERCIAL_FORMATION_VALUE,
+    rootId: COMMERCIAL_ROOT_ID,
+    branchRootIds: COMMERCIAL_BRANCH_ROOT_IDS,
+    branchesLabel: "Commercial branches",
+    laneLabel: "Commercial",
+  },
+};
+
+const getFormationDef = (context: ViewContext | null): ChannelFormationDef | null => {
+  if (context?.kind !== "operating-view") return null;
+  return (
+    Object.values(CHANNEL_FORMATION_DEFS).find(
+      (def) => context.formation === def.formation || context.value === def.value,
+    ) ?? null
+  );
+};
 const AREA_CARD_PREFIX = "area-card:";
 const FORMATION_LAYER_PREFIX = "formation-layer:";
 const FORMATION_POD_PREFIX = "formation-pod:";
@@ -418,9 +470,8 @@ const SENIOR_PORTFOLIO_FRAME_ANCHOR_IDS = new Set([
 
 const isAreaCardNodeId = (id: string) => id.startsWith(AREA_CARD_PREFIX);
 const isFormationPodNodeId = (id: string) => id.startsWith(FORMATION_POD_PREFIX);
-const isResidentialFormationContext = (context: ViewContext | null) =>
-  context?.kind === "operating-view" &&
-  (context.formation === "residential" || context.value === RESIDENTIAL_FORMATION_VALUE);
+const isChannelFormationContext = (context: ViewContext | null) =>
+  getFormationDef(context) !== null;
 
 const isSeniorLeadershipContextId = (id: string) =>
   SENIOR_LEADERSHIP_CONTEXT_IDS.includes(id);
@@ -935,30 +986,40 @@ const collectVisibleDirectReports = (
     personById,
   );
 
-const buildResidentialFormationSpec = (
+const buildChannelFormationSpec = (
+  def: ChannelFormationDef,
   people: PersonNode[],
   personById: Map<string, PersonNode>,
   childMap: Record<string, string[]>,
   orgUnits: ComputedUnit[],
   config: FormationViewConfig = EMPTY_FORMATION_CONFIG,
 ): ResidentialFormationSpec => {
-  const branchRootIds = uniqueExistingIds(RESIDENTIAL_BRANCH_ROOT_IDS, personById);
+  const branchRootIds = uniqueExistingIds(def.branchRootIds, personById);
   const branchRootSet = new Set(branchRootIds);
   const branchReportIds = collectVisibleDirectReports(branchRootIds, childMap, personById);
   const peopleIds = new Set(
-    uniqueExistingIds([RESIDENTIAL_ROOT_ID, ...branchRootIds, ...branchReportIds], personById),
+    uniqueExistingIds([def.rootId, ...branchRootIds, ...branchReportIds], personById),
   );
 
   const positions: Record<string, { x: number; y: number }> = {};
-  positions[RESIDENTIAL_ROOT_ID] = { x: 1320, y: 80 };
+  positions[def.rootId] = { x: 1320, y: 80 };
 
-  const branchX = [0, 840, 1680, 2520];
+  // Branch pitch fits a 3-wide report grid; the root centers over however
+  // many branches this channel has (a fixed x drifted off-center on boards
+  // with fewer branches).
+  const BRANCH_PITCH = 1000;
+  positions[def.rootId] = {
+    x: Math.max(0, (branchRootIds.length - 1) * (BRANCH_PITCH / 2)),
+    y: 80,
+  };
   branchRootIds.forEach((rootId, index) => {
-    const x = branchX[index] ?? index * 840;
+    const x = index * BRANCH_PITCH;
     positions[rootId] = { x, y: 360 };
     const reports = uniqueExistingIds(childMap[rootId] ?? [], personById)
       .filter((reportId) => !branchRootSet.has(reportId));
-    const cols = Math.max(1, Math.min(2, reports.length || 1));
+    // 3 columns once a branch passes 4 reports — a third 2-col row used to
+    // spill past the branches band into the support band below.
+    const cols = Math.max(1, Math.min(reports.length > 4 ? 3 : 2, reports.length || 1));
     const gapX = NODE_WIDTH + 70;
     const gapY = NODE_HEIGHT + 74;
     const rowWidth = cols * NODE_WIDTH + (cols - 1) * 70;
@@ -1029,7 +1090,84 @@ const buildResidentialFormationSpec = (
     personById,
   );
 
-  const pods: FormationPodSpec[] = [
+  // The shared foundation is the same for every channel board; the support
+  // bands start empty for non-residential formations — the owner composes
+  // them from the bench (which creates real supports edges as they do).
+  const foundationPods: FormationPodSpec[] = [
+    {
+      id: "finance",
+      label: "Finance",
+      service: "Finance",
+      tier: "enterprise",
+      memberIds: unitMembers("unit-finance"),
+      leadId: "person-pat-mcgaughan",
+      position: { x: 140, y: 1780 },
+      accentColor: "#64748b",
+      homeLane: "Finance",
+      targetLane: "all businesses",
+    },
+    {
+      id: "admin-hr",
+      label: "Administration & HR",
+      service: "Administration & HR",
+      tier: "enterprise",
+      memberIds: unitMembers("unit-administration"),
+      leadId: "person-grace-dryer",
+      position: { x: 470, y: 1780 },
+      accentColor: "#64748b",
+      homeLane: "Administration",
+      targetLane: "all businesses",
+    },
+    {
+      id: "information-technology",
+      label: "Information Technology",
+      service: "Information Technology",
+      tier: "enterprise",
+      memberIds: unitMembers("unit-it"),
+      leadId: "person-mark-litz",
+      position: { x: 800, y: 1780 },
+      accentColor: "#64748b",
+      homeLane: "IT",
+      targetLane: "all businesses",
+    },
+    {
+      id: "fontana-warehouse",
+      label: "Fontana Warehouse",
+      service: "Fontana Warehouse",
+      tier: "facility",
+      memberIds: unitMembers("unit-fontana-warehouse"),
+      leadId: "person-fred-salehi",
+      position: { x: 140, y: 2110 },
+      accentColor: "#10b981",
+      homeLane: "Ops FNT",
+      targetLane: def.laneLabel,
+    },
+    {
+      id: "minden-production",
+      label: "Minden Production",
+      service: "Minden Production",
+      tier: "facility",
+      memberIds: unitMembers("unit-minden-production"),
+      position: { x: 470, y: 2110 },
+      accentColor: "#10b981",
+      homeLane: "James Manufacturing",
+      targetLane: def.laneLabel,
+    },
+    {
+      id: "minden-operations",
+      label: "Minden Operations",
+      service: "Minden Operations",
+      tier: "facility",
+      memberIds: unitMembers("unit-minden-operations"),
+      leadId: "person-joe-timpone",
+      position: { x: 800, y: 2110 },
+      accentColor: "#10b981",
+      homeLane: "Ops MND",
+      targetLane: def.laneLabel,
+    },
+  ];
+
+  const residentialSupportPods: FormationPodSpec[] = [
     {
       id: "inside-sales",
       label: "Inside Sales",
@@ -1114,78 +1252,12 @@ const buildResidentialFormationSpec = (
       homeLane: "Operations",
       targetLane: "Residential",
     },
-    {
-      id: "finance",
-      label: "Finance",
-      service: "Finance",
-      tier: "enterprise",
-      memberIds: unitMembers("unit-finance"),
-      leadId: "person-pat-mcgaughan",
-      position: { x: 140, y: 1780 },
-      accentColor: "#64748b",
-      homeLane: "Finance",
-      targetLane: "all businesses",
-    },
-    {
-      id: "admin-hr",
-      label: "Administration & HR",
-      service: "Administration & HR",
-      tier: "enterprise",
-      memberIds: unitMembers("unit-administration"),
-      leadId: "person-grace-dryer",
-      position: { x: 470, y: 1780 },
-      accentColor: "#64748b",
-      homeLane: "Administration",
-      targetLane: "all businesses",
-    },
-    {
-      id: "information-technology",
-      label: "Information Technology",
-      service: "Information Technology",
-      tier: "enterprise",
-      memberIds: unitMembers("unit-it"),
-      leadId: "person-mark-litz",
-      position: { x: 800, y: 1780 },
-      accentColor: "#64748b",
-      homeLane: "IT",
-      targetLane: "all businesses",
-    },
-    {
-      id: "fontana-warehouse",
-      label: "Fontana Warehouse",
-      service: "Fontana Warehouse",
-      tier: "facility",
-      memberIds: unitMembers("unit-fontana-warehouse"),
-      leadId: "person-fred-salehi",
-      position: { x: 140, y: 2110 },
-      accentColor: "#10b981",
-      homeLane: "Ops FNT",
-      targetLane: "Residential",
-    },
-    {
-      id: "minden-production",
-      label: "Minden Production",
-      service: "Minden Production",
-      tier: "facility",
-      memberIds: unitMembers("unit-minden-production"),
-      position: { x: 470, y: 2110 },
-      accentColor: "#10b981",
-      homeLane: "James Manufacturing",
-      targetLane: "Residential",
-    },
-    {
-      id: "minden-operations",
-      label: "Minden Operations",
-      service: "Minden Operations",
-      tier: "facility",
-      memberIds: unitMembers("unit-minden-operations"),
-      leadId: "person-joe-timpone",
-      position: { x: 800, y: 2110 },
-      accentColor: "#10b981",
-      homeLane: "Ops MND",
-      targetLane: "Residential",
-    },
   ];
+
+  const pods: FormationPodSpec[] =
+    def.formation === "residential"
+      ? [...residentialSupportPods, ...foundationPods]
+      : [...foundationPods];
 
   // Apply the owner's board arrangement: benched pods drop off, bench adds
   // join (membership derived live from their org unit), band moves re-tier.
@@ -1209,7 +1281,7 @@ const buildResidentialFormationSpec = (
       position: { x: 0, y: 0 },
       accentColor: "#7c3aed",
       homeLane: unit.def.serves,
-      targetLane: "Residential",
+      targetLane: def.laneLabel,
     });
   });
   // Re-slot every band left-to-right so moved/added pods land in a tidy row
@@ -1225,7 +1297,7 @@ const buildResidentialFormationSpec = (
   const layers: FormationLayerSpec[] = [
     {
       id: "residential-branches",
-      label: "Residential branches",
+      label: def.branchesLabel,
       color: "#7c3aed",
       position: { x: -220, y: 260 },
       size: { width: 3260, height: 790 },
@@ -1275,7 +1347,7 @@ const buildResidentialFormationSpec = (
     pods: boardPods,
     layers,
     frameIds: [
-      RESIDENTIAL_ROOT_ID,
+      def.rootId,
       ...branchRootIds,
       ...branchReportIds,
       ...boardPods
@@ -2318,11 +2390,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     [],
   );
   const residentialFormationConfig =
-    formationConfigs[RESIDENTIAL_FORMATION_VIEW_ID] ?? EMPTY_FORMATION_CONFIG;
+    formationConfigs[CHANNEL_FORMATION_DEFS.residential.viewId] ?? EMPTY_FORMATION_CONFIG;
+  const commercialFormationConfig =
+    formationConfigs[CHANNEL_FORMATION_DEFS.commercial.viewId] ?? EMPTY_FORMATION_CONFIG;
 
   const residentialFormationSpec = useMemo(
     () =>
-      buildResidentialFormationSpec(
+      buildChannelFormationSpec(
+        CHANNEL_FORMATION_DEFS.residential,
         personNodes,
         personById,
         childMap,
@@ -2330,6 +2405,33 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         residentialFormationConfig,
       ),
     [childMap, orgUnits, personById, personNodes, residentialFormationConfig],
+  );
+  const commercialFormationSpec = useMemo(
+    () =>
+      buildChannelFormationSpec(
+        CHANNEL_FORMATION_DEFS.commercial,
+        personNodes,
+        personById,
+        childMap,
+        orgUnits,
+        commercialFormationConfig,
+      ),
+    [childMap, orgUnits, personById, personNodes, commercialFormationConfig],
+  );
+  // Which channel board (if any) the canvas is showing right now.
+  const activeFormationDef = getFormationDef(viewContext);
+  const activeFormationSpec =
+    activeFormationDef?.formation === "commercial"
+      ? commercialFormationSpec
+      : residentialFormationSpec;
+  const activeFormationConfig =
+    activeFormationDef?.formation === "commercial"
+      ? commercialFormationConfig
+      : residentialFormationConfig;
+  const formationSpecByKind = useCallback(
+    (formation: string) =>
+      formation === "commercial" ? commercialFormationSpec : residentialFormationSpec,
+    [commercialFormationSpec, residentialFormationSpec],
   );
   const areaCardSpecs = useMemo(
     () => buildAreaCardSpecs(personNodes, personById, childMap, orgUnits),
@@ -2686,7 +2788,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       (rfInstance ? normalizeViewport(rfInstance.getViewport()) : normalizeViewport(currentViewportState));
     const published: Record<string, { x: number; y: number }> = {};
     Object.entries(source).forEach(([id, position]) => {
-      if (focusSet.has(id) || (isResidentialFormationContext(viewContext) && isFormationPodNodeId(id))) {
+      if (focusSet.has(id) || (isChannelFormationContext(viewContext) && isFormationPodNodeId(id))) {
         published[id] = position;
       }
     });
@@ -2856,13 +2958,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   // Units already on the board, so the bench never double-offers one.
   const formationBoardUnitIds = useMemo(() => {
     const used = new Set<string>();
-    residentialFormationSpec.pods.forEach((pod) => {
+    activeFormationSpec.pods.forEach((pod) => {
       const unitId = FORMATION_POD_UNIT_IDS[pod.id];
       if (unitId) used.add(unitId);
     });
-    residentialFormationConfig.addedPods.forEach(({ unitId }) => used.add(unitId));
+    activeFormationConfig.addedPods.forEach(({ unitId }) => used.add(unitId));
     return used;
-  }, [residentialFormationSpec.pods, residentialFormationConfig.addedPods]);
+  }, [activeFormationSpec.pods, activeFormationConfig.addedPods]);
 
   // Bench contents: units not on the board, plus built-in pods that were
   // removed (so a removal is always recoverable from the same place).
@@ -2881,7 +2983,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         count: unit.members.length,
         detail: unit.def.serves,
       }));
-    const hiddenBuiltIns = residentialFormationConfig.hiddenPodIds
+    const hiddenBuiltIns = activeFormationConfig.hiddenPodIds
       .filter((podId) => !FORMATION_POD_UNIT_IDS[podId] || !formationBoardUnitIds.has(FORMATION_POD_UNIT_IDS[podId]))
       .map((podId) => ({
         kind: "restore" as const,
@@ -2893,7 +2995,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     // A hidden built-in whose unit also shows as addable would be a duplicate
     // offer; prefer the restore row (it keeps the pod's identity and colors).
     const restoreUnitIds = new Set(
-      residentialFormationConfig.hiddenPodIds
+      activeFormationConfig.hiddenPodIds
         .map((podId) => FORMATION_POD_UNIT_IDS[podId])
         .filter(Boolean),
     );
@@ -2901,64 +3003,67 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       ...hiddenBuiltIns,
       ...units.filter((unit) => !restoreUnitIds.has(unit.id)),
     ];
-  }, [orgUnits, formationBoardUnitIds, residentialFormationConfig.hiddenPodIds]);
+  }, [orgUnits, formationBoardUnitIds, activeFormationConfig.hiddenPodIds]);
 
   // A quick-add during an arrange session: reopen the formation only after
   // the spec has re-derived and actually contains the new person (the open
   // callback would otherwise close over the stale member list).
-  const openResidentialFormationRef = useRef<
+  const openChannelFormationRef = useRef<
     ((view: Extract<PublishedOperatingView, { kind: "formation" }>) => void) | null
   >(null);
   const [pendingFormationRefreshId, setPendingFormationRefreshId] = useState<string | null>(null);
   useEffect(() => {
-    if (!pendingFormationRefreshId) return;
-    if (!residentialFormationSpec.peopleIds.has(pendingFormationRefreshId)) return;
+    if (!pendingFormationRefreshId || !activeFormationDef) return;
+    if (!activeFormationSpec.peopleIds.has(pendingFormationRefreshId)) return;
     setPendingFormationRefreshId(null);
-    const formationView = PUBLISHED_OPERATING_VIEW_BY_ID[RESIDENTIAL_FORMATION_VIEW_ID];
+    const formationView = PUBLISHED_OPERATING_VIEW_BY_ID[activeFormationDef.viewId];
     if (formationView?.kind === "formation") {
-      openResidentialFormationRef.current?.(formationView);
+      openChannelFormationRef.current?.(formationView);
     }
-  }, [pendingFormationRefreshId, residentialFormationSpec.peopleIds]);
+  }, [pendingFormationRefreshId, activeFormationDef, activeFormationSpec.peopleIds]);
 
   const addUnitToFormation = useCallback(
     (unitId: string) => {
+      if (!activeFormationDef) return;
       const unit = orgUnits.find((candidate) => candidate.def.id === unitId);
       if (!unit || unit.members.length === 0) return;
       const podId = `bench-${unitId}`;
       const supporterId = unit.lead?.id ?? unit.members[0].id;
-      // The board move IS a real relationship: this unit supports Residential.
-      const edgeId = addRelationship(supporterId, RESIDENTIAL_ROOT_ID, "support", {
-        label: `${unit.def.label} supports Residential`,
+      // The board move IS a real relationship: this unit supports the channel.
+      const edgeId = addRelationship(supporterId, activeFormationDef.rootId, "support", {
+        label: `${unit.def.label} supports ${activeFormationDef.laneLabel}`,
       });
-      updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (config) => ({
+      updateFormationConfig(activeFormationDef.viewId, (config) => ({
         ...config,
         addedPods: [...config.addedPods, { id: podId, unitId }],
         supportEdgeByPodId: edgeId
           ? { ...config.supportEdgeByPodId, [podId]: edgeId }
           : config.supportEdgeByPodId,
       }));
-      showToast(`${unit.def.label} joined the formation (supports Residential)`);
+      showToast(`${unit.def.label} joined the formation (supports ${activeFormationDef.laneLabel})`);
     },
-    [orgUnits, addRelationship, updateFormationConfig, showToast],
+    [activeFormationDef, orgUnits, addRelationship, updateFormationConfig, showToast],
   );
 
   const restorePodToFormation = useCallback(
     (podId: string) => {
-      updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (config) => ({
+      if (!activeFormationDef) return;
+      updateFormationConfig(activeFormationDef.viewId, (config) => ({
         ...config,
         hiddenPodIds: config.hiddenPodIds.filter((id) => id !== podId),
       }));
       showToast("Returned to the formation");
     },
-    [updateFormationConfig, showToast],
+    [activeFormationDef, updateFormationConfig, showToast],
   );
 
   const removePodFromFormation = useCallback(
     (podId: string, label: string) => {
-      const config = formationConfigs[RESIDENTIAL_FORMATION_VIEW_ID] ?? EMPTY_FORMATION_CONFIG;
+      if (!activeFormationDef) return;
+      const config = formationConfigs[activeFormationDef.viewId] ?? EMPTY_FORMATION_CONFIG;
       const supportEdgeId = config.supportEdgeByPodId[podId];
       if (supportEdgeId) removeRelationship(supportEdgeId);
-      updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (current) => {
+      updateFormationConfig(activeFormationDef.viewId, (current) => {
         const isBenchAdd = current.addedPods.some((pod) => pod.id === podId);
         const { [podId]: _removedEdge, ...supportEdgeByPodId } = current.supportEdgeByPodId;
         const { [podId]: _removedTier, ...tierOverrides } = current.tierOverrides;
@@ -2975,7 +3080,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       });
       showToast(`${label} moved to the bench`);
     },
-    [formationConfigs, removeRelationship, updateFormationConfig, showToast],
+    [activeFormationDef, formationConfigs, removeRelationship, updateFormationConfig, showToast],
   );
 
   const openTeamTree = useCallback(
@@ -3550,9 +3655,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     ],
   );
 
-  const openResidentialFormation = useCallback(
+  const openChannelFormation = useCallback(
     (view: Extract<PublishedOperatingView, { kind: "formation" }>) => {
-      const focusIds = [...residentialFormationSpec.peopleIds];
+      const def =
+        CHANNEL_FORMATION_DEFS[view.formation] ?? CHANNEL_FORMATION_DEFS.residential;
+      const spec = formationSpecByKind(def.formation);
+      const focusIds = [...spec.peopleIds];
       if (focusIds.length === 0) return;
       markOperatingViewActive(view.id);
       const existingLayout = operatingViewLayouts[view.id];
@@ -3561,7 +3669,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           ? existingLayout?.publishedViewport
           : existingLayout?.draftViewport ?? existingLayout?.publishedViewport;
       const framePositions = {
-        ...residentialFormationSpec.positions,
+        ...spec.positions,
         ...(existingLayout?.published ?? {}),
         ...(existingLayout?.draft ?? {}),
       };
@@ -3576,7 +3684,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         setLensFilters("hierarchy", {
           focusIds,
           hiddenIds: [],
-          activeTokens: [RESIDENTIAL_FORMATION_VALUE],
+          activeTokens: [def.value],
         });
         setViewContext({
           kind: "operating-view",
@@ -3586,7 +3694,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           description: view.description,
           publishedBy: view.publishedBy,
           publishedAt: view.publishedAt,
-          value: RESIDENTIAL_FORMATION_VALUE,
+          value: def.value,
           formation: view.formation,
         });
         const frameFormation = () => {
@@ -3602,13 +3710,13 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   maxZoom: 0.88,
                   reason: "focus",
                   expectedIds: focusIds,
-                  primaryId: RESIDENTIAL_ROOT_ID,
+                  primaryId: def.rootId,
                 }),
             })
           ) {
             return;
           }
-          const didFrame = framePositionMap(residentialFormationSpec.frameIds, framePositions, {
+          const didFrame = framePositionMap(spec.frameIds, framePositions, {
             padding: 0.12,
             duration: 560,
             minZoom: 0.22,
@@ -3623,7 +3731,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               maxZoom: 0.88,
               reason: "focus",
               expectedIds: focusIds,
-              primaryId: RESIDENTIAL_ROOT_ID,
+              primaryId: def.rootId,
             });
           }
         };
@@ -3635,16 +3743,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       applySavedViewport,
       claimViewFraming,
       clearSelection,
+      formationSpecByKind,
       framePositionMap,
       markOperatingViewActive,
       operatingViewLayouts,
-      residentialFormationSpec,
       setLensFilters,
       setLensStore,
       workspaceMode,
     ],
   );
-  openResidentialFormationRef.current = openResidentialFormation;
+  openChannelFormationRef.current = openChannelFormation;
 
   const openPublishedOperatingView = useCallback(
     (view: PublishedOperatingView) => {
@@ -3670,7 +3778,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         return;
       }
       if (view.kind === "formation") {
-        openResidentialFormation(view);
+        openChannelFormation(view);
         return;
       }
       openOperatingView(view.dimension, view.value, view.label, {
@@ -3681,7 +3789,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         publishedAt: view.publishedAt,
       }, { scope: "primary-team", viewId: view.id });
     },
-    [markOperatingViewActive, openOperatingView, openResidentialFormation, openSharedServices, resetView, showOrientationOverview],
+    [markOperatingViewActive, openOperatingView, openChannelFormation, openSharedServices, resetView, showOrientationOverview],
   );
 
   const openAreaCard = useCallback(
@@ -3691,7 +3799,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       if (area.action.type === "formation") {
         const view = PUBLISHED_OPERATING_VIEW_BY_ID[area.action.viewId];
         if (view?.kind === "formation") {
-          openResidentialFormation(view);
+          openChannelFormation(view);
           return;
         }
       }
@@ -3719,7 +3827,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
         });
       }
     },
-    [areaCardById, openOperatingView, openResidentialFormation, openTeamTree, personNameById],
+    [areaCardById, openOperatingView, openChannelFormation, openTeamTree, personNameById],
   );
 
   const openSeniorLeadershipHome = useCallback(() => {
@@ -4897,12 +5005,12 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     const focusIds = filters?.focusIds ?? [];
     const hiddenIds = filters?.hiddenIds ?? [];
     const dimension = lensToDimension(lens);
-    const isResidentialFormation = isResidentialFormationContext(viewContext);
+    const isResidentialFormation = isChannelFormationContext(viewContext);
     
     // Filter nodes based on focusIds or hiddenIds
     let filteredNodes = personNodes;
     if (isResidentialFormation) {
-      filteredNodes = filteredNodes.filter((node) => residentialFormationSpec.peopleIds.has(node.id));
+      filteredNodes = filteredNodes.filter((node) => activeFormationSpec.peopleIds.has(node.id));
     }
     if (teamTree) {
       filteredNodes = filteredNodes.filter((node) => teamTree.ids.has(node.id));
@@ -4921,7 +5029,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
 
     const positions =
       isResidentialFormation
-        ? residentialFormationSpec.positions
+        ? activeFormationSpec.positions
         : focusIds.length > 0 && !teamTree
         ? (() => {
             const scopedEdges = edgesData.filter(
@@ -5536,7 +5644,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     }
 
     if (isResidentialFormation) {
-      const layerNodes: Node[] = residentialFormationSpec.layers.map((layer) => {
+      const layerNodes: Node[] = activeFormationSpec.layers.map((layer) => {
         const data: FormationBandNodeData = {
           label: layer.label,
           color: layer.color,
@@ -5557,7 +5665,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           focusable: false,
         };
       });
-      const podNodes: Node[] = residentialFormationSpec.pods.map((pod) => {
+      const podNodes: Node[] = activeFormationSpec.pods.map((pod) => {
         const nodeId = `${FORMATION_POD_PREFIX}${pod.id}`;
         const members = pod.memberIds.flatMap((memberId) => {
           const member = personById.get(memberId);
@@ -5617,7 +5725,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     focusSet,
     relationshipRoleById,
     brandCoverageSpec,
-    residentialFormationSpec,
+    activeFormationSpec,
     personById,
     personNodes,
     teamTree,
@@ -6299,18 +6407,18 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           // Targets are the branch roots — the managers whose reports the
           // formation actually draws.
           if (
-            isResidentialFormationContext(viewContext) &&
+            activeFormationDef &&
             personNameById.has(item.id) &&
-            item.id !== RESIDENTIAL_ROOT_ID &&
-            !RESIDENTIAL_BRANCH_ROOT_IDS.includes(item.id)
+            item.id !== activeFormationDef.rootId &&
+            !activeFormationDef.branchRootIds.includes(item.id)
           ) {
             const centerX = item.position.x + NODE_WIDTH / 2;
             const centerY = item.position.y + NODE_HEIGHT / 2;
-            const targetId = RESIDENTIAL_BRANCH_ROOT_IDS.filter(
+            const targetId = activeFormationDef.branchRootIds.filter(
               (candidateId) => candidateId !== item.id && personNameById.has(candidateId),
             ).find((candidateId) => {
               const pos =
-                draft[candidateId] ?? residentialFormationSpec.positions[candidateId];
+                draft[candidateId] ?? activeFormationSpec.positions[candidateId];
               if (!pos) return false;
               return (
                 centerX >= pos.x - 24 &&
@@ -6337,15 +6445,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               return;
             }
           }
-          if (isResidentialFormationContext(viewContext) && isFormationPodNodeId(item.id)) {
+          if (activeFormationDef && isFormationPodNodeId(item.id)) {
             // Board-game drop: pods snap into the band they were dropped on,
             // and landing in a different band re-tiers the pod (placement is
             // meaning — direct support vs shared vs foundation).
             const podId = item.id.slice(FORMATION_POD_PREFIX.length);
-            const pod = residentialFormationSpec.pods.find((candidate) => candidate.id === podId);
+            const pod = activeFormationSpec.pods.find((candidate) => candidate.id === podId);
             const centerX = item.position.x + FORMATION_POD_WIDTH / 2;
             const centerY = item.position.y + FORMATION_POD_HEIGHT / 2;
-            const band = residentialFormationSpec.layers.find(
+            const band = activeFormationSpec.layers.find(
               (layer) =>
                 FORMATION_LAYER_TIER[layer.id] &&
                 centerX >= layer.position.x &&
@@ -6360,7 +6468,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               const rowMatches = (tier: FormationPodTier) =>
                 FORMATION_TIER_ROW_Y[tier] === FORMATION_TIER_ROW_Y[bandTier];
               const occupiedSlots = new Set(
-                residentialFormationSpec.pods
+                activeFormationSpec.pods
                   .filter((other) => other.id !== podId && rowMatches(other.tier))
                   .map((other) => {
                     const otherId = `${FORMATION_POD_PREFIX}${other.id}`;
@@ -6385,7 +6493,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               const sameBand =
                 pod.tier === bandTier || (bandTier === "direct" && pod.tier === "capability");
               if (!sameBand) {
-                updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (config) => ({
+                updateFormationConfig(activeFormationDef.viewId, (config) => ({
                   ...config,
                   tierOverrides: { ...config.tierOverrides, [podId]: bandTier },
                 }));
@@ -6474,7 +6582,8 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       persistOperatingViewLayouts,
       personNameById,
       queueRemoteOperatingViewLayout,
-      residentialFormationSpec,
+      activeFormationDef,
+      activeFormationSpec,
       rfInstance,
       teamTree,
       savedTeamLayouts,
@@ -6855,7 +6964,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     // Adding while arranging a formation: the view's focus filter was built
     // before this person existed, so selecting them blanked the board.
     // Reopen the formation once its spec has re-derived with the new hire.
-    if (isResidentialFormationContext(viewContext)) {
+    if (isChannelFormationContext(viewContext)) {
       setPendingFormationRefreshId(newId);
       return;
     }
@@ -6980,7 +7089,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
               lens !== "channel" &&
               viewContext?.kind !== "shared-services" &&
               teamTree?.rootId !== EXECUTIVE_ROOT_ID &&
-              !isResidentialFormationContext(viewContext) && (
+              !isChannelFormationContext(viewContext) && (
                 <MiniMap
                   className="!bottom-6 !right-6 rounded-2xl border border-slate-200 bg-white/90 text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80"
                   nodeStrokeColor={(n) => (n.data?.accentColor as string) ?? "#64748b"}
@@ -7047,7 +7156,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
             )}
             {/* Formation board controls: owners arrange their channel like a
                 board — bench on the right, pieces snap into bands. */}
-            {isResidentialFormationContext(viewContext) && !canEdit && (
+            {isChannelFormationContext(viewContext) && !canEdit && (
               <button
                 type="button"
                 onClick={() => {
@@ -7060,14 +7169,14 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                 Arrange this formation
               </button>
             )}
-            {isResidentialFormationContext(viewContext) && canEdit && (
+            {isChannelFormationContext(viewContext) && canEdit && (
               <div className="motion-stage-in absolute right-6 top-[78px] z-30 flex w-[280px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:ring-white/5">
                 <div className="border-b border-slate-100 px-3 py-2 dark:border-white/10">
                   <div className="text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">
                     Bench
                   </div>
                   <div className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                    Add a team to put it in play as Residential support. Remove a
+                    Add a team to put it in play as channel support. Remove a
                     pod with its × to send it back here.
                   </div>
                 </div>
@@ -7117,11 +7226,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                     person card onto a branch owner to change who they report to.
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {RESIDENTIAL_BRANCH_ROOT_IDS.filter((rootId) => personNameById.has(rootId)).map(
+                    {(activeFormationDef?.branchRootIds ?? []).filter((rootId) => personNameById.has(rootId)).map(
                       (rootId) => {
                         const name = personNameById.get(rootId) ?? rootId;
                         const firstName = name.split(/\s+/)[0];
-                        const anchor = residentialFormationSpec.positions[rootId];
+                        const anchor = activeFormationSpec.positions[rootId];
                         return (
                           <button
                             key={rootId}

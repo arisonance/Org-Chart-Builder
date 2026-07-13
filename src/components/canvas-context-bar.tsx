@@ -16,7 +16,7 @@ type ViewContext = {
   publishedAt?: string;
   dimension?: "brand" | "channel" | "department";
   value?: string;
-  formation?: "residential";
+  formation?: "residential" | "commercial";
 };
 
 const EMPTY_IDS: string[] = [];
