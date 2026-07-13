@@ -2903,6 +2903,23 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     ];
   }, [orgUnits, formationBoardUnitIds, residentialFormationConfig.hiddenPodIds]);
 
+  // A quick-add during an arrange session: reopen the formation only after
+  // the spec has re-derived and actually contains the new person (the open
+  // callback would otherwise close over the stale member list).
+  const openResidentialFormationRef = useRef<
+    ((view: Extract<PublishedOperatingView, { kind: "formation" }>) => void) | null
+  >(null);
+  const [pendingFormationRefreshId, setPendingFormationRefreshId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingFormationRefreshId) return;
+    if (!residentialFormationSpec.peopleIds.has(pendingFormationRefreshId)) return;
+    setPendingFormationRefreshId(null);
+    const formationView = PUBLISHED_OPERATING_VIEW_BY_ID[RESIDENTIAL_FORMATION_VIEW_ID];
+    if (formationView?.kind === "formation") {
+      openResidentialFormationRef.current?.(formationView);
+    }
+  }, [pendingFormationRefreshId, residentialFormationSpec.peopleIds]);
+
   const addUnitToFormation = useCallback(
     (unitId: string) => {
       const unit = orgUnits.find((candidate) => candidate.def.id === unitId);
@@ -3627,6 +3644,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       workspaceMode,
     ],
   );
+  openResidentialFormationRef.current = openResidentialFormation;
 
   const openPublishedOperatingView = useCallback(
     (view: PublishedOperatingView) => {
@@ -6276,6 +6294,49 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           existing.publishedViewport ??
           (rfInstance ? normalizeViewport(rfInstance.getViewport()) : undefined);
         moved.forEach((item) => {
+          // Board-game move: dropping one of your people onto a branch owner
+          // reassigns their reporting line (real org data, one undo step).
+          // Targets are the branch roots — the managers whose reports the
+          // formation actually draws.
+          if (
+            isResidentialFormationContext(viewContext) &&
+            personNameById.has(item.id) &&
+            item.id !== RESIDENTIAL_ROOT_ID &&
+            !RESIDENTIAL_BRANCH_ROOT_IDS.includes(item.id)
+          ) {
+            const centerX = item.position.x + NODE_WIDTH / 2;
+            const centerY = item.position.y + NODE_HEIGHT / 2;
+            const targetId = RESIDENTIAL_BRANCH_ROOT_IDS.filter(
+              (candidateId) => candidateId !== item.id && personNameById.has(candidateId),
+            ).find((candidateId) => {
+              const pos =
+                draft[candidateId] ?? residentialFormationSpec.positions[candidateId];
+              if (!pos) return false;
+              return (
+                centerX >= pos.x - 24 &&
+                centerX <= pos.x + NODE_WIDTH + 24 &&
+                centerY >= pos.y - 24 &&
+                centerY <= pos.y + NODE_HEIGHT + 24
+              );
+            });
+            if (targetId) {
+              const personName = personNameById.get(item.id) ?? "This person";
+              const targetName = personNameById.get(targetId) ?? "them";
+              if (parentMap[item.id] === targetId) {
+                showToast(`${personName} already reports to ${targetName}`);
+              } else if (isDescendant(childMap, item.id, targetId)) {
+                showToast(`Can't move ${personName} under their own report`);
+              } else if (addRelationship(targetId, item.id, "manager")) {
+                showToast(`${personName} now reports to ${targetName}`);
+              } else {
+                showToast(`Couldn't move ${personName} — that would loop the reporting chain`);
+              }
+              // Let the formation re-slot them under their (new) branch
+              // instead of pinning the card where it was dropped.
+              delete draft[item.id];
+              return;
+            }
+          }
           if (isResidentialFormationContext(viewContext) && isFormationPodNodeId(item.id)) {
             // Board-game drop: pods snap into the band they were dropped on,
             // and landing in a different band re-tiers the pod (placement is
@@ -6403,11 +6464,15 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     },
     [
       activeOperatingViewId,
+      addRelationship,
       canEdit,
+      childMap,
       filters?.focusIds,
       operatingViewLayouts,
       operatingViewFrameDraft,
+      parentMap,
       persistOperatingViewLayouts,
+      personNameById,
       queueRemoteOperatingViewLayout,
       residentialFormationSpec,
       rfInstance,
@@ -6785,8 +6850,16 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       addRelationship(quickAddDialog.managerId, newId, 'manager');
     }
 
-    setSelection({ nodeIds: [newId], edgeIds: [] });
     setQuickAddDialog({ open: false, mode: 'new-person' });
+
+    // Adding while arranging a formation: the view's focus filter was built
+    // before this person existed, so selecting them blanked the board.
+    // Reopen the formation once its spec has re-derived with the new hire.
+    if (isResidentialFormationContext(viewContext)) {
+      setPendingFormationRefreshId(newId);
+      return;
+    }
+    setSelection({ nodeIds: [newId], edgeIds: [] });
   };
 
   return (
@@ -7034,6 +7107,45 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                       </div>
                     ))
                   )}
+                </div>
+                <div className="border-t border-slate-100 px-3 py-2 dark:border-white/10">
+                  <div className="text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                    Add a person
+                  </div>
+                  <div className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                    New hire or move-in, reporting to a branch owner. Drag a
+                    person card onto a branch owner to change who they report to.
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {RESIDENTIAL_BRANCH_ROOT_IDS.filter((rootId) => personNameById.has(rootId)).map(
+                      (rootId) => {
+                        const name = personNameById.get(rootId) ?? rootId;
+                        const firstName = name.split(/\s+/)[0];
+                        const anchor = residentialFormationSpec.positions[rootId];
+                        return (
+                          <button
+                            key={rootId}
+                            type="button"
+                            onClick={() =>
+                              setQuickAddDialog({
+                                open: true,
+                                mode: "direct-report",
+                                managerId: rootId,
+                                managerName: name,
+                                position: anchor
+                                  ? { x: anchor.x + 40, y: anchor.y + 220 }
+                                  : undefined,
+                              })
+                            }
+                            title={`Add a person reporting to ${name}`}
+                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            + {firstName}
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
                 </div>
               </div>
             )}
