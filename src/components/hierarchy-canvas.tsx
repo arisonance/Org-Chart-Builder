@@ -241,6 +241,85 @@ type BrandConnectionSpec = {
   label: string;
 };
 
+// The channel owner's board arrangement: which pods are on the board, which
+// band each sits in, and the support edges created by bench adds. The pods'
+// membership stays derived from real org data — this only stores arrangement.
+type FormationViewConfig = {
+  tierOverrides: Record<string, FormationPodTier>;
+  hiddenPodIds: string[];
+  addedPods: Array<{ id: string; unitId: string }>;
+  supportEdgeByPodId: Record<string, string>;
+};
+
+const EMPTY_FORMATION_CONFIG: FormationViewConfig = {
+  tierOverrides: {},
+  hiddenPodIds: [],
+  addedPods: [],
+  supportEdgeByPodId: {},
+};
+
+const FORMATION_CONFIG_STORAGE_KEY = "org-chart-formation-configs-v1";
+const RESIDENTIAL_FORMATION_VIEW_ID = "all-residential";
+
+// Which org unit each built-in pod represents, so removing one returns the
+// unit to the bench (and the bench never double-offers a unit on the board).
+const FORMATION_POD_UNIT_IDS: Record<string, string> = {
+  "dealer-services": "unit-dealer-services",
+  finance: "unit-finance",
+  "admin-hr": "unit-administration",
+  "information-technology": "unit-it",
+  "fontana-warehouse": "unit-fontana-warehouse",
+  "minden-production": "unit-minden-production",
+  "minden-operations": "unit-minden-operations",
+};
+
+// Labels for removed built-in pods shown on the bench (their specs are
+// filtered out of the board, so the label must be known independently).
+const FORMATION_HIDDEN_POD_LABELS: Record<string, string> = {
+  "inside-sales": "Inside Sales",
+  "brand-media": "Brand Media Team",
+  "dealer-services": "Dealer Services",
+  "china-capability": "China Capability",
+  "sales-operations": "Sales Operations",
+  "product-engineering": "Product & Engineering",
+  "operations-support": "Operations Support",
+  finance: "Finance",
+  "admin-hr": "Administration & HR",
+  "information-technology": "Information Technology",
+  "fontana-warehouse": "Fontana Warehouse",
+  "minden-production": "Minden Production",
+  "minden-operations": "Minden Operations",
+};
+
+const FORMATION_LAYER_TIER: Record<string, FormationPodTier> = {
+  "direct-support": "direct",
+  "shared-support": "shared",
+  "enterprise-foundation": "enterprise",
+  "physical-foundation": "facility",
+};
+
+// Band geometry for slotting pods: y of the pod row inside each band.
+const FORMATION_TIER_ROW_Y: Record<FormationPodTier, number> = {
+  direct: 1120,
+  capability: 1120,
+  shared: 1450,
+  enterprise: 1780,
+  facility: 2110,
+};
+const FORMATION_SLOT_X0 = 140;
+const FORMATION_SLOT_PITCH = 330;
+
+const loadFormationConfigs = (): Record<string, FormationViewConfig> => {
+  try {
+    const raw = localStorage.getItem(FORMATION_CONFIG_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 type BrandCoverageSpec = {
   pods: FormationPodSpec[];
   layers: FormationLayerSpec[];
@@ -861,6 +940,7 @@ const buildResidentialFormationSpec = (
   personById: Map<string, PersonNode>,
   childMap: Record<string, string[]>,
   orgUnits: ComputedUnit[],
+  config: FormationViewConfig = EMPTY_FORMATION_CONFIG,
 ): ResidentialFormationSpec => {
   const branchRootIds = uniqueExistingIds(RESIDENTIAL_BRANCH_ROOT_IDS, personById);
   const branchRootSet = new Set(branchRootIds);
@@ -1107,6 +1187,41 @@ const buildResidentialFormationSpec = (
     },
   ];
 
+  // Apply the owner's board arrangement: benched pods drop off, bench adds
+  // join (membership derived live from their org unit), band moves re-tier.
+  const boardPods: FormationPodSpec[] = pods
+    .filter((pod) => !config.hiddenPodIds.includes(pod.id))
+    .map((pod) =>
+      config.tierOverrides[pod.id] && config.tierOverrides[pod.id] !== pod.tier
+        ? { ...pod, tier: config.tierOverrides[pod.id] }
+        : pod,
+    );
+  config.addedPods.forEach(({ id, unitId }) => {
+    const unit = orgUnits.find((candidate) => candidate.def.id === unitId);
+    if (!unit || unit.members.length === 0) return;
+    boardPods.push({
+      id,
+      label: unit.def.label,
+      service: unit.def.label,
+      tier: config.tierOverrides[id] ?? "shared",
+      memberIds: unit.members.map((member) => member.id),
+      leadId: unit.lead?.id,
+      position: { x: 0, y: 0 },
+      accentColor: "#7c3aed",
+      homeLane: unit.def.serves,
+      targetLane: "Residential",
+    });
+  });
+  // Re-slot every band left-to-right so moved/added pods land in a tidy row
+  // (a dragged position saved on the view's layout still overrides these).
+  const slotIndexByRow = new Map<number, number>();
+  boardPods.forEach((pod) => {
+    const rowY = FORMATION_TIER_ROW_Y[pod.tier];
+    const slot = slotIndexByRow.get(rowY) ?? 0;
+    slotIndexByRow.set(rowY, slot + 1);
+    pod.position = { x: FORMATION_SLOT_X0 + slot * FORMATION_SLOT_PITCH, y: rowY };
+  });
+
   const layers: FormationLayerSpec[] = [
     {
       id: "residential-branches",
@@ -1122,7 +1237,7 @@ const buildResidentialFormationSpec = (
       color: "#0ea5e9",
       position: { x: -220, y: 1070 },
       size: { width: 3260, height: 260 },
-      count: pods.filter((pod) => pod.tier === "direct" || pod.tier === "capability").length,
+      count: boardPods.filter((pod) => pod.tier === "direct" || pod.tier === "capability").length,
     },
     {
       id: "shared-support",
@@ -1130,7 +1245,7 @@ const buildResidentialFormationSpec = (
       color: "#6366f1",
       position: { x: -220, y: 1400 },
       size: { width: 3260, height: 260 },
-      count: pods.filter((pod) => pod.tier === "shared").length,
+      count: boardPods.filter((pod) => pod.tier === "shared").length,
     },
     {
       id: "enterprise-foundation",
@@ -1138,7 +1253,7 @@ const buildResidentialFormationSpec = (
       color: "#64748b",
       position: { x: -220, y: 1730 },
       size: { width: 3260, height: 260 },
-      count: pods.filter((pod) => pod.tier === "enterprise").length,
+      count: boardPods.filter((pod) => pod.tier === "enterprise").length,
     },
     {
       id: "physical-foundation",
@@ -1146,24 +1261,24 @@ const buildResidentialFormationSpec = (
       color: "#10b981",
       position: { x: -220, y: 2060 },
       size: { width: 3260, height: 260 },
-      count: pods.filter((pod) => pod.tier === "facility").length,
+      count: boardPods.filter((pod) => pod.tier === "facility").length,
     },
   ];
 
-  pods.forEach((pod) => {
+  boardPods.forEach((pod) => {
     positions[`${FORMATION_POD_PREFIX}${pod.id}`] = pod.position;
   });
 
   return {
     peopleIds,
     positions,
-    pods,
+    pods: boardPods,
     layers,
     frameIds: [
       RESIDENTIAL_ROOT_ID,
       ...branchRootIds,
       ...branchReportIds,
-      ...pods
+      ...boardPods
         .filter((pod) => pod.tier === "direct" || pod.tier === "capability")
         .map((pod) => `${FORMATION_POD_PREFIX}${pod.id}`),
     ],
@@ -1775,6 +1890,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   );
   const selection = useGraphStore((state) => state.selection);
   const workspaceMode = useGraphStore((state) => state.workspaceMode);
+  const setWorkspaceMode = useGraphStore((state) => state.setWorkspaceMode);
   const canEdit = workspaceMode !== "explore";
   const addPerson = useGraphStore((state) => state.addPerson);
   const updateNodePosition = useGraphStore((state) => state.updateNodePosition);
@@ -2179,9 +2295,41 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
   const lastRenderedPositions = useRef<Record<string, { x: number; y: number }>>({});
 
   const childMap = useMemo(() => buildChildMap(edgesData), [edgesData]);
+
+  // Per-view formation board arrangement (bench adds, band moves, removals).
+  const [formationConfigs, setFormationConfigs] = useState<Record<string, FormationViewConfig>>(
+    () => loadFormationConfigs(),
+  );
+  const updateFormationConfig = useCallback(
+    (viewId: string, mutate: (config: FormationViewConfig) => FormationViewConfig) => {
+      setFormationConfigs((current) => {
+        const next = {
+          ...current,
+          [viewId]: mutate(current[viewId] ?? EMPTY_FORMATION_CONFIG),
+        };
+        try {
+          localStorage.setItem(FORMATION_CONFIG_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          /* Arrangement still applies for this session. */
+        }
+        return next;
+      });
+    },
+    [],
+  );
+  const residentialFormationConfig =
+    formationConfigs[RESIDENTIAL_FORMATION_VIEW_ID] ?? EMPTY_FORMATION_CONFIG;
+
   const residentialFormationSpec = useMemo(
-    () => buildResidentialFormationSpec(personNodes, personById, childMap, orgUnits),
-    [childMap, orgUnits, personById, personNodes],
+    () =>
+      buildResidentialFormationSpec(
+        personNodes,
+        personById,
+        childMap,
+        orgUnits,
+        residentialFormationConfig,
+      ),
+    [childMap, orgUnits, personById, personNodes, residentialFormationConfig],
   );
   const areaCardSpecs = useMemo(
     () => buildAreaCardSpecs(personNodes, personById, childMap, orgUnits),
@@ -2702,6 +2850,115 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       }, 120);
     },
     [childMap, setLensStore, setLensFilters, clearSelection, showToast],
+  );
+
+  // ---- Formation board (channel owner "arrange my formation") ----
+  // Units already on the board, so the bench never double-offers one.
+  const formationBoardUnitIds = useMemo(() => {
+    const used = new Set<string>();
+    residentialFormationSpec.pods.forEach((pod) => {
+      const unitId = FORMATION_POD_UNIT_IDS[pod.id];
+      if (unitId) used.add(unitId);
+    });
+    residentialFormationConfig.addedPods.forEach(({ unitId }) => used.add(unitId));
+    return used;
+  }, [residentialFormationSpec.pods, residentialFormationConfig.addedPods]);
+
+  // Bench contents: units not on the board, plus built-in pods that were
+  // removed (so a removal is always recoverable from the same place).
+  const formationBench = useMemo(() => {
+    const units = orgUnits
+      .filter(
+        (unit) =>
+          (unit.def.type === "shared-service" || unit.def.type === "facility") &&
+          unit.members.length > 0 &&
+          !formationBoardUnitIds.has(unit.def.id),
+      )
+      .map((unit) => ({
+        kind: "unit" as const,
+        id: unit.def.id,
+        label: unit.def.label,
+        count: unit.members.length,
+        detail: unit.def.serves,
+      }));
+    const hiddenBuiltIns = residentialFormationConfig.hiddenPodIds
+      .filter((podId) => !FORMATION_POD_UNIT_IDS[podId] || !formationBoardUnitIds.has(FORMATION_POD_UNIT_IDS[podId]))
+      .map((podId) => ({
+        kind: "restore" as const,
+        id: podId,
+        label: FORMATION_HIDDEN_POD_LABELS[podId] ?? podId,
+        count: 0,
+        detail: "Removed from this formation",
+      }));
+    // A hidden built-in whose unit also shows as addable would be a duplicate
+    // offer; prefer the restore row (it keeps the pod's identity and colors).
+    const restoreUnitIds = new Set(
+      residentialFormationConfig.hiddenPodIds
+        .map((podId) => FORMATION_POD_UNIT_IDS[podId])
+        .filter(Boolean),
+    );
+    return [
+      ...hiddenBuiltIns,
+      ...units.filter((unit) => !restoreUnitIds.has(unit.id)),
+    ];
+  }, [orgUnits, formationBoardUnitIds, residentialFormationConfig.hiddenPodIds]);
+
+  const addUnitToFormation = useCallback(
+    (unitId: string) => {
+      const unit = orgUnits.find((candidate) => candidate.def.id === unitId);
+      if (!unit || unit.members.length === 0) return;
+      const podId = `bench-${unitId}`;
+      const supporterId = unit.lead?.id ?? unit.members[0].id;
+      // The board move IS a real relationship: this unit supports Residential.
+      const edgeId = addRelationship(supporterId, RESIDENTIAL_ROOT_ID, "support", {
+        label: `${unit.def.label} supports Residential`,
+      });
+      updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (config) => ({
+        ...config,
+        addedPods: [...config.addedPods, { id: podId, unitId }],
+        supportEdgeByPodId: edgeId
+          ? { ...config.supportEdgeByPodId, [podId]: edgeId }
+          : config.supportEdgeByPodId,
+      }));
+      showToast(`${unit.def.label} joined the formation (supports Residential)`);
+    },
+    [orgUnits, addRelationship, updateFormationConfig, showToast],
+  );
+
+  const restorePodToFormation = useCallback(
+    (podId: string) => {
+      updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (config) => ({
+        ...config,
+        hiddenPodIds: config.hiddenPodIds.filter((id) => id !== podId),
+      }));
+      showToast("Returned to the formation");
+    },
+    [updateFormationConfig, showToast],
+  );
+
+  const removePodFromFormation = useCallback(
+    (podId: string, label: string) => {
+      const config = formationConfigs[RESIDENTIAL_FORMATION_VIEW_ID] ?? EMPTY_FORMATION_CONFIG;
+      const supportEdgeId = config.supportEdgeByPodId[podId];
+      if (supportEdgeId) removeRelationship(supportEdgeId);
+      updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (current) => {
+        const isBenchAdd = current.addedPods.some((pod) => pod.id === podId);
+        const { [podId]: _removedEdge, ...supportEdgeByPodId } = current.supportEdgeByPodId;
+        const { [podId]: _removedTier, ...tierOverrides } = current.tierOverrides;
+        return {
+          ...current,
+          addedPods: current.addedPods.filter((pod) => pod.id !== podId),
+          hiddenPodIds:
+            isBenchAdd || current.hiddenPodIds.includes(podId)
+              ? current.hiddenPodIds
+              : [...current.hiddenPodIds, podId],
+          supportEdgeByPodId,
+          tierOverrides,
+        };
+      });
+      showToast(`${label} moved to the bench`);
+    },
+    [formationConfigs, removeRelationship, updateFormationConfig, showToast],
   );
 
   const openTeamTree = useCallback(
@@ -5300,6 +5557,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           badgeLabel: formationPodBadge(pod.tier),
           draggableSurface: true,
           onOpen: openSharedServiceGroup,
+          onRemove: canEdit ? () => removePodFromFormation(pod.id, pod.label) : undefined,
         };
         return {
           id: nodeId,
@@ -5359,6 +5617,7 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
     copyPersonSettings,
     duplicateNodes,
     openSharedServiceGroup,
+    removePodFromFormation,
     openAreaCard,
     copyNodesById,
     removeNode,
@@ -6017,7 +6276,66 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
           existing.publishedViewport ??
           (rfInstance ? normalizeViewport(rfInstance.getViewport()) : undefined);
         moved.forEach((item) => {
-          if (focusIds.has(item.id) || (isResidentialFormationContext(viewContext) && isFormationPodNodeId(item.id))) {
+          if (isResidentialFormationContext(viewContext) && isFormationPodNodeId(item.id)) {
+            // Board-game drop: pods snap into the band they were dropped on,
+            // and landing in a different band re-tiers the pod (placement is
+            // meaning — direct support vs shared vs foundation).
+            const podId = item.id.slice(FORMATION_POD_PREFIX.length);
+            const pod = residentialFormationSpec.pods.find((candidate) => candidate.id === podId);
+            const centerX = item.position.x + FORMATION_POD_WIDTH / 2;
+            const centerY = item.position.y + FORMATION_POD_HEIGHT / 2;
+            const band = residentialFormationSpec.layers.find(
+              (layer) =>
+                FORMATION_LAYER_TIER[layer.id] &&
+                centerX >= layer.position.x &&
+                centerX <= layer.position.x + layer.size.width &&
+                centerY >= layer.position.y &&
+                centerY <= layer.position.y + layer.size.height,
+            );
+            if (band && pod) {
+              const bandTier = FORMATION_LAYER_TIER[band.id];
+              // Snap to the nearest FREE slot in the target band so a dropped
+              // pod never lands on top of one already there.
+              const rowMatches = (tier: FormationPodTier) =>
+                FORMATION_TIER_ROW_Y[tier] === FORMATION_TIER_ROW_Y[bandTier];
+              const occupiedSlots = new Set(
+                residentialFormationSpec.pods
+                  .filter((other) => other.id !== podId && rowMatches(other.tier))
+                  .map((other) => {
+                    const otherId = `${FORMATION_POD_PREFIX}${other.id}`;
+                    const x = draft[otherId]?.x ?? other.position.x;
+                    return Math.round((x - FORMATION_SLOT_X0) / FORMATION_SLOT_PITCH);
+                  }),
+              );
+              let slot = Math.max(
+                0,
+                Math.round((item.position.x - FORMATION_SLOT_X0) / FORMATION_SLOT_PITCH),
+              );
+              for (let step = 0; occupiedSlots.has(slot) && step < 24; step += 1) {
+                const right = slot + step + 1;
+                const left = slot - step - 1;
+                if (!occupiedSlots.has(right)) slot = right;
+                else if (left >= 0 && !occupiedSlots.has(left)) slot = left;
+              }
+              draft[item.id] = {
+                x: FORMATION_SLOT_X0 + slot * FORMATION_SLOT_PITCH,
+                y: FORMATION_TIER_ROW_Y[bandTier],
+              };
+              const sameBand =
+                pod.tier === bandTier || (bandTier === "direct" && pod.tier === "capability");
+              if (!sameBand) {
+                updateFormationConfig(RESIDENTIAL_FORMATION_VIEW_ID, (config) => ({
+                  ...config,
+                  tierOverrides: { ...config.tierOverrides, [podId]: bandTier },
+                }));
+                showToast(`${pod.label} → ${band.label}`);
+              }
+            } else {
+              draft[item.id] = item.position;
+            }
+            return;
+          }
+          if (focusIds.has(item.id)) {
             draft[item.id] = item.position;
           }
         });
@@ -6091,9 +6409,11 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
       operatingViewFrameDraft,
       persistOperatingViewLayouts,
       queueRemoteOperatingViewLayout,
+      residentialFormationSpec,
       rfInstance,
       teamTree,
       savedTeamLayouts,
+      updateFormationConfig,
       updateNodePosition,
       laneXRanges,
       personNodes,
@@ -6651,6 +6971,71 @@ export function HierarchyCanvas({ className, style }: HierarchyCanvasProps = {})
                   }, 100);
                 }}
               />
+            )}
+            {/* Formation board controls: owners arrange their channel like a
+                board — bench on the right, pieces snap into bands. */}
+            {isResidentialFormationContext(viewContext) && !canEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  setWorkspaceMode("edit");
+                  showToast("Arranging All Residential — drag pods between bands, use the bench to add or remove support");
+                }}
+                className="motion-stage-in absolute left-1/2 top-[64px] z-30 -translate-x-1/2 rounded-full border border-violet-200 bg-white px-4 py-1.5 text-xs font-bold text-violet-700 shadow-md transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 dark:border-violet-400/30 dark:bg-slate-950 dark:text-violet-200 dark:hover:bg-slate-900"
+                title="Owner tools: move pods between bands, add or remove supporting teams"
+              >
+                Arrange this formation
+              </button>
+            )}
+            {isResidentialFormationContext(viewContext) && canEdit && (
+              <div className="motion-stage-in absolute right-6 top-[78px] z-30 flex w-[280px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-lg ring-1 ring-slate-100 backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:ring-white/5">
+                <div className="border-b border-slate-100 px-3 py-2 dark:border-white/10">
+                  <div className="text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                    Bench
+                  </div>
+                  <div className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                    Add a team to put it in play as Residential support. Remove a
+                    pod with its × to send it back here.
+                  </div>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto p-2">
+                  {formationBench.length === 0 ? (
+                    <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">
+                      Every shared team is on the board. Remove a pod (×) to
+                      bench it.
+                    </div>
+                  ) : (
+                    formationBench.map((entry) => (
+                      <div
+                        key={`${entry.kind}-${entry.id}`}
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-white/5"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">
+                            {entry.label}
+                          </div>
+                          <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                            {entry.kind === "restore"
+                              ? entry.detail
+                              : `${entry.count} ${entry.count === 1 ? "person" : "people"} · ${entry.detail}`}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            entry.kind === "restore"
+                              ? restorePodToFormation(entry.id)
+                              : addUnitToFormation(entry.id)
+                          }
+                          className="shrink-0 rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                        >
+                          {entry.kind === "restore" ? "Restore" : "Add"}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             )}
             {truthAuditVisible && truthAuditIssues.length > 0 && (
               <div className="motion-stage-in absolute right-6 top-[78px] z-30 w-[min(360px,calc(100%-3rem))] rounded-lg border border-amber-200 bg-white/95 p-3 text-xs text-slate-700 shadow-lg ring-1 ring-amber-100 backdrop-blur dark:border-amber-300/30 dark:bg-slate-950/90 dark:text-slate-200 dark:ring-amber-300/10">

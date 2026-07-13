@@ -16,6 +16,8 @@ export type SharedServiceGroupNodeData = {
   truthLabel?: string;
   draggableSurface?: boolean;
   onOpen: (memberIds: string[], label: string) => void;
+  // Arrange mode: return this pod to the formation bench.
+  onRemove?: () => void;
 };
 
 function Component({ data }: { data: SharedServiceGroupNodeData }) {
@@ -32,6 +34,7 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
     truthLabel,
     draggableSurface,
     onOpen,
+    onRemove,
   } = data;
   const memberNames = members.slice(0, 3).map((member) => member.name);
   const overflow = members.length - memberNames.length;
@@ -40,6 +43,21 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
   const openPod = () => onOpen(members.map((member) => member.id), displayLabel);
 
   return (
+    <div className="relative">
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          title={`Move ${label} to the bench (removes its support link to this formation)`}
+          aria-label={`Move ${label} to the bench`}
+          className="nodrag nopan absolute -right-2 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+        >
+          ×
+        </button>
+      )}
     <button
       type="button"
       onClick={(event) => {
@@ -98,6 +116,7 @@ function Component({ data }: { data: SharedServiceGroupNodeData }) {
         </span>
       </div>
     </button>
+    </div>
   );
 }
 
